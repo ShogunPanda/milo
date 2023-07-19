@@ -1,0 +1,8 @@
+[package]
+name = "milo-benchmarks"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+milo = { path = "../library" }

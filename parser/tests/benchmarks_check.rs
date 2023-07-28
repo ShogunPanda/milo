@@ -1,15 +1,10 @@
-#![feature(test)]
-
 #[cfg(test)]
-mod tests {
-  extern crate test;
+mod test {
+  use milo::test_utils::{create_parser, http};
+  use milo::State;
 
-  use milo::test_utils::http;
-  use milo::Parser;
-  use test::Bencher;
-
-  #[bench]
-  fn seanmonstar_httparse(b: &mut Bencher) {
+  #[test]
+  fn benchmark_seanmonstar_httparse() {
     let message = http(
       r#"
         GET /wp-content/uploads/2010/03/hello-kitty-darth-vader-pink.jpg HTTP/1.1\r\n
@@ -25,13 +20,14 @@ mod tests {
       "#,
     );
 
-    let mut parser = Parser::new();
-
-    b.iter(|| unsafe { parser.parse(message.as_ptr(), message.len()) });
+    let mut parser = create_parser();
+    let consumed = unsafe { parser.parse(message.as_ptr(), message.len()) };
+    assert!(consumed == message.len());
+    assert!(!matches!(parser.state, State::ERROR));
   }
 
-  #[bench]
-  fn nodejs_http_parser(b: &mut Bencher) {
+  #[test]
+  fn benchmark_nodejs_http_parser() {
     let message = http(
       r#"
         POST /joyent/http-parser HTTP/1.1\r\n
@@ -39,8 +35,8 @@ mod tests {
         DNT: 1\r\n
         Accept-Encoding: gzip, deflate, sdch\r\n
         Accept-Language: ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4\r\n
-        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1)
-        AppleWebKit/537.36 (KHTML, like Gecko)
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) 
+        AppleWebKit/537.36 (KHTML, like Gecko) 
         Chrome/39.0.2171.65 Safari/537.36\r\n
         Accept: text/html,application/xhtml+xml,application/xml;q=0.9,
         image/webp,*/*;q=0.8\r\n
@@ -51,8 +47,9 @@ mod tests {
       "#,
     );
 
-    let mut parser = Parser::new();
-
-    b.iter(|| unsafe { parser.parse(message.as_ptr(), message.len()) });
+    let mut parser = create_parser();
+    let consumed = unsafe { parser.parse(message.as_ptr(), message.len()) };
+    assert!(consumed == message.len());
+    assert!(!matches!(parser.state, State::ERROR));
   }
 }

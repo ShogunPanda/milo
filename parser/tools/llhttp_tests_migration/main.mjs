@@ -145,9 +145,9 @@ fn ${prefix ? prefix + '_' : ''}${test.title
 ${test.input.trim()}
   "###);
 
-let expected_output = output(r###"
+let expected_output = output(r#"
 ${test.output.trim()}
-  "###);
+  "#);
 
   parser.parse(CString::new(input).unwrap().into_raw());
   assert!(get_span!(debug) == expected_output, "${test.title} parsing failed");

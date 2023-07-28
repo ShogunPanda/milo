@@ -1,0 +1,9 @@
+[package]
+name = "milo-reference-rs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+lazy_static = "1.4.0"
+milo = { path = "../parser" }

@@ -1,1 +1,5 @@
 **/target
+**/dist
+reference-cpp/build
+reference-cpp/lib
+reference-rust/build

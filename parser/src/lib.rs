@@ -1,7 +1,9 @@
 use milo_parser_generator::{
-  append, callback, callbacks, char, clear, crlf, digit, errors, fail, generate_parser, get_span, hex_digit, method,
-  move_to, otherwise, pause, set_value, spans, state, string, token, url, values,
+  append, callback, callbacks, char, clear, crlf, digit, errors, fail, generate_parser, get_span, hex_digit, measure,
+  method, move_to, otherwise, pause, set_value, spans, state, string, token, url, values,
 };
+
+pub mod test_utils;
 
 pub const AUTODETECT: isize = 0;
 pub const REQUEST: isize = 1;
@@ -17,7 +19,7 @@ values!(
   connection,
   expected_content_length,
   expected_chunk_size,
-  has_transfer_encoding,
+  has_chunked_transfer_encoding,
   has_upgrade,
   has_trailers,
   current_content_length,
@@ -240,7 +242,6 @@ state!(response_start, {
       callback!(on_protocol, protocol @ response_protocol_complete, 5)
     }
     otherwise!(5) => {
-      println!("WHOW");
       fail!(UNEXPECTED_CHARACTER, "Expected protocol")
     }
     _ => pause!(),
@@ -338,7 +339,7 @@ fn save_header(parser: &mut Parser, field: &str, value: &str) {
     "content-length" => {
       let status = get_span!(status);
 
-      if parser.values.has_transfer_encoding == 1 {
+      if parser.values.has_chunked_transfer_encoding == 1 {
         fail!(
           UNEXPECTED_CONTENT_LENGTH,
           "Unexpected Content-Length header when Transfer-Encoding header is present"
@@ -379,7 +380,7 @@ fn save_header(parser: &mut Parser, field: &str, value: &str) {
         return;
       }
 
-      parser.values.has_transfer_encoding = 1;
+      parser.values.has_chunked_transfer_encoding = 1;
 
       // If chunked is the last encoding
       if value.ends_with("chunked") || value.ends_with(",chunked") || value.ends_with(", chunked") {
@@ -387,13 +388,13 @@ fn save_header(parser: &mut Parser, field: &str, value: &str) {
           If this is 1, it means the Transfer-Encoding header was specified more than once.
           This is the second repetition and therefore, the previous one is no longer the last one, making it invalid.
         */
-        if parser.values.has_transfer_encoding == 1 {
+        if parser.values.has_chunked_transfer_encoding == 1 {
           fail!(
             INVALID_TRANSFER_ENCODING,
             "The value \"chunked\" in the Transfer-Encoding header must be the last provided"
           );
         } else {
-          parser.values.has_transfer_encoding = 1;
+          parser.values.has_chunked_transfer_encoding = 1;
         }
       }
 
@@ -531,7 +532,7 @@ state!(body_start, {
     }
   }
 
-  if parser.values.expected_content_length == 0 && parser.values.has_transfer_encoding == 0 {
+  if parser.values.expected_content_length == 0 && parser.values.has_chunked_transfer_encoding == 0 {
     callback!(on_message_complete);
     return restart(parser, 0);
   }
@@ -541,7 +542,7 @@ state!(body_start, {
     return move_to!(body_via_content_length @ 0);
   }
 
-  if parser.values.has_trailers == 1 && !parser.values.has_transfer_encoding == 0 {
+  if parser.values.has_trailers == 1 && !parser.values.has_chunked_transfer_encoding == 0 {
     return fail!(
       UNEXPECTED_TRAILERS,
       "Trailers are not allowed when not using chunked transfer encoding"

@@ -5,11 +5,11 @@ mod parsing;
 
 use indexmap::IndexSet;
 use proc_macro::TokenStream;
-use quote::{ format_ident, quote };
+use quote::{format_ident, quote};
 use std::sync::Mutex;
-use syn::{ parse_macro_input, parse_str, Arm, ExprMethodCall, Ident, LitByte, LitInt, LitStr };
+use syn::{parse_macro_input, parse_str, Arm, ExprMethodCall, Ident, LitByte, LitInt, LitStr};
 
-use parsing::{ Failure, Char, CharRange, Definition, State };
+use parsing::{Char, CharRange, Definition, Failure, State};
 
 lazy_static! {
   static ref STATES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
@@ -27,7 +27,7 @@ fn invoke_callback(
   callback: &Ident,
   span: Option<&Ident>,
   next: Option<Ident>,
-  advance: isize
+  advance: isize,
 ) -> proc_macro2::TokenStream {
   let cb = if let Some(span) = span {
     quote! { cb(parser, unsafe { std::ffi::CString::from_vec_unchecked(parser.spans.#span.clone()).as_c_str().as_ptr() }, parser.spans.#span.len()) }
@@ -119,6 +119,26 @@ pub fn callbacks(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
+pub fn measure(input: TokenStream) -> TokenStream {
+  let definition: State = parse_macro_input!(input as State);
+  let name = definition.name.to_string();
+  let statements = definition.statements;
+
+  TokenStream::from(quote! {
+    {
+      let mut start = SystemTime::now();
+
+      let res = { #(#statements)* };
+
+      let duration = SystemTime::now().duration_since(start).unwrap().as_nanos();
+
+      println!("[milo::debug] {} completed in {} ns", #name, duration);
+      res
+    }
+  })
+}
+
+#[proc_macro]
 pub fn state(input: TokenStream) -> TokenStream {
   let definition: State = parse_macro_input!(input as State);
   let name = definition.name;
@@ -126,12 +146,10 @@ pub fn state(input: TokenStream) -> TokenStream {
 
   STATES.lock().unwrap().insert(name.to_string().to_uppercase());
 
-  TokenStream::from(
-    quote! {
+  TokenStream::from(quote! {
       #[inline(always)]
       fn #name (parser: &mut Parser, data: &[u8]) -> isize { #(#statements)* }
-  }
-  )
+  })
 }
 
 #[proc_macro]
@@ -223,8 +241,7 @@ pub fn token(input: TokenStream) -> TokenStream {
      ALPHA = 0x41-0x5A, 0x61 - 0x7A
      OTHER_TOKENS = '!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '.' | '^' | '_' | '`' | '|' | '~'
   */
-  let tokens =
-    quote! {
+  let tokens = quote! {
       0x30..=0x39 |
       0x41..=0x5A |
       0x61..=0x7A |
@@ -327,8 +344,7 @@ pub fn url(input: TokenStream) -> TokenStream {
      OTHER_UNRESERVED_AND_RESERVED = '-' | '.' | '_' | '~' | ':' | '/' | '?' | '#' | '[' | ']' | '@' | '!' | '$' | '&' | ''' | '(' | ')' | '*' | '+' | ',' | ';' | '=' | '%'
   */
 
-  let tokens =
-    quote! {
+  let tokens = quote! {
       0x30..=0x39 |
       0x41..=0x5A |
       0x61..=0x7A |
@@ -545,10 +561,7 @@ pub fn pause(_input: TokenStream) -> TokenStream {
 pub fn generate_parser(_input: TokenStream) -> TokenStream {
   let states_ref = STATES.lock().unwrap();
   let initial_state = format_ident!("{}", states_ref[0]);
-  let mut states: Vec<Ident> = states_ref
-    .iter()
-    .map(|x| format_ident!("{}", x))
-    .collect();
+  let mut states: Vec<Ident> = states_ref.iter().map(|x| format_ident!("{}", x)).collect();
   states.insert(0, format_ident!("FINISH"));
   states.insert(0, format_ident!("ERROR"));
 
@@ -559,28 +572,18 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
       let name = x.to_string();
       name != "ERROR" && name != "FINISH"
     })
-    .map(|x| { parse_str::<Arm>(&format!("State::{} => {}(self, current)", x, x.to_string().to_lowercase())).unwrap() })
-    .collect();
-
-  let states_move_before_arms: Vec<Arm> = states
-    .iter()
     .map(|x| {
-      parse_str::<Arm>(&format!("State::{} => self.callbacks.before_{}", x, x.to_string().to_lowercase())).unwrap()
-    })
-    .collect();
-
-  let states_move_after_arms: Vec<Arm> = states
-    .iter()
-    .map(|x| {
-      parse_str::<Arm>(&format!("State::{} => self.callbacks.after_{}", x, x.to_string().to_lowercase())).unwrap()
+      parse_str::<Arm>(&format!(
+        "State::{} => {}(self, current)",
+        x,
+        x.to_string().to_lowercase()
+      ))
+      .unwrap()
     })
     .collect();
 
   let values_ref = VALUES.lock().unwrap();
-  let mut values: Vec<Ident> = values_ref
-    .iter()
-    .map(|x| format_ident!("{}", x))
-    .collect();
+  let mut values: Vec<Ident> = values_ref.iter().map(|x| format_ident!("{}", x)).collect();
   values.insert(0, format_ident!("parse_empty_data"));
   values.insert(0, format_ident!("error_code"));
 
@@ -588,43 +591,25 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
   values.insert(0, format_ident!("mode"));
 
   let spans_ref = SPANS.lock().unwrap();
-  let mut spans: Vec<Ident> = spans_ref
-    .iter()
-    .map(|x| format_ident!("{}", x))
-    .collect();
+  let mut spans: Vec<Ident> = spans_ref.iter().map(|x| format_ident!("{}", x)).collect();
   spans.insert(0, format_ident!("error_reason"));
 
   let spans_clearable = spans.clone();
   spans.insert(0, format_ident!("debug"));
 
   let errors_ref = ERRORS.lock().unwrap();
-  let mut errors: Vec<Ident> = errors_ref
-    .iter()
-    .map(|x| format_ident!("{}", x))
-    .collect();
+  let mut errors: Vec<Ident> = errors_ref.iter().map(|x| format_ident!("{}", x)).collect();
 
   errors.insert(0, format_ident!("CALLBACK_ERROR"));
   errors.insert(0, format_ident!("UNEXPECTED_DATA"));
 
   let callbacks_ref = CALLBACKS.lock().unwrap();
-  let mut callbacks: Vec<Ident> = callbacks_ref
-    .iter()
-    .map(|x| format_ident!("{}", x))
-    .collect();
+  let mut callbacks: Vec<Ident> = callbacks_ref.iter().map(|x| format_ident!("{}", x)).collect();
 
   callbacks.insert(0, format_ident!("on_error"));
   callbacks.insert(0, format_ident!("on_finish"));
-
-  callbacks.push(format_ident!("before_error"));
-  callbacks.push(format_ident!("after_error"));
-  callbacks.push(format_ident!("before_finish"));
-  callbacks.push(format_ident!("after_finish"));
-
-  for x in states_ref.iter() {
-    let cb = x.to_string().to_lowercase();
-    callbacks.push(format_ident!("before_{}", cb));
-    callbacks.push(format_ident!("after_{}", cb));
-  }
+  callbacks.insert(0, format_ident!("after_state_change"));
+  callbacks.insert(0, format_ident!("before_state_change"));
 
   for x in spans_ref.iter() {
     callbacks.push(format_ident!("on_data_{}", x));
@@ -635,43 +620,44 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
     .map(|x| parse_str::<Arm>(&format!("State::{} => write!(f, \"State::{}\")", x, x)).unwrap())
     .collect();
 
-  let values_debug: ExprMethodCall = parse_str::<ExprMethodCall>(
-    &format!(
-      "f.debug_struct(\"Values\"){}.finish()",
-      values_ref
-        .iter()
-        .map(|x| { format!(".field(\"{}\", &self.{})", x, x) })
-        .collect::<Vec<String>>()
-        .join("")
-    )
-  ).unwrap();
+  let values_debug: ExprMethodCall = parse_str::<ExprMethodCall>(&format!(
+    "f.debug_struct(\"Values\"){}.finish()",
+    values_ref
+      .iter()
+      .map(|x| { format!(".field(\"{}\", &self.{})", x, x) })
+      .collect::<Vec<String>>()
+      .join("")
+  ))
+  .unwrap();
 
-  let spans_debug: ExprMethodCall = parse_str::<ExprMethodCall>(
-    &format!(
-      "f.debug_struct(\"Spans\"){}.finish()",
-      spans_ref
-        .iter()
-        .map(|x| {
-          format!(".field(\"{}\", &unsafe {{ std::ffi::CString::from_vec_unchecked(self.{}.clone()) }})", x, x)
-        })
-        .collect::<Vec<String>>()
-        .join("")
-    )
-  ).unwrap();
+  let spans_debug: ExprMethodCall = parse_str::<ExprMethodCall>(&format!(
+    "f.debug_struct(\"Spans\"){}.finish()",
+    spans_ref
+      .iter()
+      .map(|x| {
+        format!(
+          ".field(\"{}\", &unsafe {{ std::ffi::CString::from_vec_unchecked(self.{}.clone()) }})",
+          x, x
+        )
+      })
+      .collect::<Vec<String>>()
+      .join("")
+  ))
+  .unwrap();
 
-  let callbacks_debug: ExprMethodCall = parse_str::<ExprMethodCall>(
-    &format!(
-      "f.debug_struct(\"Callbacks\"){}.finish()",
-      callbacks
-        .iter()
-        .map(|x| format!(".field(\"{}\", &self.{}.is_some())", x, x))
-        .collect::<Vec<String>>()
-        .join("")
-    )
-  ).unwrap();
+  let callbacks_debug: ExprMethodCall = parse_str::<ExprMethodCall>(&format!(
+    "f.debug_struct(\"Callbacks\"){}.finish()",
+    callbacks
+      .iter()
+      .map(|x| format!(".field(\"{}\", &self.{}.is_some())", x, x))
+      .collect::<Vec<String>>()
+      .join("")
+  ))
+  .unwrap();
 
-  let output =
-    quote! {
+  let output = quote! {
+      use std::time::SystemTime;
+
       pub enum State {
         #(#states),*
       }
@@ -732,7 +718,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
       impl Spans {
           fn new() -> Spans {
               Spans {
-                  #( #spans: vec![] ),*
+                #( #spans: vec![] ),*
               }
           }
 
@@ -794,50 +780,51 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
           }
 
           fn move_to(&mut self, state: State, advance: isize) -> isize {
-              let fail_advance = if advance < 0 { advance } else { -advance };
+              #[cfg(debug_assertions)]
+              {
+                let fail_advance = if advance < 0 { advance } else { -advance };
 
-              // Notify the end of the current state
-              let option_callback = match self.state {
-                  #(#states_move_after_arms),*,
-              };
+                // Notify the end of the current state
+                let result = if let Some(cb) = self.callbacks.after_state_change {
+                    cb(self, std::ptr::null(), 0)
+                } else {
+                    0
+                };
 
-              let result = if let Some(cb) = option_callback {
-                  cb(self, std::ptr::null(), 0)
-              } else {
-                  0
-              };
-
-              match result {
-                  0 => (),
-                  -1 => {
-                      return fail_advance
-                  },
-                  _ => {
-                      return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
-                  }
+                match result {
+                    0 => (),
+                    -1 => {
+                        return fail_advance
+                    },
+                    _ => {
+                        return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+                    }
+                };
               };
 
               // Change the state
               self.state = state;
 
-              // Notify the start of the current state
-              let option_callback = match self.state {
-                  #(#states_move_before_arms),*,
+              #[cfg(debug_assertions)]
+              {
+                let fail_advance = if advance < 0 { advance } else { -advance };
+
+                let result = if let Some(cb) = self.callbacks.before_state_change {
+                    cb(self, std::ptr::null(), 0)
+                } else {
+                    0
+                };
+
+                match result {
+                    0 => advance,
+                    -1 => fail_advance,
+                    _ => {
+                        return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+                    }
+                }
               };
 
-              let result = if let Some(cb) = option_callback {
-                  cb(self, std::ptr::null(), 0)
-              } else {
-                  0
-              };
-
-              match result {
-                  0 => advance,
-                  -1 => fail_advance,
-                  _ => {
-                      return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
-                  }
-              }
+              advance
           }
 
           fn fail(&mut self, code: Error, reason: String) -> isize {
@@ -857,12 +844,9 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
               let mut current = unsafe { std::ffi::CStr::from_ptr(data) }.to_bytes();
 
               // Notify the initial status - Note this invocation is not pauseable
+              #[cfg(debug_assertions)]
               if self.position == 0 {
-                  let option_callback = match self.state {
-                      #(#states_move_before_arms),*,
-                  };
-
-                  if let Some(cb) = option_callback {
+                  if let Some(cb) = self.callbacks.before_state_change {
                       if cb(self, std::ptr::null(), 0) > 0 {
                           self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
                       }
@@ -872,6 +856,9 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
               if skip > 0 {
                   current = &current[skip..];
               }
+
+              #[cfg(debug_assertions)]
+              let mut last = SystemTime::now();
 
               while current.len() > 0 || self.values.parse_empty_data == 1 {
                   self.values.parse_empty_data = 0;
@@ -923,6 +910,17 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
                   self.position += advance;
                   consumed += advance;
                   current = &current[advance..];
+
+                  #[cfg(debug_assertions)]
+                  {
+                    let duration = SystemTime::now().duration_since(last).unwrap().as_nanos();
+
+                    if duration > 10 {
+                      println!("[milo::debug] loop iteration (ending in state {}) completed in {} ns", self.state, duration);
+                    }
+
+                    last = SystemTime::now();
+                  }
               }
 
               consumed

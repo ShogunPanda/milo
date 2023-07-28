@@ -1,6 +1,7 @@
-use milo::Parser;
+use crate::Parser;
 use milo_parser_generator::{get_span, get_value};
-use std::ffi::CStr;
+use regex::Regex;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
 fn append_output(parser: &mut Parser, message: String) -> isize {
@@ -93,6 +94,22 @@ fn on_header_value_complete(parser: &mut Parser, _data: *const c_char, _size: us
   status_complete("header_value", parser)
 }
 
+fn on_chunk_length(parser: &mut Parser, data: *const c_char, size: usize) -> isize {
+  show_span("chunk_length", parser, data, size)
+}
+
+fn on_chunk_extension_name(parser: &mut Parser, data: *const c_char, size: usize) -> isize {
+  show_span("chunk_extensions_name", parser, data, size)
+}
+
+fn on_chunk_extension_value(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  status_complete("chunk_extensions_value", parser)
+}
+
+fn on_chunk_data(parser: &mut Parser, data: *const c_char, size: usize) -> isize {
+  show_span("chunk_data", parser, data, size)
+}
+
 fn on_headers_complete(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
   append_output(
     parser,
@@ -123,15 +140,31 @@ pub fn create_parser() -> Parser {
   parser.callbacks.on_header_value = Some(on_header_value);
   parser.callbacks.on_header_value_complete = Some(on_header_value_complete);
   parser.callbacks.on_headers_complete = Some(on_headers_complete);
+  parser.callbacks.on_chunk_length = Some(on_chunk_length);
+  parser.callbacks.on_chunk_extension_name = Some(on_chunk_extension_name);
+  parser.callbacks.on_chunk_extension_value = Some(on_chunk_extension_value);
+  parser.callbacks.on_chunk_data = Some(on_chunk_data);
 
   parser
 }
 
-pub fn http(input: &str) -> String {
-  input.trim().replace("\n", "\r\n") + "\r\n\r\n"
+pub fn length(input: *mut i8) -> usize {
+  let str = unsafe { CStr::from_ptr(input).to_str().unwrap() };
+  str.len()
 }
 
-#[allow(dead_code)]
+pub fn http(input: &str) -> *mut i8 {
+  let trailing_ws = Regex::new(r"(?m)^\s+").unwrap();
+  let sanitized = trailing_ws
+    .replace_all(input.trim(), "")
+    .replace("\n", "")
+    .replace("\\r", "\r")
+    .replace("\\n", "\n")
+    .replace("\\s", " ");
+
+  CString::new(sanitized.to_string()).unwrap().into_raw()
+}
+
 pub fn output(input: &str) -> String {
   input.trim().to_owned() + "\n"
 }

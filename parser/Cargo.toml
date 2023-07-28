@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 milo-parser-generator = { path = "../generator" }
+regex = "1.9.1"
 
 [profile.bench]
 codegen-units = 1

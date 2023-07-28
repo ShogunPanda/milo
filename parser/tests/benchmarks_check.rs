@@ -1,13 +1,10 @@
 #[cfg(test)]
-mod tests {
-  extern crate test;
+mod test {
+  use milo::test_utils::{create_parser, http, length};
+  use milo::State;
 
-  use milo::test_utils::http;
-  use milo::Parser;
-  use test::Bencher;
-
-  #[bench]
-  fn seanmonstar_httparse(b: &mut Bencher) {
+  #[test]
+  fn benchmark_seanmonstar_httparse() {
     let message = http(
       r#"
         GET /wp-content/uploads/2010/03/hello-kitty-darth-vader-pink.jpg HTTP/1.1\r\n
@@ -23,13 +20,14 @@ mod tests {
       "#,
     );
 
-    let mut parser = Parser::new();
-
-    b.iter(|| parser.parse(message));
+    let mut parser = create_parser();
+    let consumed = parser.parse(message);
+    assert!(consumed == length(message));
+    assert!(!matches!(parser.state, State::ERROR));
   }
 
-  #[bench]
-  fn nodejs_http_parser(b: &mut Bencher) {
+  #[test]
+  fn benchmark_nodejs_http_parser() {
     let message = http(
       r#"
         POST /joyent/http-parser HTTP/1.1\r\n
@@ -49,8 +47,10 @@ mod tests {
       "#,
     );
 
-    let mut parser = Parser::new();
-
-    b.iter(|| parser.parse(message));
+    let mut parser = create_parser();
+    let consumed = parser.parse(message);
+    println!("{}, {}", consumed, length(message));
+    assert!(consumed == length(message));
+    assert!(!matches!(parser.state, State::ERROR));
   }
 }

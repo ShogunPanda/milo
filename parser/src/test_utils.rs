@@ -1,4 +1,4 @@
-use crate::Parser;
+use crate::{Parser, RESPONSE};
 use milo_parser_generator::{get_span, get_value};
 use regex::Regex;
 use std::collections::HashMap;
@@ -187,19 +187,30 @@ fn on_chunk_data(parser: &mut Parser, _data: *const c_char, _size: usize) -> isi
 
 fn on_headers_complete(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
   let position = parser.position;
-  let method = get_span!(method);
   let version = get_span!(version).replace(".", "/");
+  let content_length = get_value!(expected_content_length);
+  let protocol = get_span!(protocol);
 
-  append_output(
-    parser,
-    format!(
-      "off={} headers complete method={} v={} flags=0 content_length={}",
-      position,
-      method,
-      version,
-      get_value!(expected_content_length)
-    ),
-  )
+  if parser.values.message_type == RESPONSE {
+    append_output(
+      parser,
+      format!(
+        "off={} headers complete type=response status={} protocol={} v={} content_length={}",
+        position, parser.values.response_status, protocol, version, content_length
+      ),
+    )
+  } else {
+    let method = get_span!(method);
+    let url = get_span!(url);
+
+    append_output(
+      parser,
+      format!(
+        "off={} headers complete type=request method={} url={} protocol={} v={} content_length={}",
+        position, method, url, protocol, version, content_length
+      ),
+    )
+  }
 }
 
 pub fn create_parser() -> Parser {

@@ -49,7 +49,6 @@ mod test {
 
     let mut parser = create_parser();
     let consumed = parser.parse(message);
-    println!("{}, {}", consumed, length(message));
     assert!(consumed == length(message));
     assert!(!matches!(parser.state, State::ERROR));
   }

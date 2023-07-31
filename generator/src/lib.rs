@@ -9,12 +9,13 @@ use quote::{format_ident, quote};
 use std::sync::Mutex;
 use syn::{parse_macro_input, parse_str, Arm, ExprMethodCall, Ident, LitByte, LitInt, LitStr};
 
-use parsing::{Char, CharRange, Definition, Failure, State};
+use parsing::{Char, CharRange, Failure, Identifiers, Move, State};
 
 lazy_static! {
   static ref STATES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref ERRORS: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
+  static ref PERSISTENT_VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref SPANS: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref CALLBACKS: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
 }
@@ -23,52 +24,10 @@ fn format_state(ident: &Ident) -> Ident {
   format_ident!("{}", ident.to_string().to_uppercase())
 }
 
-fn invoke_callback(
-  callback: &Ident,
-  span: Option<&Ident>,
-  next: Option<Ident>,
-  advance: isize,
-) -> proc_macro2::TokenStream {
-  let cb = if let Some(span) = span {
-    quote! { cb(parser, unsafe { std::ffi::CString::from_vec_unchecked(parser.spans.#span.clone()).as_c_str().as_ptr() }, parser.spans.#span.len()) }
-  } else {
-    quote! { cb(parser, std::ptr::null(), 0) }
-  };
-
-  let ret = if let Some(raw) = next {
-    let state = format_state(&raw);
-
-    quote! {
-        match result {
-            0 => parser.move_to(State::#state, #advance),
-            -1 => parser.move_to(State::#state, -#advance),
-            _ => parser.fail_str(Error::CALLBACK_ERROR, "Callback returned an error."),
-        }
-    }
-  } else {
-    quote! {
-        match result {
-            0 => #advance,
-            -1 => -1,
-            _ => parser.fail_str(Error::CALLBACK_ERROR, "Callback returned an error."),
-        }
-    }
-  };
-
-  quote! {
-      let result = if let Some(cb) = parser.callbacks.#callback {
-          #cb
-      } else {
-          0
-      };
-
-      #ret
-  }
-}
-
+// #region definitions
 #[proc_macro]
 pub fn values(input: TokenStream) -> TokenStream {
-  let definition: Definition = parse_macro_input!(input with Definition::identifiers_only);
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
 
   let mut values = VALUES.lock().unwrap();
 
@@ -80,8 +39,21 @@ pub fn values(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
+pub fn persistent_values(input: TokenStream) -> TokenStream {
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
+
+  let mut values = PERSISTENT_VALUES.lock().unwrap();
+
+  for value in definition.identifiers {
+    values.insert(value.to_string());
+  }
+
+  TokenStream::new()
+}
+
+#[proc_macro]
 pub fn spans(input: TokenStream) -> TokenStream {
-  let definition: Definition = parse_macro_input!(input with Definition::identifiers_only);
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
 
   let mut spans = SPANS.lock().unwrap();
 
@@ -94,7 +66,7 @@ pub fn spans(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn errors(input: TokenStream) -> TokenStream {
-  let definition: Definition = parse_macro_input!(input with Definition::identifiers_only);
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
 
   let mut errors = ERRORS.lock().unwrap();
 
@@ -107,7 +79,7 @@ pub fn errors(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn callbacks(input: TokenStream) -> TokenStream {
-  let definition: Definition = parse_macro_input!(input with Definition::identifiers_only);
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
 
   let mut callbacks = CALLBACKS.lock().unwrap();
 
@@ -151,15 +123,25 @@ pub fn state(input: TokenStream) -> TokenStream {
       fn #name (parser: &mut Parser, data: &[u8]) -> isize { #(#statements)* }
   })
 }
+// #endregion definitions
 
+// #region matchers
 #[proc_macro]
 pub fn char(input: TokenStream) -> TokenStream {
   let definition: Char = parse_macro_input!(input as Char);
 
-  TokenStream::from(match definition {
-    Char::MATCH(b) => quote! { [#b, ..] },
-    Char::ASSIGNMENT(b) => quote! { [#b, ..] },
-  })
+  let quote = if let Some(identifier) = definition.identifier {
+    if let Some(byte) = definition.byte {
+      quote! { [#identifier @ #byte, ..] }
+    } else {
+      quote! { [#identifier, ..] }
+    }
+  } else {
+    let byte = definition.byte.unwrap();
+    quote! { [#byte, ..] }
+  };
+
+  TokenStream::from(quote)
 }
 
 #[proc_macro]
@@ -169,9 +151,7 @@ pub fn char_in_range(input: TokenStream) -> TokenStream {
   let from = definition.from;
   let to = definition.to;
 
-  TokenStream::from(quote! {
-      #from <= *#identifier && *#identifier <= #to
-  })
+  TokenStream::from(quote! { #from <= *#identifier && *#identifier <= #to })
 }
 
 #[proc_macro]
@@ -183,53 +163,39 @@ pub fn string(input: TokenStream) -> TokenStream {
     .map(|b| LitByte::new(b, definition.span()))
     .collect();
 
-  TokenStream::from(quote! {
-      [#(#bytes),*, ..]
-  })
+  TokenStream::from(quote! { [#(#bytes),*, ..] })
 }
 
 #[proc_macro]
 pub fn ws(_: TokenStream) -> TokenStream {
-  TokenStream::from(quote! {
-      // RFC 9110 section 5.6.3 - HTAB / SP
-      [b'\t' | b' ', ..]
-  })
+  // RFC 9110 section 5.6.3 - HTAB / SP
+  TokenStream::from(quote! { [b'\t' | b' ', ..] })
 }
 
 #[proc_macro]
 pub fn crlf(_: TokenStream) -> TokenStream {
-  TokenStream::from(quote! {
-      [b'\r', b'\n', ..]
-  })
+  TokenStream::from(quote! { [b'\r', b'\n', ..] })
 }
 
 #[proc_macro]
 pub fn digit(input: TokenStream) -> TokenStream {
   if input.is_empty() {
-    TokenStream::from(quote! {
-        [0x30..=0x39, ..]
-    })
+    TokenStream::from(quote! { [0x30..=0x39, ..] })
   } else {
     let identifier: Ident = parse_macro_input!(input as Ident);
 
-    TokenStream::from(quote! {
-        [#identifier @ (0x30..=0x39), ..]
-    })
+    TokenStream::from(quote! { [#identifier @ (0x30..=0x39), ..] })
   }
 }
 
 #[proc_macro]
 pub fn hex_digit(input: TokenStream) -> TokenStream {
   if input.is_empty() {
-    TokenStream::from(quote! {
-        [0x30..=0x39 | 0x41..=0x46 | 0x61..=0x66, ..]
-    })
+    TokenStream::from(quote! { [0x30..=0x39 | 0x41..=0x46 | 0x61..=0x66, ..] })
   } else {
     let identifier: Ident = parse_macro_input!(input as Ident);
 
-    TokenStream::from(quote! {
-        [#identifier @ (0x30..=0x39 | 0x41..=0x46 | 0x61..=0x66), ..]
-    })
+    TokenStream::from(quote! { [#identifier @ (0x30..=0x39 | 0x41..=0x46 | 0x61..=0x66), ..] })
   }
 }
 
@@ -252,6 +218,7 @@ pub fn token(input: TokenStream) -> TokenStream {
     TokenStream::from(quote! { [ #tokens, ..] })
   } else {
     let identifier: Ident = parse_macro_input!(input as Ident);
+
     TokenStream::from(quote! { [ #identifier @(#tokens) , ..] })
   }
 }
@@ -358,20 +325,22 @@ pub fn url(input: TokenStream) -> TokenStream {
     TokenStream::from(quote! { [ #identifier @ (#tokens), ..] })
   }
 }
+// #endregion matchers
 
+// #region actions
 #[proc_macro]
 pub fn fail(input: TokenStream) -> TokenStream {
   let definition: Failure = parse_macro_input!(input as Failure);
-  let ident = definition.ident;
+  let error = definition.error;
   let message = definition.message;
 
-  TokenStream::from(quote! { parser.fail_str(Error::#ident, #message) })
+  TokenStream::from(quote! { parser.fail_str(Error::#error, #message) })
 }
 
 #[proc_macro]
 pub fn move_to(input: TokenStream) -> TokenStream {
-  let definition: Definition = parse_macro_input!(input with Definition::one);
-  let state = format_state(&definition.identifiers[0]);
+  let definition: Move = parse_macro_input!(input as Move);
+  let state = format_state(&definition.state);
   let advance = definition.advance;
 
   TokenStream::from(quote! {
@@ -381,29 +350,10 @@ pub fn move_to(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn clear(input: TokenStream) -> TokenStream {
-  let definition: Definition = parse_macro_input!(input with Definition::one);
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::one);
   let span = &definition.identifiers[0];
-  let advance = definition.advance;
 
-  let output = if let Some(raw) = definition.next {
-    let state = format_state(&raw);
-
-    quote! {
-        {
-            parser.spans.#span.clear();
-            parser.move_to(State::#state, #advance)
-        }
-    }
-  } else {
-    quote! {
-        {
-            parser.spans.#span.clear();
-            #advance
-        }
-    }
-  };
-
-  TokenStream::from(output)
+  TokenStream::from(quote! { parser.spans.#span.clear(); })
 }
 
 #[proc_macro]
@@ -426,129 +376,96 @@ pub fn reset(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn append(input: TokenStream) -> TokenStream {
-  let definition: Definition = parse_macro_input!(input with Definition::two);
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::two);
   let span = &definition.identifiers[0];
   let value = &definition.identifiers[1];
 
   let callback = format_ident!("on_data_{}", &span);
-  let invocation = invoke_callback(&callback, Some(&span), definition.next, definition.advance);
 
   TokenStream::from(quote! {
-      {
-          parser.spans.#span.push(*#value);
-          #invocation
+    {
+      parser.spans.#span.push(*#value);
+
+      if let Some(cb) = parser.callbacks.#callback {
+        let action = cb(
+          parser,
+          unsafe { std::ffi::CStr::from_bytes_with_nul(&[*#value, b'\0']).unwrap().as_ptr() },
+          1
+        );
+
+        if action < 0 {
+          return action;
+        } else if action != 0 {
+          return parser.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+        }
       }
+    }
   })
 }
 
 #[proc_macro]
 pub fn get_span(input: TokenStream) -> TokenStream {
-  let definition: Ident = parse_macro_input!(input as Ident);
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::one);
+  let span = &definition.identifiers[0];
 
-  TokenStream::from(quote! { parser.get_span(&parser.spans.#definition) })
+  TokenStream::from(quote! { parser.get_span(&parser.spans.#span) })
 }
 
 #[proc_macro]
 pub fn get_value(input: TokenStream) -> TokenStream {
-  let definition: Ident = parse_macro_input!(input as Ident);
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::one);
+  let value = &definition.identifiers[0];
 
-  TokenStream::from(quote! { parser.values.#definition })
+  TokenStream::from(quote! { parser.values.#value })
 }
 
 #[proc_macro]
 pub fn set_value(input: TokenStream) -> TokenStream {
-  let definition: Definition = parse_macro_input!(input with Definition::two);
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::two);
   let name = &definition.identifiers[0];
   let value = &definition.identifiers[1];
-  let advance = definition.advance;
 
-  let output = if let Some(raw) = definition.next {
-    let state = format_state(&raw);
-
-    quote! {
-        {
-            parser.values.#name = #value as isize;
-            parser.move_to(State::#state, #advance)
-        }
-    }
-  } else {
-    quote! {
-        {
-            parser.values.#name = #value as isize;
-            #advance
-        }
-    }
-  };
-
-  TokenStream::from(output)
+  TokenStream::from(quote! { parser.values.#name = #value as isize; })
 }
 
 #[proc_macro]
 pub fn inc(input: TokenStream) -> TokenStream {
-  let definition: Definition = parse_macro_input!(input with Definition::one);
-  let name = &definition.identifiers[0];
-  let advance = definition.advance;
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::one);
+  let value = &definition.identifiers[0];
 
-  let output = if let Some(raw) = definition.next {
-    let state = format_state(&raw);
-
-    quote! {
-        {
-            parser.values.#name ++;
-            parser.move_to(State::#state, #advance)
-        }
-    }
-  } else {
-    quote! {
-        {
-            parser.values.#name ++;
-            #advance
-        }
-    }
-  };
-
-  TokenStream::from(output)
+  TokenStream::from(quote! { parser.values.#value += 1; })
 }
 
 #[proc_macro]
 pub fn dec(input: TokenStream) -> TokenStream {
-  let definition: Definition = parse_macro_input!(input with Definition::one);
-  let name = &definition.identifiers[0];
-  let advance = definition.advance;
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::one);
+  let value = &definition.identifiers[0];
 
-  let output = if let Some(raw) = definition.next {
-    let state = format_state(&raw);
-
-    quote! {
-        {
-            parser.values.#name --;
-            parser.move_to(State::#state, #advance)
-        }
-    }
-  } else {
-    quote! {
-        {
-            parser.values.#name --;
-            #advance
-        }
-    }
-  };
-
-  TokenStream::from(output)
+  TokenStream::from(quote! { parser.values.#value -= 1; })
 }
 
 #[proc_macro]
 pub fn callback(input: TokenStream) -> TokenStream {
-  let definition: Definition = parse_macro_input!(input with Definition::one_or_two);
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::one_or_two);
   let callback = &definition.identifiers[0];
   let span = definition.identifiers.get(1);
 
-  let invocation = invoke_callback(&callback, span, definition.next, definition.advance);
+  let invocation = if let Some(span) = span {
+    quote! { cb(parser, unsafe { std::ffi::CString::from_vec_unchecked(parser.spans.#span.clone()).as_c_str().as_ptr() }, parser.spans.#span.len()) }
+  } else {
+    quote! { cb(parser, std::ptr::null(), 0) }
+  };
 
   TokenStream::from(quote! {
-      {
-          #invocation
+    if let Some(cb) = parser.callbacks.#callback {
+      let action = #invocation;
+
+      if action < 0 {
+        return action;
+      } else if action != 0 {
+        return parser.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
       }
+    }
   })
 }
 
@@ -556,6 +473,7 @@ pub fn callback(input: TokenStream) -> TokenStream {
 pub fn pause(_input: TokenStream) -> TokenStream {
   TokenStream::from(quote! { isize::MIN })
 }
+// #endregion actions
 
 #[proc_macro]
 pub fn generate_parser(_input: TokenStream) -> TokenStream {
@@ -584,24 +502,18 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
 
   let values_ref = VALUES.lock().unwrap();
   let mut values: Vec<Ident> = values_ref.iter().map(|x| format_ident!("{}", x)).collect();
-  values.insert(0, format_ident!("parse_empty_data"));
-  values.insert(0, format_ident!("error_code"));
-
-  let values_clearable: Vec<Ident> = values.clone();
+  values.insert(0, format_ident!("continue_without_data"));
   values.insert(0, format_ident!("mode"));
 
-  let spans_ref = SPANS.lock().unwrap();
-  let mut spans: Vec<Ident> = spans_ref.iter().map(|x| format_ident!("{}", x)).collect();
-  spans.insert(0, format_ident!("error_reason"));
+  let persistent_values_ref = PERSISTENT_VALUES.lock().unwrap();
+  let clearable_values: Vec<Ident> = values_ref
+    .iter()
+    .filter(|x| !persistent_values_ref.contains(x.clone()))
+    .map(|x| format_ident!("{}", x))
+    .collect();
 
-  let spans_clearable = spans.clone();
-  spans.insert(0, format_ident!("debug"));
-
-  let errors_ref = ERRORS.lock().unwrap();
-  let mut errors: Vec<Ident> = errors_ref.iter().map(|x| format_ident!("{}", x)).collect();
-
-  errors.insert(0, format_ident!("CALLBACK_ERROR"));
-  errors.insert(0, format_ident!("UNEXPECTED_DATA"));
+  let spans: Vec<Ident> = SPANS.lock().unwrap().iter().map(|x| format_ident!("{}", x)).collect();
+  let errors: Vec<Ident> = ERRORS.lock().unwrap().iter().map(|x| format_ident!("{}", x)).collect();
 
   let callbacks_ref = CALLBACKS.lock().unwrap();
   let mut callbacks: Vec<Ident> = callbacks_ref.iter().map(|x| format_ident!("{}", x)).collect();
@@ -611,7 +523,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
   callbacks.insert(0, format_ident!("after_state_change"));
   callbacks.insert(0, format_ident!("before_state_change"));
 
-  for x in spans_ref.iter() {
+  for x in spans.iter() {
     callbacks.push(format_ident!("on_data_{}", x));
   }
 
@@ -622,7 +534,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
 
   let values_debug: ExprMethodCall = parse_str::<ExprMethodCall>(&format!(
     "f.debug_struct(\"Values\"){}.finish()",
-    values_ref
+    values
       .iter()
       .map(|x| { format!(".field(\"{}\", &self.{})", x, x) })
       .collect::<Vec<String>>()
@@ -632,7 +544,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
 
   let spans_debug: ExprMethodCall = parse_str::<ExprMethodCall>(&format!(
     "f.debug_struct(\"Spans\"){}.finish()",
-    spans_ref
+    spans
       .iter()
       .map(|x| {
         format!(
@@ -662,7 +574,11 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
         #(#states),*
       }
 
+      #[derive(Copy, Clone, Debug)]
       pub enum Error {
+        NONE = 0,
+        UNEXPECTED_DATA,
+        CALLBACK_ERROR,
         #(#errors),*
       }
 
@@ -685,6 +601,8 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
           pub values: Values,
           pub callbacks: Callbacks,
           pub spans: Spans,
+          pub error_code: Error,
+          pub error_str: String
       }
 
       impl std::fmt::Display for State {
@@ -711,7 +629,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
           }
 
           fn clear(&mut self) {
-              #( self.#values_clearable = 0 );*
+            #( self.#clearable_values = 0 );*
           }
       }
 
@@ -723,7 +641,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
           }
 
           fn clear(&mut self) {
-              #( self.#spans_clearable.clear() );*
+              #( self.#spans.clear() );*
           }
       }
 
@@ -765,6 +683,8 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
                   values: Values::new(),
                   spans: Spans::new(),
                   callbacks: Callbacks::new(),
+                  error_code: Error::NONE,
+                  error_str: String::new(),
               }
           }
 
@@ -773,6 +693,8 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
               self.position = 0;
               self.values.clear();
               self.spans.clear();
+              self.error_code = Error::NONE;
+              self.error_str = String::new();
           }
 
           pub fn get_span(&self, span: &Vec<u8>) -> String {
@@ -828,8 +750,8 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
           }
 
           fn fail(&mut self, code: Error, reason: String) -> isize {
-              self.values.error_code = code as isize;
-              self.spans.error_reason = reason.as_bytes().into();
+              self.error_code = code;
+              self.error_str = reason;
               self.state = State::ERROR;
 
               0
@@ -860,8 +782,11 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
               #[cfg(debug_assertions)]
               let mut last = SystemTime::now();
 
-              while current.len() > 0 || self.values.parse_empty_data == 1 {
-                  self.values.parse_empty_data = 0;
+              while current.len() > 0 || self.values.continue_without_data == 1 {
+                  self.values.continue_without_data = 0;
+
+                  // Since states might advance position manually, we have to explicitly track it
+                  let initial_position = self.position;
 
                   if let State::FINISH = self.state {
                       self.fail_str(Error::UNEXPECTED_DATA, "unexpected data");
@@ -882,8 +807,8 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
                       },
                       State::ERROR => {
                           if let Some(cb) = self.callbacks.on_error {
-                              let error = self.get_span(&self.spans.error_reason);
-                              cb(self, std::ffi::CString::new(error.as_str()).unwrap().as_c_str().as_ptr(), error.len());
+                              let error = self.error_str.as_str();
+                              cb(self, std::ffi::CString::new(error).unwrap().as_c_str().as_ptr(), error.len());
                           }
 
                           return consumed;
@@ -908,10 +833,12 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
 
                   let advance = result as usize;
                   self.position += advance;
-                  consumed += advance;
-                  current = &current[advance..];
 
-                  #[cfg(debug_assertions)]
+                  let difference = self.position - initial_position;
+                  consumed += difference;
+                  current = &current[difference..];
+
+                  #[cfg(all(debug_assertions, feature = "milo_debug_loop"))]
                   {
                     let duration = SystemTime::now().duration_since(last).unwrap().as_nanos();
 

@@ -1,9 +1,9 @@
-use syn::parse::{ Parse, ParseStream };
-use syn::{ Block, Ident, LitByte, LitChar, LitInt, Result, Stmt, Token, LitStr };
+use syn::parse::{Parse, ParseStream};
+use syn::{Block, Ident, LitByte, LitChar, LitInt, LitStr, Result, Stmt, Token};
 
-pub enum Char {
-  MATCH(LitByte),
-  ASSIGNMENT(Ident),
+pub struct Char {
+  pub identifier: Option<Ident>,
+  pub byte: Option<LitByte>,
 }
 
 pub struct CharRange {
@@ -12,9 +12,17 @@ pub struct CharRange {
   pub to: LitByte,
 }
 
-pub struct Definition {
+pub struct Identifiers {
   pub identifiers: Vec<Ident>,
-  pub next: Option<Ident>,
+}
+
+pub struct Failure {
+  pub error: Ident,
+  pub message: LitStr,
+}
+
+pub struct Move {
+  pub state: Ident,
   pub advance: isize,
 }
 
@@ -23,23 +31,25 @@ pub struct State {
   pub statements: Vec<Stmt>,
 }
 
-pub struct Failure {
-  pub ident: Ident,
-  pub message: LitStr,
-}
-
 impl Parse for Char {
   fn parse(input: ParseStream) -> Result<Self> {
-    if input.peek(Ident) {
-      let identifier: Ident = input.parse()?;
+    let mut identifier: Option<Ident> = None;
+    let mut byte: Option<LitByte> = None;
 
-      return Ok(Char::ASSIGNMENT(identifier));
+    if input.peek(Ident) {
+      identifier = Some(input.parse()?);
+
+      if input.is_empty() {
+        return Ok(Char { identifier, byte });
+      } else {
+        input.parse::<Token![@]>()?;
+      }
     }
 
     // Get the state name
-    let c: LitChar = input.parse()?;
-
-    Ok(Char::MATCH(LitByte::new(u8::try_from(c.value()).unwrap(), c.span())))
+    let character = input.parse::<LitChar>()?;
+    byte = Some(LitByte::new(u8::try_from(character.value()).unwrap(), character.span()));
+    return Ok(Char { identifier, byte });
   }
 }
 
@@ -62,20 +72,24 @@ impl Parse for CharRange {
   }
 }
 
-impl Definition {
+impl Identifiers {
   pub fn one(input: ParseStream) -> Result<Self> {
-    Definition::parse(input, 1, 1)
+    Identifiers::parse(input, 1, 1)
   }
 
   pub fn one_or_two(input: ParseStream) -> Result<Self> {
-    Definition::parse(input, 1, 2)
+    Identifiers::parse(input, 1, 2)
   }
 
   pub fn two(input: ParseStream) -> Result<Self> {
-    Definition::parse(input, 2, 2)
+    Identifiers::parse(input, 2, 2)
   }
 
-  pub fn identifiers_only(input: ParseStream) -> Result<Self> {
+  pub fn unbound(input: ParseStream) -> Result<Self> {
+    Identifiers::parse(input, 0, usize::MAX)
+  }
+
+  fn parse(input: ParseStream, min: usize, max: usize) -> Result<Self> {
     let mut identifiers: Vec<Ident> = vec![];
 
     while !input.is_empty() {
@@ -86,67 +100,44 @@ impl Definition {
       }
     }
 
-    Ok(Definition { identifiers, next: None, advance: 0 })
-  }
-
-  fn parse(input: ParseStream, min: usize, max: usize) -> Result<Self> {
-    let mut identifiers: Vec<Ident> = vec![];
-    let mut next: Option<Ident> = None;
-    let mut advance: isize = 1; // By default we consume a character
-
-    if input.is_empty() {
-      return Err(syn::Error::new(input.span(), format!("expected {} identifiers", min)));
-    }
-
-    // Until we have input and havent encountered a @, let's collect identifiers
-    while !input.is_empty() {
-      // Check if there is a numeric literal at the end
-      if input.peek(Token![@]) {
-        if identifiers.len() < min {
-          return Err(input.error(format!("expected at laest {} identifiers", min)));
-        }
-
-        input.parse::<Token![@]>()?;
-        break;
-      }
-
-      // Append the next identifier
-      identifiers.push(input.parse::<Ident>()?);
-
-      // Skip the eventual comma
-      if input.peek(Token![,]) {
-        input.parse::<Token![,]>()?;
-      }
-    }
-
     if identifiers.len() < min {
       return Err(input.error(format!("expected at least {} identifiers", min)));
     } else if identifiers.len() > max {
       return Err(input.error(format!("expected at most {} identifiers", max)));
     }
 
-    // Now get the eventual state
-    if input.peek(Ident) {
-      next = Some(input.parse()?);
+    Ok(Identifiers { identifiers })
+  }
+}
 
-      // Skip the eventual comma
-      if input.peek(Token![,]) {
-        input.parse::<Token![,]>()?;
-      }
-    }
+impl Parse for Failure {
+  fn parse(input: ParseStream) -> Result<Self> {
+    // Get the code
+    let error: Ident = input.parse()?;
 
-    // Now get the advance
+    // Discard the comma
+    input.parse::<Token![,]>()?;
+
+    // Get the message
+    let message: LitStr = input.parse()?;
+
+    Ok(Failure { error, message })
+  }
+}
+
+impl Parse for Move {
+  fn parse(input: ParseStream) -> Result<Self> {
+    let state: Ident = input.parse()?;
+    let mut advance: isize = 1;
+
     if !input.is_empty() {
-      // Get the value
-      let lit: LitInt = input.parse()?;
-      advance = lit.base10_parse::<isize>()?;
+      // Discard the comma
+      input.parse::<Token![,]>()?;
+
+      advance = input.parse::<LitInt>()?.base10_parse::<isize>()?;
     }
 
-    Ok(Definition {
-      identifiers,
-      next,
-      advance,
-    })
+    Ok(Move { state, advance })
   }
 }
 
@@ -165,20 +156,5 @@ impl Parse for State {
       name,
       statements: body.stmts,
     })
-  }
-}
-
-impl Parse for Failure {
-  fn parse(input: ParseStream) -> Result<Self> {
-    // Get the code
-    let ident: Ident = input.parse()?;
-
-    // Discard the comma
-    input.parse::<Token![,]>()?;
-
-    // Get the message
-    let message: LitStr = input.parse()?;
-
-    Ok(Failure { ident, message })
   }
 }

@@ -5,8 +5,13 @@ edition = "2021"
 publish = false
 
 [dependencies]
+lazy_static = "1.4.0"
 milo-parser-generator = { path = "../generator" }
 regex = "1.9.1"
+
+[features]
+milo_debug_loop = []
+milo_debug_test = []
 
 [profile.bench]
 codegen-units = 1

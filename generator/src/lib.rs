@@ -71,7 +71,7 @@ pub fn errors(input: TokenStream) -> TokenStream {
   let mut errors = ERRORS.lock().unwrap();
 
   for error in definition.identifiers {
-    errors.insert(error.to_string());
+    errors.insert(error.to_string().to_uppercase());
   }
 
   TokenStream::new()
@@ -119,8 +119,8 @@ pub fn state(input: TokenStream) -> TokenStream {
   STATES.lock().unwrap().insert(name.to_string().to_uppercase());
 
   TokenStream::from(quote! {
-      #[inline(always)]
-      fn #name (parser: &mut Parser, data: &[u8]) -> isize { #(#statements)* }
+    #[inline(always)]
+    fn #name (parser: &mut Parser, data: &[u8]) -> isize { #(#statements)* }
   })
 }
 // #endregion definitions
@@ -202,16 +202,16 @@ pub fn hex_digit(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn token(input: TokenStream) -> TokenStream {
   /*
-     RFC 9110 section 5.6.2 and RFC 5234 appendix B.1
-     DIGIT = 0x30 - 0x39
-     ALPHA = 0x41-0x5A, 0x61 - 0x7A
-     OTHER_TOKENS = '!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '.' | '^' | '_' | '`' | '|' | '~'
+    RFC 9110 section 5.6.2 and RFC 5234 appendix B.1
+    DIGIT = 0x30 - 0x39
+    ALPHA = 0x41-0x5A, 0x61 - 0x7A
+    OTHER_TOKENS = '!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '.' | '^' | '_' | '`' | '|' | '~'
   */
   let tokens = quote! {
-      0x30..=0x39 |
-      0x41..=0x5A |
-      0x61..=0x7A |
-      b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~'
+    0x30..=0x39 |
+    0x41..=0x5A |
+    0x61..=0x7A |
+    b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~'
   };
 
   if input.is_empty() {
@@ -305,17 +305,17 @@ pub fn method(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn url(input: TokenStream) -> TokenStream {
   /*
-     RFC 3986 appendix A and RFC 5234 appendix B.1
-     DIGIT = 0x30 - 0x39
-     ALPHA = 0x41-0x5A, 0x61 - 0x7A
-     OTHER_UNRESERVED_AND_RESERVED = '-' | '.' | '_' | '~' | ':' | '/' | '?' | '#' | '[' | ']' | '@' | '!' | '$' | '&' | ''' | '(' | ')' | '*' | '+' | ',' | ';' | '=' | '%'
+    RFC 3986 appendix A and RFC 5234 appendix B.1
+    DIGIT = 0x30 - 0x39
+    ALPHA = 0x41-0x5A, 0x61 - 0x7A
+    OTHER_UNRESERVED_AND_RESERVED = '-' | '.' | '_' | '~' | ':' | '/' | '?' | '#' | '[' | ']' | '@' | '!' | '$' | '&' | ''' | '(' | ')' | '*' | '+' | ',' | ';' | '=' | '%'
   */
 
   let tokens = quote! {
-      0x30..=0x39 |
-      0x41..=0x5A |
-      0x61..=0x7A |
-      b'-' | b'.' | b'_' | b'~' | b':' | b'/' | b'?' | b'#' | b'[' | b']' | b'@' | b'!' | b'$' | b'&' | b'\'' | b'(' | b')' | b'*' | b'+' | b',' | b';' | b'=' | b'%'
+    0x30..=0x39 |
+    0x41..=0x5A |
+    0x61..=0x7A |
+    b'-' | b'.' | b'_' | b'~' | b':' | b'/' | b'?' | b'#' | b'[' | b']' | b'@' | b'!' | b'$' | b'&' | b'\'' | b'(' | b')' | b'*' | b'+' | b',' | b';' | b'=' | b'%'
   };
 
   if input.is_empty() {
@@ -343,9 +343,7 @@ pub fn move_to(input: TokenStream) -> TokenStream {
   let state = format_state(&definition.state);
   let advance = definition.advance;
 
-  TokenStream::from(quote! {
-      parser.move_to(State::#state, #advance)
-  })
+  TokenStream::from(quote! { parser.move_to(State::#state, #advance) })
 }
 
 #[proc_macro]
@@ -357,21 +355,8 @@ pub fn clear(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn reset(input: TokenStream) -> TokenStream {
-  let mut advance = 0;
-
-  // Now get the advance
-  if !input.is_empty() {
-    let lit: LitInt = parse_macro_input!(input as LitInt);
-    advance = lit.base10_parse::<isize>().unwrap();
-  }
-
-  TokenStream::from(quote! {
-      {
-          parser.reset();
-          #advance
-      }
-  })
+pub fn reset(_input: TokenStream) -> TokenStream {
+  TokenStream::from(quote! { parser.reset(); })
 }
 
 #[proc_macro]
@@ -383,22 +368,65 @@ pub fn append(input: TokenStream) -> TokenStream {
   let callback = format_ident!("on_data_{}", &span);
 
   TokenStream::from(quote! {
-    {
-      parser.spans.#span.push(*#value);
+    parser.spans.#span.push(*#value);
 
-      if let Some(cb) = parser.callbacks.#callback {
-        let action = cb(
-          parser,
-          unsafe { std::ffi::CStr::from_bytes_with_nul(&[*#value, b'\0']).unwrap().as_ptr() },
-          1
-        );
+    #[cfg(debug_assertions)]
+    if let Some(cb) = parser.callbacks.#callback {
+      let action = cb(
+        parser,
+        std::ffi::CStr::from_bytes_with_nul(&[*#value, b'\0']).unwrap().as_ptr(),
+        1
+      );
 
-        if action < 0 {
-          return action;
-        } else if action != 0 {
-          return parser.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
-        }
+      if action < 0 {
+        return action;
+      } else if action != 0 {
+        return parser.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
       }
+    }
+
+    #[cfg(not(debug_assertions))]
+    { 0 }
+  })
+}
+
+#[proc_macro]
+pub fn data_slice_callback(input: TokenStream) -> TokenStream {
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::minimum_two);
+  let callbacks: Vec<Ident> = definition.identifiers[0..definition.identifiers.len() - 1].to_vec();
+  let source = definition.identifiers.last().unwrap();
+
+  TokenStream::from(quote! {
+    #[cfg(debug_assertions)]
+    {
+      let callbacks: Vec<ActiveCallback> = [#(parser.callbacks.#callbacks),*]
+        .iter()
+        .filter(|x| x.is_some())
+        .map(|x| x.unwrap())
+        .collect();
+
+      for d in #source {
+        for cb in callbacks.iter() {
+          let action = cb(
+            parser,
+            std::ffi::CStr::from_bytes_with_nul(&[*d, b'\0']).unwrap().as_ptr(),
+            1,
+          );
+
+          if action < 0 {
+            return action;
+          } else if action != 0 {
+            return parser.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+          }
+        }
+
+        parser.position += 1;
+      }
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+      parser.position += #source.len();
     }
   })
 }
@@ -479,17 +507,11 @@ pub fn pause(_input: TokenStream) -> TokenStream {
 pub fn generate_parser(_input: TokenStream) -> TokenStream {
   let states_ref = STATES.lock().unwrap();
   let initial_state = format_ident!("{}", states_ref[0]);
-  let mut states: Vec<Ident> = states_ref.iter().map(|x| format_ident!("{}", x)).collect();
-  states.insert(0, format_ident!("FINISH"));
-  states.insert(0, format_ident!("ERROR"));
+  let states: Vec<Ident> = states_ref.iter().map(|x| format_ident!("{}", x)).collect();
 
   // Generate all the branches
-  let states_arms: Vec<Arm> = states
+  let states_arms: Vec<Arm> = states_ref
     .iter()
-    .filter(|x| {
-      let name = x.to_string();
-      name != "ERROR" && name != "FINISH"
-    })
     .map(|x| {
       parse_str::<Arm>(&format!(
         "State::{} => {}(self, current)",
@@ -498,6 +520,11 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
       ))
       .unwrap()
     })
+    .collect();
+
+  let states_to_string_arms: Vec<Arm> = states_ref
+    .iter()
+    .map(|x| parse_str::<Arm>(&format!("State::{} => \"{}\"", x, x)).unwrap())
     .collect();
 
   let values_ref = VALUES.lock().unwrap();
@@ -512,8 +539,42 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
     .map(|x| format_ident!("{}", x))
     .collect();
 
+  let values_getters: Vec<_> = values
+    .iter()
+    .map(|value| {
+      let getter = format_ident!("milo_get_value_{}", value);
+
+      quote! {
+        #[no_mangle]
+        pub extern "C" fn #getter(parser: *mut Parser) -> isize {
+          unsafe { (*parser).values.#value }
+        }
+      }
+    })
+    .collect();
+
   let spans: Vec<Ident> = SPANS.lock().unwrap().iter().map(|x| format_ident!("{}", x)).collect();
+
+  let spans_getters: Vec<_> = spans
+    .iter()
+    .map(|span| {
+      let getter = format_ident!("milo_get_span_{}", span);
+
+      quote! {
+        #[no_mangle]
+        pub extern "C" fn #getter(parser: *mut Parser) -> *mut c_char {
+          unsafe { CString::from_vec_unchecked((*parser).spans.#span.clone()).into_raw() }
+        }
+      }
+    })
+    .collect();
+
   let errors: Vec<Ident> = ERRORS.lock().unwrap().iter().map(|x| format_ident!("{}", x)).collect();
+
+  let error_to_string_arms: Vec<Arm> = errors
+    .iter()
+    .map(|x| parse_str::<Arm>(&format!("Error::{} => \"{}\"", x, x)).unwrap())
+    .collect();
 
   let callbacks_ref = CALLBACKS.lock().unwrap();
   let mut callbacks: Vec<Ident> = callbacks_ref.iter().map(|x| format_ident!("{}", x)).collect();
@@ -527,10 +588,34 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
     callbacks.push(format_ident!("on_data_{}", x));
   }
 
-  let states_debug: Vec<Arm> = states
+  let callbacks_setters: Vec<_> = callbacks
+    .iter()
+    .map(|callback| {
+      let setter = format_ident!("milo_set_{}", callback);
+
+      quote! {
+        #[no_mangle]
+        pub extern "C" fn #setter(parser: *mut Parser, callback: Callback) {
+          unsafe { (*parser).callbacks.#callback = callback };
+        }
+      }
+    })
+    .collect();
+
+  let mut states_debug: Vec<Arm> = states
     .iter()
     .map(|x| parse_str::<Arm>(&format!("State::{} => write!(f, \"State::{}\")", x, x)).unwrap())
     .collect();
+
+  states_debug.insert(
+    0,
+    parse_str::<Arm>("State::ERROR => write!(f, \"State::ERROR\")").unwrap(),
+  );
+
+  states_debug.insert(
+    0,
+    parse_str::<Arm>("State::FINISH => write!(f, \"State::FINISH\")").unwrap(),
+  );
 
   let values_debug: ExprMethodCall = parse_str::<ExprMethodCall>(&format!(
     "f.debug_struct(\"Values\"){}.finish()",
@@ -568,295 +653,387 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
   .unwrap();
 
   let output = quote! {
-      use std::time::SystemTime;
+    use std::time::SystemTime;
+    use std::ffi::CString;
 
-      pub enum State {
-        #(#states),*
+    #[derive(Debug)]
+    pub struct Parser {
+      pub state: State,
+      pub position: usize,
+      pub values: Values,
+      pub callbacks: Callbacks,
+      pub spans: Spans,
+      pub error_code: Error,
+      pub error_description: String
+    }
+
+    #[repr(u8)]
+    #[derive(Copy, Clone)]
+    pub enum State {
+      ERROR = 0,
+      FINISH,
+      #(#states),*
+    }
+
+    #[repr(u8)]
+    #[derive(Copy, Clone, Debug)]
+    pub enum Error {
+      NONE = 0,
+      UNEXPECTED_DATA,
+      CALLBACK_ERROR,
+      #(#errors),*
+    }
+
+    pub struct Values {
+      #( pub #values: isize ),*
+    }
+
+    pub struct Spans {
+      #( pub #spans: Vec<u8> ),*
+    }
+
+    type ActiveCallback = fn (&mut Parser, *const std::os::raw::c_char, usize) -> isize;
+    // Do not use ActiveCallback here to ensure C headers are properly generated
+    type Callback = Option<fn (&mut Parser, *const std::os::raw::c_char, usize) -> isize>;
+
+    pub struct Callbacks {
+      #( pub #callbacks: Callback),*
+    }
+
+    impl std::fmt::Display for State {
+      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+          #(#states_debug),*
+        }
+      }
+    }
+
+    impl std::fmt::Debug for State {
+      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+          #(#states_debug),*
+        }
+      }
+    }
+
+    impl Values {
+      fn new() -> Values {
+        Values {
+          #( #values: 0 ),*
+        }
       }
 
-      #[derive(Copy, Clone, Debug)]
-      pub enum Error {
-        NONE = 0,
-        UNEXPECTED_DATA,
-        CALLBACK_ERROR,
-        #(#errors),*
+      fn clear(&mut self) {
+        #( self.#clearable_values = 0 );*
+      }
+    }
+
+    impl Spans {
+      fn new() -> Spans {
+        Spans {
+          #( #spans: vec![] ),*
+        }
       }
 
-      pub struct Values {
-          #( pub #values: isize ),*
+      fn clear(&mut self) {
+        #( self.#spans.clear() );*
+      }
+    }
+
+    impl Callbacks {
+      fn new() -> Callbacks {
+        Callbacks {
+          #( #callbacks: None ),*
+        }
       }
 
-      pub struct Spans {
-          #( pub #spans: Vec<u8> ),*
+      fn clear(&mut self) {
+        #( self.#callbacks = None );*
+      }
+    }
+
+    impl std::fmt::Debug for Values {
+      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        #values_debug
+      }
+    }
+
+    impl std::fmt::Debug for Spans {
+      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        #spans_debug
+      }
+    }
+
+    impl std::fmt::Debug for Callbacks {
+      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        #callbacks_debug
+      }
+    }
+
+    impl Parser {
+      pub fn new() -> Parser {
+        Parser {
+          state: State::#initial_state,
+          position: 0,
+          values: Values::new(),
+          spans: Spans::new(),
+          callbacks: Callbacks::new(),
+          error_code: Error::NONE,
+          error_description: String::new(),
+        }
       }
 
-      pub struct Callbacks {
-          #( pub #callbacks: Option<fn (&mut Parser, *const std::os::raw::c_char, usize) -> isize>),*
+      pub fn reset(&mut self) {
+        self.state = State::#initial_state;
+        self.position = 0;
+        self.values.clear();
+        self.spans.clear();
+        self.error_code = Error::NONE;
+        self.error_description = String::new();
       }
 
-      #[derive(Debug)]
-      pub struct Parser {
-          pub state: State,
-          pub position: usize,
-          pub values: Values,
-          pub callbacks: Callbacks,
-          pub spans: Spans,
-          pub error_code: Error,
-          pub error_str: String
+      pub fn get_span(&self, span: &Vec<u8>) -> String {
+        unsafe { String::from_utf8_unchecked((*span).clone()) }
       }
 
-      impl std::fmt::Display for State {
-          fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-              match *self {
-                  #(#states_debug),*
-              }
-          }
-      }
+      fn move_to(&mut self, state: State, advance: isize) -> isize {
+        #[cfg(debug_assertions)]
+        {
+          let fail_advance = if advance < 0 { advance } else { -advance };
 
-      impl std::fmt::Debug for State {
-          fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-              match *self {
-                  #(#states_debug),*
-              }
-          }
-      }
-
-      impl Values {
-          fn new() -> Values {
-              Values {
-                  #( #values: 0 ),*
-              }
-          }
-
-          fn clear(&mut self) {
-            #( self.#clearable_values = 0 );*
-          }
-      }
-
-      impl Spans {
-          fn new() -> Spans {
-              Spans {
-                #( #spans: vec![] ),*
-              }
-          }
-
-          fn clear(&mut self) {
-              #( self.#spans.clear() );*
-          }
-      }
-
-      impl Callbacks {
-          fn new() -> Callbacks {
-              Callbacks {
-                  #( #callbacks: None ),*
-              }
-          }
-
-          fn clear(&mut self) {
-              #( self.#callbacks = None );*
-          }
-      }
-
-      impl std::fmt::Debug for Values {
-          fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-              #values_debug
-          }
-      }
-
-      impl std::fmt::Debug for Spans {
-          fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-              #spans_debug
-          }
-      }
-
-      impl std::fmt::Debug for Callbacks {
-          fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-              #callbacks_debug
-          }
-      }
-
-      impl Parser {
-          pub fn new() -> Parser {
-              Parser {
-                  state: State::#initial_state,
-                  position: 0,
-                  values: Values::new(),
-                  spans: Spans::new(),
-                  callbacks: Callbacks::new(),
-                  error_code: Error::NONE,
-                  error_str: String::new(),
-              }
-          }
-
-          pub fn reset(&mut self) {
-              self.state = State::#initial_state;
-              self.position = 0;
-              self.values.clear();
-              self.spans.clear();
-              self.error_code = Error::NONE;
-              self.error_str = String::new();
-          }
-
-          pub fn get_span(&self, span: &Vec<u8>) -> String {
-              unsafe { String::from_utf8_unchecked((*span).clone()) }
-          }
-
-          fn move_to(&mut self, state: State, advance: isize) -> isize {
-              #[cfg(debug_assertions)]
-              {
-                let fail_advance = if advance < 0 { advance } else { -advance };
-
-                // Notify the end of the current state
-                let result = if let Some(cb) = self.callbacks.after_state_change {
-                    cb(self, std::ptr::null(), 0)
-                } else {
-                    0
-                };
-
-                match result {
-                    0 => (),
-                    -1 => {
-                        return fail_advance
-                    },
-                    _ => {
-                        return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
-                    }
-                };
-              };
-
-              // Change the state
-              self.state = state;
-
-              #[cfg(debug_assertions)]
-              {
-                let fail_advance = if advance < 0 { advance } else { -advance };
-
-                let result = if let Some(cb) = self.callbacks.before_state_change {
-                    cb(self, std::ptr::null(), 0)
-                } else {
-                    0
-                };
-
-                match result {
-                    0 => advance,
-                    -1 => fail_advance,
-                    _ => {
-                        return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
-                    }
-                }
-              };
-
-              advance
-          }
-
-          fn fail(&mut self, code: Error, reason: String) -> isize {
-              self.error_code = code;
-              self.error_str = reason;
-              self.state = State::ERROR;
-
+          // Notify the end of the current state
+          let result = if let Some(cb) = self.callbacks.after_state_change {
+              cb(self, std::ptr::null(), 0)
+          } else {
               0
+          };
+
+          match result {
+            0 => (),
+            -1 => {
+                return fail_advance
+            },
+            _ => {
+                return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+            }
+          };
+        };
+
+        // Change the state
+        self.state = state;
+
+        #[cfg(debug_assertions)]
+        {
+          let fail_advance = if advance < 0 { advance } else { -advance };
+
+          let result = if let Some(cb) = self.callbacks.before_state_change {
+            cb(self, std::ptr::null(), 0)
+          } else {
+            0
+          };
+
+          match result {
+            0 => advance,
+            -1 => fail_advance,
+            _ => {
+                return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+            }
           }
+        };
 
-          fn fail_str(&mut self, code: Error, reason: &str) -> isize {
-              self.fail(code, reason.into())
-          }
-
-          pub fn parse_skipping(&mut self, data: *const std::os::raw::c_char , skip: usize) -> usize {
-              let mut consumed: usize = 0;
-              let mut current = unsafe { std::ffi::CStr::from_ptr(data) }.to_bytes();
-
-              // Notify the initial status - Note this invocation is not pauseable
-              #[cfg(debug_assertions)]
-              if self.position == 0 {
-                  if let Some(cb) = self.callbacks.before_state_change {
-                      if cb(self, std::ptr::null(), 0) > 0 {
-                          self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
-                      }
-                  }
-              }
-
-              if skip > 0 {
-                  current = &current[skip..];
-              }
-
-              #[cfg(debug_assertions)]
-              let mut last = SystemTime::now();
-
-              while current.len() > 0 || self.values.continue_without_data == 1 {
-                  self.values.continue_without_data = 0;
-
-                  // Since states might advance position manually, we have to explicitly track it
-                  let initial_position = self.position;
-
-                  if let State::FINISH = self.state {
-                      self.fail_str(Error::UNEXPECTED_DATA, "unexpected data");
-                      continue;
-                  }
-
-                  let result = match self.state {
-                      State::FINISH => 0,
-                      State::ERROR => 0,
-                      #(#states_arms),*,
-                  };
-
-                  match &self.state {
-                      State::FINISH => {
-                          if let Some(cb) = self.callbacks.on_finish {
-                              cb(self, std::ptr::null(), 0);
-                          }
-                      },
-                      State::ERROR => {
-                          if let Some(cb) = self.callbacks.on_error {
-                              let error = self.error_str.as_str();
-                              cb(self, std::ffi::CString::new(error).unwrap().as_c_str().as_ptr(), error.len());
-                          }
-
-                          return consumed;
-                      },
-                      _ => {}
-                  }
-
-                  /*
-                    Negative return values mean to consume N bytes and then pause.
-                    Returning MIN instruct to pause without consuming any byte.
-                  */
-                  if result < 0 {
-                    if result == isize::MIN {
-                      return consumed;
-                    }
-
-                    let advance = -result as usize;
-                    self.position += advance;
-                    consumed += advance;
-                    return consumed;
-                  }
-
-                  let advance = result as usize;
-                  self.position += advance;
-
-                  let difference = self.position - initial_position;
-                  consumed += difference;
-                  current = &current[difference..];
-
-                  #[cfg(all(debug_assertions, feature = "milo_debug_loop"))]
-                  {
-                    let duration = SystemTime::now().duration_since(last).unwrap().as_nanos();
-
-                    if duration > 10 {
-                      println!("[milo::debug] loop iteration (ending in state {}) completed in {} ns", self.state, duration);
-                    }
-
-                    last = SystemTime::now();
-                  }
-              }
-
-              consumed
-          }
-
-          pub fn parse(&mut self, data: *const std::os::raw::c_char) -> usize {
-              self.parse_skipping(data, 0)
-          }
+        advance
       }
+
+      fn fail(&mut self, code: Error, reason: String) -> isize {
+        self.error_code = code;
+        self.error_description = reason;
+        self.state = State::ERROR;
+
+        0
+      }
+
+      fn fail_str(&mut self, code: Error, reason: &str) -> isize {
+        self.fail(code, reason.into())
+      }
+
+      pub fn parse_skipping(&mut self, data: *const std::os::raw::c_char , skip: usize) -> usize {
+        let mut consumed: usize = 0;
+        let mut current = unsafe { std::ffi::CStr::from_ptr(data) }.to_bytes();
+
+        // Notify the initial status - Note this invocation is not pauseable
+        #[cfg(debug_assertions)]
+        if self.position == 0 {
+          if let Some(cb) = self.callbacks.before_state_change {
+            if cb(self, std::ptr::null(), 0) > 0 {
+              self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+            }
+          }
+        }
+
+        if skip > 0 {
+          current = &current[skip..];
+        }
+
+        #[cfg(debug_assertions)]
+        let mut last = SystemTime::now();
+
+        while current.len() > 0 || self.values.continue_without_data == 1 {
+          self.values.continue_without_data = 0;
+
+          // Since states might advance position manually, we have to explicitly track it
+          let initial_position = self.position;
+
+          if let State::FINISH = self.state {
+            self.fail_str(Error::UNEXPECTED_DATA, "unexpected data");
+            continue;
+          }
+
+          let result = match self.state {
+            State::FINISH => 0,
+            State::ERROR => 0,
+            #(#states_arms),*,
+          };
+
+          match &self.state {
+            State::FINISH => {
+              if let Some(cb) = self.callbacks.on_finish {
+                cb(self, std::ptr::null(), 0);
+              }
+            },
+            State::ERROR => {
+              if let Some(cb) = self.callbacks.on_error {
+                let error = self.error_description.as_str();
+                cb(self, std::ffi::CString::new(error).unwrap().as_c_str().as_ptr(), error.len());
+              }
+
+              return consumed;
+            },
+            _ => {}
+          }
+
+          /*
+            Negative return values mean to consume N bytes and then pause.
+            Returning MIN instruct to pause without consuming any byte.
+          */
+          if result < 0 {
+            if result == isize::MIN {
+              return consumed;
+            }
+
+            let advance = -result as usize;
+            self.position += advance;
+            consumed += advance;
+            return consumed;
+          }
+
+          let advance = result as usize;
+          self.position += advance;
+
+          let difference = self.position - initial_position;
+          consumed += difference;
+          current = &current[difference..];
+
+          #[cfg(all(debug_assertions, feature = "milo_debug_loop"))]
+          {
+            let duration = SystemTime::now().duration_since(last).unwrap().as_nanos();
+
+            if duration > 10 {
+              println!("[milo::debug] loop iteration (ending in state {}) completed in {} ns", self.state, duration);
+            }
+
+            last = SystemTime::now();
+          }
+        }
+
+        consumed
+      }
+
+      pub fn parse(&mut self, data: *const std::os::raw::c_char) -> usize {
+        self.parse_skipping(data, 0)
+      }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn milo_free_string(s: *mut c_char) {
+      unsafe {
+        if s.is_null() {
+          return;
+        }
+
+        let _ = CString::from_raw(s);
+      }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn milo_init() -> *mut Parser {
+      Box::into_raw(Box::new(Parser::new()))
+    }
+
+    #[no_mangle]
+    pub extern "C" fn milo_free(ptr: *mut Parser) {
+      if ptr.is_null() {
+        return;
+      }
+
+      unsafe {
+        let _ =  Box::from_raw(ptr);
+      }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn milo_parse(parser: *mut Parser, data: *const c_char) -> usize {
+      unsafe { parser.as_mut().unwrap().parse(data) }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn milo_get_state(parser: *mut Parser) -> u8 {
+      unsafe { parser.as_mut().unwrap().state as u8 }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn milo_get_state_string(parser: *mut Parser) -> *mut c_char {
+      let string = match unsafe { (*parser).state } {
+        State::FINISH => "FINISH",
+        State::ERROR => "ERROR",
+        #(#states_to_string_arms),*
+      };
+
+      std::ffi::CString::new(string).unwrap().into_raw()
+    }
+
+    #[no_mangle]
+    pub extern "C" fn milo_get_position(parser: *mut Parser) -> usize {
+      unsafe { (*parser).position }
+    }
+
+    #(#values_getters)*
+
+    #(#spans_getters)*
+
+    #[no_mangle]
+    pub extern "C" fn milo_get_error_code(parser: *mut Parser) -> usize {
+      unsafe { (*parser).position }
+    }
+
+    #[no_mangle]
+    pub extern "C" fn milo_get_error_code_string(parser: *mut Parser) -> *mut c_char {
+      let string = match unsafe { (*parser).error_code } {
+        Error::NONE => "NONE",
+        Error::UNEXPECTED_DATA => "UNEXPECTED_DATA`",
+        Error::CALLBACK_ERROR => "CALLBACK_ERROR",
+
+        #(#error_to_string_arms),*
+      };
+
+      std::ffi::CString::new(string).unwrap().into_raw()
+    }
+
+    #[no_mangle]
+    pub extern "C" fn milo_get_error_code_description(parser: *mut Parser) -> *mut c_char {
+      unsafe { std::ffi::CString::new((*parser).error_description.clone()).unwrap().into_raw() }
+    }
+
+    #(#callbacks_setters)*
   };
 
   TokenStream::from(output)

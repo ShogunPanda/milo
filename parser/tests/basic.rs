@@ -149,4 +149,40 @@ mod test {
     parser.parse(message);
     assert!(!matches!(parser.state, State::ERROR));
   }
+
+  #[test]
+  fn incomplete_body() {
+    let mut parser = create_parser();
+
+    let sample1 = http(r#"POST / HTTP/1.1\r\nContent-Length: 10\r\n\r\n12345"#);
+    let sample2 = http(r#"67"#);
+    let sample3 = http(r#"890\r\n"#);
+
+    let consumed1 = parser.parse(sample1);
+    assert!(consumed1 == length(sample1));
+    let consumed2 = parser.parse(sample2);
+    assert!(consumed2 == length(sample2));
+    let consumed3 = parser.parse(sample3);
+    assert!(consumed3 == length(sample3));
+
+    assert!(!matches!(parser.state, State::ERROR));
+  }
+
+  #[test]
+  fn incomplete_chunk() {
+    let mut parser = create_parser();
+
+    let sample1 = http(r#"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nTrailer: x-foo\r\n\r\na\r\n12345"#);
+    let sample2 = http(r#"67"#);
+    let sample3 = http(r#"890\r\n0\r\nx-foo: value\r\n\r\n"#);
+
+    let consumed1 = parser.parse(sample1);
+    assert!(consumed1 == length(sample1));
+    let consumed2 = parser.parse(sample2);
+    assert!(consumed2 == length(sample2));
+    let consumed3 = parser.parse(sample3);
+    assert!(consumed3 == length(sample3));
+
+    assert!(!matches!(parser.state, State::ERROR));
+  }
 }

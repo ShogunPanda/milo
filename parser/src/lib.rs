@@ -2,9 +2,10 @@
 extern crate lazy_static;
 
 use milo_parser_generator::{
-  append, callback, callbacks, char, clear, crlf, digit, errors, fail, generate_parser, get_span, hex_digit, method,
-  move_to, otherwise, pause, persistent_values, set_value, spans, state, string, token, url, values,
+  append, callback, callbacks, char, clear, crlf, data_slice_callback, digit, errors, fail, generate_parser, get_span,
+  hex_digit, method, move_to, otherwise, pause, persistent_values, set_value, spans, state, string, token, url, values,
 };
+use std::os::raw::c_char;
 
 pub mod test_utils;
 
@@ -88,7 +89,6 @@ callbacks!(
   on_header_value,
   on_header_value_complete,
   on_headers_complete,
-  // TODO@PI: Check other _complete callbacks
   on_upgrade,
   on_chunk_length,
   on_chunk_extension_name,
@@ -127,7 +127,7 @@ state!(message_start, {
       callback!(on_response);
       move_to!(response_start, 0)
     }
-    otherwise!(5) => fail!(UNEXPECTED_CHARACTER, "Invalid word"),
+    otherwise!(5) => fail!(UNEXPECTED_CHARACTER, "Unexpected data"),
     _ => pause!(),
   }
 });
@@ -236,7 +236,6 @@ state!(request_version_major, {
     }
     [x @ b'.', ..] => {
       append!(version, x);
-      callback!(on_data_version, version);
       move_to!(request_version_minor)
     }
     _ => parser.fail(
@@ -325,7 +324,6 @@ state!(response_version_major, {
     }
     [x @ b'.', ..] => {
       append!(version, x);
-      callback!(on_data_version, version);
       move_to!(response_version_minor)
     }
     _ => parser.fail(
@@ -534,7 +532,10 @@ state!(header_start, {
       callback!(on_header_field, header_field);
       move_to!(header_field_complete)
     }
-    crlf!() => move_to!(headers_complete, 2),
+    crlf!() => {
+      parser.values.continue_without_data = 1;
+      move_to!(headers_complete, 2)
+    }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid header field name character"),
     _ => pause!(),
   }
@@ -604,12 +605,12 @@ state!(headers_complete, {
 
 // RFC 9110 section 6.4.1
 #[inline(always)]
-fn restart(parser: &mut Parser, advance: isize) -> isize {
+fn complete_message(parser: &mut Parser, advance: isize) -> isize {
   parser.values.clear();
   parser.spans.clear();
+  parser.values.continue_without_data = 1;
 
-  move_to!(start);
-
+  move_to!(message_complete);
   advance
 }
 
@@ -627,12 +628,13 @@ state!(body_start, {
     }
 
     callback!(on_upgrade);
-    return move_to!(body_upgrade, 0);
+    parser.values.continue_without_data = 1;
+    return move_to!(start_tunnel, 0);
   }
 
   if parser.values.is_connect_request == 1 {
-    callback!(on_upgrade);
-    return move_to!(body_upgrade, 0);
+    parser.values.continue_without_data = 1;
+    return move_to!(start_tunnel, 0);
   }
 
   if method == "GET" || method == "HEAD" {
@@ -645,8 +647,7 @@ state!(body_start, {
   }
 
   if parser.values.expected_content_length == 0 && parser.values.has_chunked_transfer_encoding == 0 {
-    callback!(on_message_complete);
-    return restart(parser, 0);
+    return complete_message(parser, 0);
   }
 
   if parser.values.expected_content_length > 0 {
@@ -664,13 +665,16 @@ state!(body_start, {
   move_to!(chunk_start, 0)
 });
 
-// Return MIN makes this method idempotent without failing
-state!(body_upgrade, { pause!() });
-
-state!(body_complete, {
+// RFC 9110 section 9.3.6 and 7.8
+state!(start_tunnel, {
   callback!(on_message_complete);
-  restart(parser, 0)
+  move_to!(tunnel, 0)
 });
+
+// Return MIN makes this method idempotent without failing - In this state all data is ignored since we're not in HTTP anymore
+state!(tunnel, { pause!() });
+
+state!(body_complete, { complete_message(parser, 0) });
 
 // #endregion common_body
 
@@ -685,14 +689,15 @@ state!(body_via_content_length, {
     parser.spans.body.extend_from_slice(data);
     parser.values.current_content_length += available as isize;
 
-    available as isize
+    data_slice_callback!(on_data_chunk_data, data);
+    0
   } else {
-    let missing = data.get(..remaining).unwrap();
-    parser.spans.body.extend_from_slice(missing);
+    let body = data.get(..remaining).unwrap();
+    parser.spans.body.extend_from_slice(body);
 
+    data_slice_callback!(on_data_body, body);
     callback!(on_body, body);
-    move_to!(body_complete, 0);
-    remaining as isize
+    move_to!(body_complete, 0)
   }
 });
 
@@ -795,17 +800,19 @@ state!(chunk_extension_quoted_value, {
     }
     [x @ b'"', b'\r', b'\n', ..] => {
       append!(chunk_extension_value, x);
-      callback!(on_chunk_extension_value, chunk_extension_value);
-      clear!(chunk_extension_name);
-      clear!(chunk_extension_value);
-      move_to!(chunk_data, 3)
-    }
-    [x @ b'"', b';', ..] => {
-      append!(chunk_extension_value, x);
+      parser.position += 1;
       callback!(on_chunk_extension_value, chunk_extension_value);
       clear!(chunk_extension_name);
       clear!(chunk_extension_value);
       move_to!(chunk_data, 2)
+    }
+    [x @ b'"', b';', ..] => {
+      append!(chunk_extension_value, x);
+      parser.position += 1;
+      callback!(on_chunk_extension_value, chunk_extension_value);
+      clear!(chunk_extension_name);
+      clear!(chunk_extension_value);
+      move_to!(chunk_data, 1)
     }
     [x @ (b'\t' | b' ' | 0x21 | 0x23..=0x5b | 0x5d..=0x7e), ..] => {
       append!(chunk_extension_value, x);
@@ -835,15 +842,17 @@ state!(chunk_data, {
     parser.spans.chunk_data.extend_from_slice(data);
     parser.values.current_chunk_size += available as isize;
 
-    available as isize
+    data_slice_callback!(on_data_chunk_data, on_data_body, data);
+    0
   } else {
-    let missing = data.get(..remaining).unwrap();
-    parser.spans.chunk_data.extend_from_slice(missing);
+    let chunk_data = data.get(..remaining).unwrap();
+    parser.spans.chunk_data.extend_from_slice(chunk_data);
     parser.spans.body.extend_from_slice(&parser.spans.chunk_data);
 
+    data_slice_callback!(on_data_chunk_data, on_data_body, chunk_data);
+
     callback!(on_chunk_data, chunk_data);
-    move_to!(chunk_end, 0);
-    remaining as isize
+    move_to!(chunk_end, 0)
   }
 });
 
@@ -879,7 +888,8 @@ state!(trailer_start, {
     }
     crlf!() => {
       callback!(on_trailers_complete);
-      move_to!(body_complete, 2)
+      parser.values.continue_without_data = 1;
+      move_to!(trailers_complete, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid trailer field name character"),
     _ => pause!(),
@@ -894,8 +904,8 @@ state!(trailer_value, {
     }
     [b'\r', b'\n', b'\r', b'\n', ..] => {
       callback!(on_trailer_value, trailer_value);
-      callback!(on_trailers_complete);
-      move_to!(body_complete, 4)
+      parser.values.continue_without_data = 1;
+      move_to!(trailers_complete, 4)
     }
     crlf!() => {
       callback!(on_trailer_value, trailer_value);
@@ -907,6 +917,16 @@ state!(trailer_value, {
     _ => pause!(),
   }
 });
+
+state!(trailers_complete, {
+  callback!(on_trailers_complete);
+  complete_message(parser, 0)
+});
 // #endregion trailers
+
+state!(message_complete, {
+  callback!(on_message_complete);
+  move_to!(start, 0)
+});
 
 generate_parser!();

@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[lib]
+crate_type = ["staticlib", "lib"]
+
 [dependencies]
 lazy_static = "1.4.0"
 milo-parser-generator = { path = "../generator" }
@@ -16,3 +19,10 @@ milo_debug_test = []
 [profile.bench]
 codegen-units = 1
 lto = true
+
+[profile.release]
+opt-level = 'z'   # Optimize for size
+lto = true        # Enable link-time optimization
+codegen-units = 1 # Reduce number of codegen units to increase optimizations
+panic = 'abort'   # Abort on panic
+strip = true      # Strip symbols from binary*

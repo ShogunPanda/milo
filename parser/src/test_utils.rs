@@ -36,29 +36,29 @@ fn show_data(name: &str, parser: &mut Parser, data: *const c_char, size: usize) 
   append_output(
     parser,
     format!(
-      "off={} len={} data[{}]=\"{}\"",
+      "pos={} data[{}]=\"{}\" (len={})",
       parser.position,
-      size,
       name,
-      ptr_to_string(data)
+      ptr_to_string(data),
+      size,
     ),
   )
 }
 
 fn show_span(parser: &mut Parser, name: &str, value: String) -> isize {
-  append_output(parser, format!("off={} span[{}]=\"{}\"", parser.position, name, value))
+  append_output(parser, format!("pos={} span[{}]=\"{}\"", parser.position, name, value))
 }
 
 fn status_complete(name: &str, parser: &mut Parser) -> isize {
-  append_output(parser, format!("off={} {} complete", parser.position, name))
+  append_output(parser, format!("pos={} {} complete", parser.position, name))
 }
 
 fn message_start(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
-  append_output(parser, format!("off={} message begin", parser.position))
+  append_output(parser, format!("pos={} message begin", parser.position))
 }
 
 fn message_complete(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
-  append_output(parser, format!("off={} message complete", parser.position))
+  append_output(parser, format!("pos={} message complete", parser.position))
 }
 
 #[cfg(all(debug_assertions, feature = "milo_debug_test"))]
@@ -111,14 +111,41 @@ fn on_data_chunk_data(parser: &mut Parser, data: *const c_char, size: usize) -> 
   show_data("chunk_data", parser, data, size)
 }
 
+#[cfg(all(debug_assertions, feature = "milo_debug_test"))]
+fn on_data_body(parser: &mut Parser, data: *const c_char, size: usize) -> isize {
+  show_data("body", parser, data, size)
+}
+
+#[cfg(all(debug_assertions, feature = "milo_debug_test"))]
+fn on_data_trailer_field(parser: &mut Parser, data: *const c_char, size: usize) -> isize {
+  show_data("trailer_field", parser, data, size)
+}
+
+#[cfg(all(debug_assertions, feature = "milo_debug_test"))]
+fn on_data_trailer_value(parser: &mut Parser, data: *const c_char, size: usize) -> isize {
+  show_data("trailer_value", parser, data, size)
+}
+
 fn on_error(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
   append_output(
     parser,
     format!(
-      "off={} error code={} reason=\"{}\"",
-      parser.position, parser.error_code as usize, parser.error_str
+      "pos={} error code={} reason=\"{}\"",
+      parser.position, parser.error_code as usize, parser.error_description
     ),
   )
+}
+
+fn on_finish(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  append_output(parser, format!("pos={} finish", parser.position))
+}
+
+fn on_request(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  append_output(parser, format!("pos={} request", parser.position))
+}
+
+fn on_response(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  append_output(parser, format!("pos={} response", parser.position))
 }
 
 fn on_method(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
@@ -153,6 +180,22 @@ fn on_version_complete(parser: &mut Parser, _data: *const c_char, _size: usize) 
   status_complete("version", parser)
 }
 
+fn on_status(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  show_span(parser, "status", get_span!(version))
+}
+
+fn on_status_complete(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  status_complete("status", parser)
+}
+
+fn on_reason(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  show_span(parser, "reason", get_span!(version))
+}
+
+fn on_reason_complete(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  status_complete("reason", parser)
+}
+
 fn on_header_field(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
   show_span(parser, "header_field", get_span!(header_field))
 }
@@ -167,6 +210,75 @@ fn on_header_value(parser: &mut Parser, _data: *const c_char, _size: usize) -> i
 
 fn on_header_value_complete(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
   status_complete("header_value", parser)
+}
+
+fn on_headers_complete(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  let position = parser.position;
+  let version = get_span!(version).replace(".", "/");
+  let chunked = get_value!(has_chunked_transfer_encoding) == 1;
+  let content_length = get_value!(expected_content_length);
+  let protocol = get_span!(protocol);
+
+  if parser.values.message_type == RESPONSE {
+    if chunked {
+      append_output(
+        parser,
+        format!(
+          "pos={} headers complete type=response status={} protocol={} v={} chunked",
+          position, parser.values.response_status, protocol, version,
+        ),
+      )
+    } else if content_length > 0 {
+      append_output(
+        parser,
+        format!(
+          "pos={} headers complete type=response status={} protocol={} v={} content_length={}",
+          position, parser.values.response_status, protocol, version, content_length
+        ),
+      )
+    } else {
+      append_output(
+        parser,
+        format!(
+          "pos={} headers complete type=response status={} protocol={} v={} no-body",
+          position, parser.values.response_status, protocol, version,
+        ),
+      )
+    }
+  } else {
+    let method = get_span!(method);
+    let url = get_span!(url);
+
+    if chunked {
+      append_output(
+        parser,
+        format!(
+          "pos={} headers complete type=request method={} url={} protocol={} v={} chunked",
+          position, method, url, protocol, version,
+        ),
+      )
+    } else if content_length > 0 {
+      append_output(
+        parser,
+        format!(
+          "pos={} headers complete type=request method={} url={} protocol={} v={} content_length={}",
+          position, method, url, protocol, version, content_length
+        ),
+      )
+    } else {
+      append_output(
+        parser,
+        format!(
+          "pos={} headers complete type=request method={} url={} protocol={} v={} no-body",
+          position, method, url, protocol, version,
+        ),
+      )
+    }
+  }
+}
+
+fn on_upgrade(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  status_complete("upgrade", parser)
 }
 
 fn on_chunk_length(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
@@ -185,32 +297,20 @@ fn on_chunk_data(parser: &mut Parser, _data: *const c_char, _size: usize) -> isi
   show_span(parser, "chunk_data", get_span!(chunk_data))
 }
 
-fn on_headers_complete(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
-  let position = parser.position;
-  let version = get_span!(version).replace(".", "/");
-  let content_length = get_value!(expected_content_length);
-  let protocol = get_span!(protocol);
+fn on_body(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  show_span(parser, "body", get_span!(body))
+}
 
-  if parser.values.message_type == RESPONSE {
-    append_output(
-      parser,
-      format!(
-        "off={} headers complete type=response status={} protocol={} v={} content_length={}",
-        position, parser.values.response_status, protocol, version, content_length
-      ),
-    )
-  } else {
-    let method = get_span!(method);
-    let url = get_span!(url);
+fn on_trailer_field(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  show_span(parser, "trailer_field", get_span!(trailer_field))
+}
 
-    append_output(
-      parser,
-      format!(
-        "off={} headers complete type=request method={} url={} protocol={} v={} content_length={}",
-        position, method, url, protocol, version, content_length
-      ),
-    )
-  }
+fn on_trailer_value(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  show_span(parser, "trailer_value", get_span!(trailer_value))
+}
+
+fn on_trailers_complete(parser: &mut Parser, _data: *const c_char, _size: usize) -> isize {
+  status_complete("trailers", parser)
 }
 
 pub fn create_parser() -> Parser {
@@ -236,10 +336,6 @@ pub fn create_parser() -> Parser {
   spans.insert((id, "chunk_extension_value".into()), String::new());
   spans.insert((id, "chunk_data".into()), String::new());
 
-  parser.callbacks.on_error = Some(on_error);
-  parser.callbacks.on_message_start = Some(message_start);
-  parser.callbacks.on_message_complete = Some(message_complete);
-
   #[cfg(all(debug_assertions, feature = "milo_debug_test"))]
   {
     parser.callbacks.on_data_method = Some(on_data_method);
@@ -252,8 +348,17 @@ pub fn create_parser() -> Parser {
     parser.callbacks.on_data_chunk_extension_name = Some(on_data_chunk_extension_name);
     parser.callbacks.on_data_chunk_extension_value = Some(on_data_chunk_extension_value);
     parser.callbacks.on_data_chunk_data = Some(on_data_chunk_data);
+    parser.callbacks.on_data_body = Some(on_data_body);
+    parser.callbacks.on_data_trailer_field = Some(on_data_trailer_field);
+    parser.callbacks.on_data_trailer_value = Some(on_data_trailer_value);
   }
 
+  parser.callbacks.on_error = Some(on_error);
+  parser.callbacks.on_finish = Some(on_finish);
+  parser.callbacks.on_request = Some(on_request);
+  parser.callbacks.on_response = Some(on_response);
+  parser.callbacks.on_message_start = Some(message_start);
+  parser.callbacks.on_message_complete = Some(message_complete);
   parser.callbacks.on_method = Some(on_method);
   parser.callbacks.on_method_complete = Some(on_method_complete);
   parser.callbacks.on_url = Some(on_url);
@@ -262,15 +367,24 @@ pub fn create_parser() -> Parser {
   parser.callbacks.on_protocol_complete = Some(on_protocol_complete);
   parser.callbacks.on_version = Some(on_version);
   parser.callbacks.on_version_complete = Some(on_version_complete);
+  parser.callbacks.on_status = Some(on_status);
+  parser.callbacks.on_status_complete = Some(on_status_complete);
+  parser.callbacks.on_reason = Some(on_reason);
+  parser.callbacks.on_reason_complete = Some(on_reason_complete);
   parser.callbacks.on_header_field = Some(on_header_field);
   parser.callbacks.on_header_field_complete = Some(on_header_field_complete);
   parser.callbacks.on_header_value = Some(on_header_value);
   parser.callbacks.on_header_value_complete = Some(on_header_value_complete);
   parser.callbacks.on_headers_complete = Some(on_headers_complete);
+  parser.callbacks.on_upgrade = Some(on_upgrade);
   parser.callbacks.on_chunk_length = Some(on_chunk_length);
   parser.callbacks.on_chunk_extension_name = Some(on_chunk_extension_name);
   parser.callbacks.on_chunk_extension_value = Some(on_chunk_extension_value);
   parser.callbacks.on_chunk_data = Some(on_chunk_data);
+  parser.callbacks.on_body = Some(on_body);
+  parser.callbacks.on_trailer_field = Some(on_trailer_field);
+  parser.callbacks.on_trailer_value = Some(on_trailer_value);
+  parser.callbacks.on_trailers_complete = Some(on_trailers_complete);
 
   parser
 }

@@ -225,7 +225,7 @@ fn on_headers_complete(parser: &mut Parser, _data: *const c_char, _size: usize) 
         parser,
         format!(
           "pos={} headers complete type=response status={} protocol={} v={} chunked",
-          position, parser.values.response_status, protocol, version,
+          position, parser.values.status, protocol, version,
         ),
       )
     } else if content_length > 0 {
@@ -233,7 +233,7 @@ fn on_headers_complete(parser: &mut Parser, _data: *const c_char, _size: usize) 
         parser,
         format!(
           "pos={} headers complete type=response status={} protocol={} v={} content_length={}",
-          position, parser.values.response_status, protocol, version, content_length
+          position, parser.values.status, protocol, version, content_length
         ),
       )
     } else {
@@ -241,7 +241,7 @@ fn on_headers_complete(parser: &mut Parser, _data: *const c_char, _size: usize) 
         parser,
         format!(
           "pos={} headers complete type=response status={} protocol={} v={} no-body",
-          position, parser.values.response_status, protocol, version,
+          position, parser.values.status, protocol, version,
         ),
       )
     }

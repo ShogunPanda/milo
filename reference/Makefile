@@ -13,11 +13,11 @@ lib/milo.h:
 
 lib/libmilo-debug.a: ../parser/src/lib.rs
 	cd ../parser && cargo +nightly build
-	cp ../parser/target/debug/libmilo.a lib/libmilo-debug.a
+	mv ../parser/target/debug/libmilo.a lib/libmilo-debug.a
 
 lib/libmilo-release.a: ../parser/src/lib.rs
 	cd ../parser && cargo +nightly build --release 
-	cp ../parser/target/release/libmilo.a lib/libmilo-release.a
+	mv ../parser/target/release/libmilo.a lib/libmilo-release.a
 
 clean: 
 	rm -rf build lib

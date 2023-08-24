@@ -3,7 +3,8 @@ extern crate lazy_static;
 
 use milo_parser_generator::{
   append, callback, callbacks, char, clear, crlf, data_slice_callback, digit, errors, fail, generate_parser, get_span,
-  hex_digit, method, move_to, otherwise, pause, persistent_values, set_value, spans, state, string, token, url, values,
+  hex_digit, method, move_to, otherwise, persistent_values, set_value, settable_values, spans, state, string, suspend,
+  token, url, values,
 };
 use std::os::raw::c_char;
 
@@ -21,7 +22,10 @@ values!(
   id,
   message_type,
   is_connect_request,
-  response_status,
+  method,
+  status,
+  version_major,
+  version_minor,
   connection,
   expected_content_length,
   expected_chunk_size,
@@ -32,7 +36,9 @@ values!(
   current_chunk_size
 );
 
-persistent_values!(id, mode,);
+persistent_values!(id, mode);
+
+settable_values!(id, mode);
 
 spans!(
   method,
@@ -100,13 +106,29 @@ callbacks!(
   on_trailers_complete
 );
 
+fn store_parsed_http_version(parser: &mut Parser, major: u8) {
+  if major == b'1' {
+    parser.values.version_major = 1;
+    parser.values.version_minor = 1;
+  } else {
+    parser.values.version_major = 2;
+    parser.values.version_minor = 0;
+  }
+}
+
 // #region request_or_response
 // Depending on the mode flag, choose the initial state
 state!(start, {
   match parser.values.mode {
     AUTODETECT => move_to!(message_start, 0),
-    REQUEST => move_to!(request_start, 0),
-    RESPONSE => move_to!(response_start, 0),
+    REQUEST => {
+      callback!(on_message_start);
+      move_to!(request_start, 0)
+    }
+    RESPONSE => {
+      callback!(on_message_start);
+      move_to!(response_start, 0)
+    }
     _ => fail!(UNEXPECTED_CHARACTER, "Invalid mode"),
   }
 });
@@ -128,7 +150,7 @@ state!(message_start, {
       move_to!(response_start, 0)
     }
     otherwise!(5) => fail!(UNEXPECTED_CHARACTER, "Unexpected data"),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 // #endregion
@@ -143,7 +165,7 @@ state!(request_start, {
       move_to!(request_method)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Expected method"),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
@@ -155,9 +177,13 @@ state!(request_method, {
       1
     }
     char!(' ') => {
+      let method_str = get_span!(method);
+
       if get_span!(method) == "CONNECT" {
         parser.values.is_connect_request = 1;
       }
+
+      parser.values.method = method_as_int(std::ffi::CString::new(method_str).unwrap().into_raw());
 
       callback!(on_method, method);
       move_to!(request_method_complete)
@@ -219,7 +245,7 @@ state!(request_protocol, {
       move_to!(request_protocol_complete)
     }
     otherwise!(5) => fail!(UNEXPECTED_CHARACTER, "Expected protocol"),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
@@ -256,6 +282,7 @@ state!(request_version_minor, {
       match parser.spans.version[..] {
         string!("1.1") | string!("2.0") => {
           callback!(on_version, version);
+          store_parsed_http_version(parser, parser.spans.version[0]);
           move_to!(request_version_complete, 2)
         }
         _ => fail!(INVALID_VERSION, "Invalid HTTP version"),
@@ -265,7 +292,7 @@ state!(request_version_minor, {
       Error::UNEXPECTED_CHARACTER,
       format!("Expected {} minor version", get_span!(protocol)),
     ),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
@@ -307,7 +334,7 @@ state!(response_start, {
     otherwise!(5) => {
       fail!(UNEXPECTED_CHARACTER, "Expected protocol")
     }
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
@@ -348,6 +375,7 @@ state!(response_version_minor, {
       match parser.spans.version[..] {
         string!("1.1") | string!("2.0") => {
           callback!(on_version, version);
+          store_parsed_http_version(parser, parser.spans.version[0]);
           move_to!(response_version_complete)
         }
         _ => fail!(INVALID_VERSION, "Invalid HTTP version"),
@@ -387,12 +415,12 @@ state!(response_status, {
       Error::INVALID_STATUS,
       format!("Expected {} response status", get_span!(protocol)),
     ),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
 state!(response_status_complete, {
-  parser.values.response_status = get_span!(status).parse::<isize>().unwrap();
+  parser.values.status = get_span!(status).parse::<isize>().unwrap();
   callback!(on_status_complete);
   move_to!(response_reason, 0)
 });
@@ -409,7 +437,7 @@ state!(response_reason, {
       move_to!(response_reason_complete, 2)
     }
     otherwise!(5) => fail!(UNEXPECTED_CHARACTER, "Expected status reason"),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
@@ -420,41 +448,45 @@ state!(response_reason_complete, {
 // #endregion response
 
 // #region headers
-fn save_header(parser: &mut Parser, field: &str, value: &str) {
+fn save_header(parser: &mut Parser, field: &str, value: &str) -> bool {
   // Save some headers which impact how we parse the rest of the message
   match field {
     "content-length" => {
-      let status = parser.values.response_status;
+      let status = parser.values.status;
 
       if parser.values.has_chunked_transfer_encoding == 1 {
         fail!(
           UNEXPECTED_CONTENT_LENGTH,
           "Unexpected Content-Length header when Transfer-Encoding header is present"
         );
-        return;
+
+        return false;
       } else if status % 100 == 1 || status == 204 || status == 304 {
         parser.fail(
           Error::UNEXPECTED_CONTENT_LENGTH,
           format!("Unexpected Content-Length header for a response with status {}", status),
         );
-        return;
+
+        return false;
       }
 
       if let Ok(length) = value.parse::<usize>() {
         set_value!(expected_content_length, length);
       } else {
         fail!(INVALID_CONTENT_LENGTH, "Invalid Content-Length header");
+        return false;
       }
     }
     "transfer-encoding" => {
-      let status = parser.values.response_status;
+      let status = parser.values.status;
 
       if parser.values.expected_content_length > 0 {
         fail!(
           UNEXPECTED_TRANSFER_ENCODING,
           "Unexpected Transfer-Encoding header when Content-Length header is present"
         );
-        return;
+
+        return false;
       } else if status % 100 == 1 || status == 304 {
         // Note that Transfer-Encoding is allowed in 304
         parser.fail(
@@ -464,10 +496,9 @@ fn save_header(parser: &mut Parser, field: &str, value: &str) {
             status
           ),
         );
-        return;
-      }
 
-      parser.values.has_chunked_transfer_encoding = 1;
+        return false;
+      }
 
       // If chunked is the last encoding
       if value.ends_with("chunked") || value.ends_with(",chunked") || value.ends_with(", chunked") {
@@ -480,6 +511,8 @@ fn save_header(parser: &mut Parser, field: &str, value: &str) {
             INVALID_TRANSFER_ENCODING,
             "The value \"chunked\" in the Transfer-Encoding header must be the last provided"
           );
+
+          return false;
         } else {
           parser.values.has_chunked_transfer_encoding = 1;
         }
@@ -493,6 +526,8 @@ fn save_header(parser: &mut Parser, field: &str, value: &str) {
           INVALID_TRANSFER_ENCODING,
           "The value \"chunked\" in the Transfer-Encoding header must be the last provided"
         );
+
+        return false;
       }
     }
     "connection" => match value {
@@ -515,6 +550,8 @@ fn save_header(parser: &mut Parser, field: &str, value: &str) {
     }
     _ => (),
   }
+
+  true
 }
 
 // RFC 9112 section 4
@@ -537,18 +574,25 @@ state!(header_start, {
       move_to!(headers_complete, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid header field name character"),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
 state!(header_field_complete, {
   callback!(on_header_field_complete);
-  move_to!(header_value, 0)
+  move_to!(header_value_ignore_ows, 0)
 });
 
 state!(header_field_complete_with_space, {
   callback!(on_header_field_complete);
-  move_to!(header_value, 1)
+  move_to!(header_value_ignore_ows, 1)
+});
+
+state!(header_value_ignore_ows, {
+  match data {
+    [b'\t' | b' ', ..] => 1,
+    _ => move_to!(header_value, 0),
+  }
 });
 
 // RFC 9110 section 5.5 and 5.6
@@ -559,28 +603,33 @@ state!(header_value, {
       1
     }
     [b'\r', b'\n', b'\r', b'\n', ..] => {
-      save_header(
+      if !save_header(
         parser,
         get_span!(header_field).to_lowercase().as_str(),
         get_span!(header_value).as_str(),
-      );
+      ) {
+        return 0;
+      }
 
       callback!(on_header_value, header_value);
       move_to!(header_value_complete_last, 2)
     }
     crlf!() => {
-      save_header(
+      if !save_header(
         parser,
         get_span!(header_field).to_lowercase().as_str(),
         get_span!(header_value).as_str(),
-      );
+      ) {
+        return 0;
+      }
+
       callback!(on_header_value, header_value);
       clear!(header_field);
       clear!(header_value);
       move_to!(header_value_complete, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid header field value character"),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
@@ -606,9 +655,12 @@ state!(headers_complete, {
 // RFC 9110 section 6.4.1
 #[inline(always)]
 fn complete_message(parser: &mut Parser, advance: isize) -> isize {
+  let connection = parser.values.connection;
+
   parser.values.clear();
   parser.spans.clear();
   parser.values.continue_without_data = 1;
+  parser.values.connection = connection;
 
   move_to!(message_complete);
   advance
@@ -671,8 +723,8 @@ state!(start_tunnel, {
   move_to!(tunnel, 0)
 });
 
-// Return MIN makes this method idempotent without failing - In this state all data is ignored since we're not in HTTP anymore
-state!(tunnel, { pause!() });
+// Return PAUSE makes this method idempotent without failing - In this state all data is ignored since we're not in HTTP anymore
+state!(tunnel, { suspend!() });
 
 state!(body_complete, { complete_message(parser, 0) });
 
@@ -697,6 +749,7 @@ state!(body_via_content_length, {
 
     data_slice_callback!(on_data_body, body);
     callback!(on_body, body);
+    parser.values.continue_without_data = 1;
     move_to!(body_complete, 0)
   }
 });
@@ -726,13 +779,15 @@ state!(chunk_start, {
         callback!(on_chunk_length, chunk_length);
         clear!(chunk_length);
         set_value!(expected_chunk_size, length);
-        move_to!(chunk_data, 2)
+
+        parser.values.continue_without_data = 1;
+        move_to!(chunk_check_if_last, 2)
       } else {
         fail!(INVALID_CHUNK_SIZE, "Invalid chunk length")
       }
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid chunk length character"),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
@@ -755,10 +810,12 @@ state!(chunk_extension_name, {
       callback!(on_chunk_extension_name, chunk_extension_name);
       clear!(chunk_extension_name);
       clear!(chunk_extension_value);
-      move_to!(chunk_data, 2)
+
+      parser.values.continue_without_data = 1;
+      move_to!(chunk_check_if_last, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid chunk extension name character"),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
@@ -782,10 +839,12 @@ state!(chunk_extension_value, {
       callback!(on_chunk_extension_value, chunk_extension_value);
       clear!(chunk_extension_name);
       clear!(chunk_extension_value);
-      move_to!(chunk_data, 2)
+
+      parser.values.continue_without_data = 1;
+      move_to!(chunk_check_if_last, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid chunk extension value character"),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
@@ -804,7 +863,9 @@ state!(chunk_extension_quoted_value, {
       callback!(on_chunk_extension_value, chunk_extension_value);
       clear!(chunk_extension_name);
       clear!(chunk_extension_value);
-      move_to!(chunk_data, 2)
+
+      parser.values.continue_without_data = 1;
+      move_to!(chunk_check_if_last, 2)
     }
     [x @ b'"', b';', ..] => {
       append!(chunk_extension_value, x);
@@ -812,18 +873,20 @@ state!(chunk_extension_quoted_value, {
       callback!(on_chunk_extension_value, chunk_extension_value);
       clear!(chunk_extension_name);
       clear!(chunk_extension_value);
-      move_to!(chunk_data, 1)
+
+      parser.values.continue_without_data = 1;
+      move_to!(chunk_check_if_last, 1)
     }
     [x @ (b'\t' | b' ' | 0x21 | 0x23..=0x5b | 0x5d..=0x7e), ..] => {
       append!(chunk_extension_value, x);
       1
     }
     otherwise!(3) => fail!(UNEXPECTED_CHARACTER, "Invalid chunk extension quoted value character"),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
-state!(chunk_data, {
+state!(chunk_check_if_last, {
   if parser.values.expected_chunk_size == 0 {
     callback!(on_body, body);
 
@@ -834,6 +897,10 @@ state!(chunk_data, {
     }
   }
 
+  move_to!(chunk_data, 0)
+});
+
+state!(chunk_data, {
   let remaining = (parser.values.expected_chunk_size - parser.values.current_chunk_size) as usize;
   let available = data.len();
 
@@ -864,7 +931,7 @@ state!(chunk_end, {
       move_to!(chunk_start, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Unexpected character after chunk data"),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
@@ -880,11 +947,11 @@ state!(trailer_start, {
     }
     [b':', b'\t' | b' ', ..] => {
       callback!(on_trailer_field, trailer_field);
-      move_to!(trailer_value, 2)
+      move_to!(trailer_value_ignore_ows, 2)
     }
     char!(':') => {
       callback!(on_trailer_field, trailer_field);
-      move_to!(trailer_value)
+      move_to!(trailer_value_ignore_ows)
     }
     crlf!() => {
       callback!(on_trailers_complete);
@@ -892,7 +959,14 @@ state!(trailer_start, {
       move_to!(trailers_complete, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid trailer field name character"),
-    _ => pause!(),
+    _ => suspend!(),
+  }
+});
+
+state!(trailer_value_ignore_ows, {
+  match data {
+    [b'\t' | b' ', ..] => 1,
+    _ => move_to!(trailer_value, 0),
   }
 });
 
@@ -914,7 +988,7 @@ state!(trailer_value, {
       move_to!(trailer_start, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid trailer field value character"),
-    _ => pause!(),
+    _ => suspend!(),
   }
 });
 
@@ -925,8 +999,16 @@ state!(trailers_complete, {
 // #endregion trailers
 
 state!(message_complete, {
+  let must_close = parser.values.connection == CONNECTION_CLOSE;
+  parser.values.connection = 0;
+
   callback!(on_message_complete);
-  move_to!(start, 0)
+
+  if must_close {
+    move_to!(finish, 0)
+  } else {
+    move_to!(start, 0)
+  }
 });
 
 generate_parser!();

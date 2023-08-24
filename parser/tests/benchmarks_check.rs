@@ -21,7 +21,7 @@ mod test {
     );
 
     let mut parser = create_parser();
-    let consumed = parser.parse(message);
+    let consumed = parser.parse(message, 0, length(message));
     assert!(consumed == length(message));
     assert!(!matches!(parser.state, State::ERROR));
   }
@@ -48,7 +48,7 @@ mod test {
     );
 
     let mut parser = create_parser();
-    let consumed = parser.parse(message);
+    let consumed = parser.parse(message, 0, length(message));
     assert!(consumed == length(message));
     assert!(!matches!(parser.state, State::ERROR));
   }

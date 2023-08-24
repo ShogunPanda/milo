@@ -1,7 +1,9 @@
 language = "C++"
+include_guard = "MILO_H"
+namespace = "milo"
 
 [parse.expand]
 crates = ["milo"]
 
 [export]
-include = ["Parser", "State", "Error"]
+include = ["Method", "Parser", "State", "Error", "methods"]

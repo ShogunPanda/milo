@@ -52,3 +52,5 @@
 - SETUP
 - SET_PARAMETER
 - TEARDOWN
+# Other commonly supported methods for backwards compatibility
+- PURGE

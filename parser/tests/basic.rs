@@ -29,13 +29,13 @@ mod test {
     );
 
     parser.values.mode = REQUEST;
-    parser.parse(response, 0, length(response));
+    parser.parse(response, length(response));
     assert!(matches!(parser.state, State::ERROR));
 
     parser.reset();
 
     parser.values.mode = RESPONSE;
-    parser.parse(request, 0, length(request));
+    parser.parse(request, length(request));
     assert!(matches!(parser.state, State::ERROR));
   }
 
@@ -44,23 +44,23 @@ mod test {
     let mut parser = create_parser();
 
     let sample1 = http(r#"GET / HTTP/1.1\r"#);
-    let sample2 = http(r#"\r\n"#);
+    let sample2 = http(r#"\n"#);
     let sample3 = http(r#"Head"#);
     let sample4 = http(r#"er:"#);
     let sample5 = http(r#"Value"#);
     let sample6 = http(r#"\r\n\r\n"#);
 
-    let consumed1 = parser.parse(sample1, 0, length(sample1));
+    let consumed1 = parser.parse(sample1, length(sample1));
     assert!(consumed1 == length(sample1) - 1);
-    let consumed2 = parser.parse(sample2, 0, length(sample2));
-    assert!(consumed2 == length(sample2));
-    let consumed3 = parser.parse(sample3, 0, length(sample3));
+    let consumed2 = parser.parse(sample2, length(sample2));
+    assert!(consumed2 == length(sample2) + 1);
+    let consumed3 = parser.parse(sample3, length(sample3));
     assert!(consumed3 == length(sample3));
-    let consumed4 = parser.parse(sample4, 0, length(sample4));
+    let consumed4 = parser.parse(sample4, length(sample4));
     assert!(consumed4 == length(sample4));
-    let consumed5 = parser.parse(sample5, 0, length(sample5));
+    let consumed5 = parser.parse(sample5, length(sample5));
     assert!(consumed5 == length(sample5));
-    let consumed6 = parser.parse(sample6, 0, length(sample6));
+    let consumed6 = parser.parse(sample6, length(sample6));
     assert!(consumed6 == length(sample6));
 
     assert!(!matches!(parser.state, State::ERROR));
@@ -79,8 +79,8 @@ mod test {
         hello\r\n
         7;blahblah;blah\r\n
         \s world\r\n
-        0\r\n
-
+        0\r\n\r\n
+        \r\n
         POST / HTTP/1.1\r\n
         Host: www.example.com\r\n
         Content-Type: application/x-www-form-urlencoded\r\n
@@ -92,8 +92,31 @@ mod test {
       "#,
     );
 
-    parser.parse(message, 0, length(message));
+    parser.parse(message, length(message));
     assert!(!matches!(parser.state, State::ERROR));
+  }
+
+  #[test]
+  fn basic_connection_close() {
+    let mut parser = create_parser();
+
+    let message = http(
+      r#"
+        POST /chunked_w_unicorns_after_length HTTP/1.1\r\n
+        Connection: close\r\n
+        Transfer-Encoding: chunked\r\n
+        \r\n
+        5;ilovew3;somuchlove=aretheseparametersfor\r\n
+        hello\r\n
+        7;blahblah;blah\r\n
+        \s world\r\n
+        0\r\n\r\n
+      "#,
+    );
+
+    parser.parse(message, length(message));
+    println!("{:?}", parser.state);
+    assert!(matches!(parser.state, State::FINISH));
   }
 
   #[test]
@@ -123,7 +146,7 @@ mod test {
       "#,
     );
 
-    parser.parse(message, 0, length(message));
+    parser.parse(message, length(message));
     assert!(!matches!(parser.state, State::ERROR));
   }
 
@@ -147,7 +170,7 @@ mod test {
       "#,
     );
 
-    parser.parse(message, 0, length(message));
+    parser.parse(message, length(message));
     assert!(!matches!(parser.state, State::ERROR));
   }
 
@@ -159,11 +182,11 @@ mod test {
     let sample2 = http(r#"67"#);
     let sample3 = http(r#"890\r\n"#);
 
-    let consumed1 = parser.parse(sample1, 0, length(sample1));
+    let consumed1 = parser.parse(sample1, length(sample1));
     assert!(consumed1 == length(sample1));
-    let consumed2 = parser.parse(sample2, 0, length(sample2));
+    let consumed2 = parser.parse(sample2, length(sample2));
     assert!(consumed2 == length(sample2));
-    let consumed3 = parser.parse(sample3, 0, length(sample3));
+    let consumed3 = parser.parse(sample3, length(sample3));
     assert!(consumed3 == length(sample3));
 
     assert!(!matches!(parser.state, State::ERROR));
@@ -177,11 +200,11 @@ mod test {
     let sample2 = http(r#"67"#);
     let sample3 = http(r#"890\r\n0\r\nx-foo: value\r\n\r\n"#);
 
-    let consumed1 = parser.parse(sample1, 0, length(sample1));
+    let consumed1 = parser.parse(sample1, length(sample1));
     assert!(consumed1 == length(sample1));
-    let consumed2 = parser.parse(sample2, 0, length(sample2));
+    let consumed2 = parser.parse(sample2, length(sample2));
     assert!(consumed2 == length(sample2));
-    let consumed3 = parser.parse(sample3, 0, length(sample3));
+    let consumed3 = parser.parse(sample3, length(sample3));
     assert!(consumed3 == length(sample3));
 
     assert!(!matches!(parser.state, State::ERROR));
@@ -201,7 +224,7 @@ mod test {
       "#,
     );
 
-    parser.parse(close_connection, 0, length(close_connection));
+    parser.parse(close_connection, length(close_connection));
     assert!(matches!(parser.state, State::FINISH));
 
     parser.reset();
@@ -215,7 +238,7 @@ mod test {
       "#,
     );
 
-    parser.parse(keep_alive_connection, 0, length(keep_alive_connection));
+    parser.parse(keep_alive_connection, length(keep_alive_connection));
     assert!(matches!(parser.state, State::START));
   }
 
@@ -237,22 +260,22 @@ mod test {
 
     assert!(!parser.paused);
 
-    let consumed1 = parser.parse(sample1, 0, length(sample1));
+    let consumed1 = parser.parse(sample1, length(sample1));
     assert!(consumed1 == length(sample1));
 
     assert!(!parser.paused);
-    let consumed2 = parser.parse(sample2, 0, length(sample2));
+    let consumed2 = parser.parse(sample2, length(sample2));
     assert!(consumed2 == length(sample2) - 3);
     assert!(parser.paused);
 
-    let consumed3 = parser.parse(sample3, 0, length(sample3));
+    let consumed3 = parser.parse(sample3, length(sample3));
     assert!(consumed3 == 0);
 
     assert!(parser.paused);
     parser.resume();
     assert!(!parser.paused);
 
-    let consumed4 = parser.parse(sample3, 0, length(sample3));
+    let consumed4 = parser.parse(sample3, length(sample3));
     assert!(consumed4 == length(sample3));
     assert!(!parser.paused);
 
@@ -279,7 +302,7 @@ mod test {
       "#,
     );
 
-    parser.parse(close_connection, 0, length(close_connection));
+    parser.parse(close_connection, length(close_connection));
     assert!(matches!(parser.state, State::FINISH));
     parser.finish();
     assert!(matches!(parser.state, State::FINISH));
@@ -295,7 +318,7 @@ mod test {
       "#,
     );
 
-    parser.parse(keep_alive_connection, 0, length(keep_alive_connection));
+    parser.parse(keep_alive_connection, length(keep_alive_connection));
     assert!(matches!(parser.state, State::START));
     parser.finish();
     assert!(matches!(parser.state, State::FINISH));
@@ -308,7 +331,7 @@ mod test {
       "#,
     );
 
-    parser.parse(incomplete, 0, length(incomplete));
+    parser.parse(incomplete, length(incomplete));
     assert!(matches!(parser.state, State::REQUEST_VERSION_COMPLETE));
     parser.finish();
     assert!(matches!(parser.state, State::ERROR));

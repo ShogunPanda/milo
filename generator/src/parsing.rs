@@ -89,10 +89,6 @@ impl Identifiers {
     Identifiers::parse(input, 0, usize::MAX)
   }
 
-  pub fn minimum_two(input: ParseStream) -> Result<Self> {
-    Identifiers::parse(input, 2, usize::MAX)
-  }
-
   fn parse(input: ParseStream, min: usize, max: usize) -> Result<Self> {
     let mut identifiers: Vec<Ident> = vec![];
 

@@ -407,7 +407,7 @@ int main()
   const char *request1 = "GET / HTTP/1.1\r\n\r\n";
   const char *request2 = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: x-trailer\r\n\r\nc;need=love\r\nhello world!\r\n0\r\nX-Trailer: value\r\n\r\n";
 
-#ifdef milo::TEST_DEBUG
+#ifdef TEST_DEBUG
   milo::set_on_data_method(parser, on_data_method);
   milo::set_on_data_url(parser, on_data_url);
   milo::set_on_data_protocol(parser, on_data_protocol);
@@ -456,7 +456,7 @@ int main()
   milo::set_on_trailer_value(parser, on_trailer_value);
   milo::set_on_trailers_complete(parser, on_trailers_complete);
 
-  usize consumed = milo::parse(parser, request1, 0, strlen(request1));
+  usize consumed = milo::parse(parser, request1, strlen(request1));
   usize pos = milo::get_position(parser);
   auto *state = milo::get_state_string(parser);
 
@@ -464,7 +464,7 @@ int main()
   milo::free_string(state);
 
   printf("--- --- --- ---\n");
-  consumed = milo::parse(parser, request2, 0, strlen(request2));
+  consumed = milo::parse(parser, request2, strlen(request2));
   pos = milo::get_position(parser);
   state = milo::get_state_string(parser);
 

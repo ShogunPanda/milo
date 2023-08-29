@@ -66,7 +66,7 @@ fn main() {
     println!("{}", name);
 
     for _i in 0..(iterations as usize) {
-      parser.parse(payload);
+      parser.parse(payload, length(payload));
     }
 
     let time = SystemTime::now().duration_since(start).unwrap().as_secs_f64();

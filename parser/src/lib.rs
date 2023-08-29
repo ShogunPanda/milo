@@ -2,9 +2,9 @@
 extern crate lazy_static;
 
 use milo_parser_generator::{
-  append, callback, callbacks, char, clear, crlf, data_slice_callback, digit, errors, fail, generate_parser, get_span,
-  hex_digit, method, move_to, otherwise, persistent_values, set_value, settable_values, spans, state, string, suspend,
-  token, url, values,
+  append, callback, callbacks, char, clear, crlf, data_slice_callback, digit, errors, fail, generate_parser,
+  generate_parser_interface, get_span, hex_digit, method, move_to, otherwise, persistent_values, set_value, spans,
+  state, string, suspend, token, url, user_writable_values, values,
 };
 use std::os::raw::c_char;
 
@@ -20,6 +20,9 @@ pub const CONNECTION_UPGRADE: isize = 2;
 
 values!(
   id,
+  mode,
+  continue_without_data,
+  skip_next_callback,
   message_type,
   is_connect_request,
   method,
@@ -29,18 +32,21 @@ values!(
   connection,
   expected_content_length,
   expected_chunk_size,
+  has_content_length,
   has_chunked_transfer_encoding,
   has_upgrade,
   has_trailers,
   current_content_length,
-  current_chunk_size
+  current_chunk_size,
+  skip_body
 );
 
-persistent_values!(id, mode);
+user_writable_values!(id, mode, is_connect_request, skip_body);
 
-settable_values!(id, mode);
+persistent_values!(id, mode, continue_without_data, skip_next_callback, uncu);
 
 spans!(
+  unconsumed,
   method,
   url,
   protocol,
@@ -59,6 +65,10 @@ spans!(
 );
 
 errors!(
+  NONE,
+  UNEXPECTED_DATA,
+  UNEXPECTED_EOF,
+  CALLBACK_ERROR,
   UNEXPECTED_CHARACTER,
   UNEXPECTED_CONTENT_LENGTH,
   UNEXPECTED_TRANSFER_ENCODING,
@@ -73,6 +83,10 @@ errors!(
 );
 
 callbacks!(
+  after_state_change,
+  before_state_change,
+  on_error,
+  on_finish,
   on_message_start,
   on_message_complete,
   on_request,
@@ -95,6 +109,7 @@ callbacks!(
   on_header_value,
   on_header_value_complete,
   on_headers_complete,
+  on_connect,
   on_upgrade,
   on_chunk_length,
   on_chunk_extension_name,
@@ -116,22 +131,28 @@ fn store_parsed_http_version(parser: &mut Parser, major: u8) {
   }
 }
 
-// #region request_or_response
+// #region general
 // Depending on the mode flag, choose the initial state
 state!(start, {
   match parser.values.mode {
     AUTODETECT => move_to!(message_start, 0),
     REQUEST => {
+      parser.values.message_type = REQUEST;
       callback!(on_message_start);
       move_to!(request_start, 0)
     }
     RESPONSE => {
+      parser.values.message_type = RESPONSE;
       callback!(on_message_start);
       move_to!(response_start, 0)
     }
     _ => fail!(UNEXPECTED_CHARACTER, "Invalid mode"),
   }
 });
+
+state!(finish, { 0 });
+
+state!(error, { 0 });
 
 // Autodetect if there is a HTTP/RTSP method or a response
 state!(message_start, {
@@ -153,7 +174,7 @@ state!(message_start, {
     _ => suspend!(),
   }
 });
-// #endregion
+// #general
 
 // #region request
 // RFC 9112 section 3
@@ -183,7 +204,13 @@ state!(request_method, {
         parser.values.is_connect_request = 1;
       }
 
-      parser.values.method = method_as_int(std::ffi::CString::new(method_str).unwrap().into_raw());
+      let method = method_as_int(std::ffi::CString::new(method_str).unwrap().into_raw());
+
+      if method == -1 {
+        return fail!(UNEXPECTED_CHARACTER, "Invalid method");
+      }
+
+      parser.values.method = method;
 
       callback!(on_method, method);
       move_to!(request_method_complete)
@@ -432,11 +459,15 @@ state!(response_reason, {
       append!(reason, x);
       1
     }
-    crlf!() if !parser.spans.reason.is_empty() => {
-      callback!(on_reason, reason);
-      move_to!(response_reason_complete, 2)
+    crlf!() => {
+      if !parser.spans.reason.is_empty() {
+        callback!(on_reason, reason);
+        move_to!(response_reason_complete, 2)
+      } else {
+        move_to!(header_start, 2)
+      }
     }
-    otherwise!(5) => fail!(UNEXPECTED_CHARACTER, "Expected status reason"),
+    otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Expected status reason"),
     _ => suspend!(),
   }
 });
@@ -448,7 +479,10 @@ state!(response_reason_complete, {
 // #endregion response
 
 // #region headers
-fn save_header(parser: &mut Parser, field: &str, value: &str) -> bool {
+fn save_header(parser: &mut Parser, field: &str, raw_value: &str) -> bool {
+  let value = raw_value.to_lowercase();
+  let value = value.trim();
+
   // Save some headers which impact how we parse the rest of the message
   match field {
     "content-length" => {
@@ -461,16 +495,18 @@ fn save_header(parser: &mut Parser, field: &str, value: &str) -> bool {
         );
 
         return false;
-      } else if status % 100 == 1 || status == 204 || status == 304 {
+      } else if status / 100 == 1 || status == 204 {
         parser.fail(
           Error::UNEXPECTED_CONTENT_LENGTH,
           format!("Unexpected Content-Length header for a response with status {}", status),
         );
 
         return false;
-      }
-
-      if let Ok(length) = value.parse::<usize>() {
+      } else if parser.values.expected_content_length != 0 {
+        fail!(INVALID_CONTENT_LENGTH, "Invalid duplicate Content-Length header");
+        return false;
+      } else if let Ok(length) = value.parse::<usize>() {
+        parser.values.has_content_length = 1;
         set_value!(expected_content_length, length);
       } else {
         fail!(INVALID_CONTENT_LENGTH, "Invalid Content-Length header");
@@ -487,7 +523,7 @@ fn save_header(parser: &mut Parser, field: &str, value: &str) -> bool {
         );
 
         return false;
-      } else if status % 100 == 1 || status == 304 {
+      } else if status / 100 == 1 || status == 304 {
         // Note that Transfer-Encoding is allowed in 304
         parser.fail(
           Error::UNEXPECTED_TRANSFER_ENCODING,
@@ -501,7 +537,7 @@ fn save_header(parser: &mut Parser, field: &str, value: &str) -> bool {
       }
 
       // If chunked is the last encoding
-      if value.ends_with("chunked") || value.ends_with(",chunked") || value.ends_with(", chunked") {
+      if value == "chunked" || value.ends_with(",chunked") || value.ends_with(", chunked") {
         /*
           If this is 1, it means the Transfer-Encoding header was specified more than once.
           This is the second repetition and therefore, the previous one is no longer the last one, making it invalid.
@@ -509,19 +545,15 @@ fn save_header(parser: &mut Parser, field: &str, value: &str) -> bool {
         if parser.values.has_chunked_transfer_encoding == 1 {
           fail!(
             INVALID_TRANSFER_ENCODING,
-            "The value \"chunked\" in the Transfer-Encoding header must be the last provided"
+            "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can be provided only once"
           );
 
           return false;
         } else {
           parser.values.has_chunked_transfer_encoding = 1;
         }
-      }
-
-      // Check that chunked is the last provided encoding
-      if value != "chunked"
-        && (value.starts_with("chunked,") || value.contains(",chunked,") || value.contains(", chunked,"))
-      {
+      } else if parser.values.has_chunked_transfer_encoding == 1 {
+        // Any other value when chunked was already specified is invalid
         fail!(
           INVALID_TRANSFER_ENCODING,
           "The value \"chunked\" in the Transfer-Encoding header must be the last provided"
@@ -571,7 +603,7 @@ state!(header_start, {
     }
     crlf!() => {
       parser.values.continue_without_data = 1;
-      move_to!(headers_complete, 2)
+      move_to!(validate_headers, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid header field name character"),
     _ => suspend!(),
@@ -641,12 +673,87 @@ state!(header_value_complete, {
 state!(header_value_complete_last, {
   parser.values.continue_without_data = 1;
   callback!(on_header_value_complete);
-  move_to!(headers_complete, 2)
+  move_to!(validate_headers, 2)
 });
 
+state!(validate_headers, {
+  parser.values.continue_without_data = 1;
+  if parser.values.has_upgrade == 1 && parser.values.connection != CONNECTION_UPGRADE {
+    parser.values.continue_without_data = 0;
+
+    return parser.fail(
+      Error::MISSING_CONNECTION_UPGRADE,
+      format!("Missing Connection header set to \"upgrade\" when using the Upgrade header"),
+    );
+  }
+
+  move_to!(headers_complete, 0)
+});
+
+// RFC 9110 section 9.3.6 and 7.8
 state!(headers_complete, {
   parser.values.continue_without_data = 1;
   callback!(on_headers_complete);
+  move_to!(choose_body, 0)
+});
+
+state!(choose_body, {
+  parser.values.continue_without_data = 1;
+
+  let method = get_span!(method);
+  let status = parser.values.status;
+
+  // In case of Connection: Upgrade
+  if parser.values.has_upgrade == 1 {
+    if parser.values.connection != CONNECTION_UPGRADE {
+      parser.values.continue_without_data = 0;
+
+      return parser.fail(
+        Error::MISSING_CONNECTION_UPGRADE,
+        format!("Missing Connection header set to \"upgrade\" when using the Upgrade header"),
+      );
+    }
+
+    callback!(on_upgrade);
+    return move_to!(tunnel, 0);
+  }
+
+  // In case of CONNECT method
+  if parser.values.is_connect_request == 1 {
+    callback!(on_connect);
+    return move_to!(tunnel, 0);
+  }
+
+  if method == "GET" || method == "HEAD" {
+    if parser.values.expected_content_length > 0 {
+      parser.values.continue_without_data = 0;
+
+      return parser.fail(
+        Error::UNEXPECTED_CONTENT,
+        format!("Unexpected content for {} request", method),
+      );
+    }
+  }
+
+  // RFC 9110 section 6.3
+  if parser.values.message_type == REQUEST {
+    if parser.values.has_content_length == 0 && parser.values.has_chunked_transfer_encoding == 0 {
+      return complete_message(parser, 0);
+    }
+  } else {
+    if (status < 200 && status != 101) || method == "HEAD" || parser.values.skip_body == 1 {
+      return complete_message(parser, 0);
+    }
+
+    if parser.values.expected_content_length == 0 {
+      if parser.values.has_content_length == 1 {
+        return complete_message(parser, 0);
+      } else if parser.values.has_chunked_transfer_encoding == 0 {
+        return move_to!(body_with_no_length, 0);
+      }
+    }
+  }
+
   move_to!(body_start, 0)
 });
 
@@ -668,40 +775,6 @@ fn complete_message(parser: &mut Parser, advance: isize) -> isize {
 
 // #region common_body
 state!(body_start, {
-  let method = get_span!(method);
-
-  // In case of Connection: Upgrade
-  if parser.values.has_upgrade == 1 {
-    if parser.values.connection != CONNECTION_UPGRADE {
-      return parser.fail(
-        Error::MISSING_CONNECTION_UPGRADE,
-        format!("Missing Connection header set to \"upgrade\" when using the Upgrade header"),
-      );
-    }
-
-    callback!(on_upgrade);
-    parser.values.continue_without_data = 1;
-    return move_to!(start_tunnel, 0);
-  }
-
-  if parser.values.is_connect_request == 1 {
-    parser.values.continue_without_data = 1;
-    return move_to!(start_tunnel, 0);
-  }
-
-  if method == "GET" || method == "HEAD" {
-    if parser.values.expected_content_length > 0 {
-      return parser.fail(
-        Error::UNEXPECTED_CONTENT,
-        format!("Unexpected content for {} request", method),
-      );
-    }
-  }
-
-  if parser.values.expected_content_length == 0 && parser.values.has_chunked_transfer_encoding == 0 {
-    return complete_message(parser, 0);
-  }
-
   if parser.values.expected_content_length > 0 {
     parser.values.current_content_length = 0;
     return move_to!(body_via_content_length, 0);
@@ -715,12 +788,6 @@ state!(body_start, {
   }
 
   move_to!(chunk_start, 0)
-});
-
-// RFC 9110 section 9.3.6 and 7.8
-state!(start_tunnel, {
-  callback!(on_message_complete);
-  move_to!(tunnel, 0)
 });
 
 // Return PAUSE makes this method idempotent without failing - In this state all data is ignored since we're not in HTTP anymore
@@ -741,20 +808,31 @@ state!(body_via_content_length, {
     parser.spans.body.extend_from_slice(data);
     parser.values.current_content_length += available as isize;
 
-    data_slice_callback!(on_data_chunk_data, data);
+    data_slice_callback!(on_data_body, data, available);
     0
   } else {
     let body = data.get(..remaining).unwrap();
     parser.spans.body.extend_from_slice(body);
+    parser.values.current_content_length = parser.values.expected_content_length;
 
-    data_slice_callback!(on_data_body, body);
+    data_slice_callback!(on_data_body, body, remaining);
     callback!(on_body, body);
     parser.values.continue_without_data = 1;
     move_to!(body_complete, 0)
   }
 });
-
 // #endregion body via Content-Length
+
+// RFC 9110 section 6.3
+state!(body_with_no_length, {
+  let available = data.len();
+
+  parser.spans.body.extend_from_slice(data);
+  parser.values.current_content_length += available as isize;
+
+  data_slice_callback!(on_data_body, data, available);
+  0
+});
 
 // #region body via chunked Transfer-Encoding
 // RFC 9112 section 7.1
@@ -893,7 +971,7 @@ state!(chunk_check_if_last, {
     if parser.values.has_trailers == 1 {
       return move_to!(trailer_start, 0);
     } else {
-      return move_to!(body_complete, 0);
+      return move_to!(crlf_after_last_chunk, 0);
     }
   }
 
@@ -909,14 +987,14 @@ state!(chunk_data, {
     parser.spans.chunk_data.extend_from_slice(data);
     parser.values.current_chunk_size += available as isize;
 
-    data_slice_callback!(on_data_chunk_data, on_data_body, data);
+    data_slice_callback!(on_data_chunk_data, on_data_body, data, available);
     0
   } else {
     let chunk_data = data.get(..remaining).unwrap();
     parser.spans.chunk_data.extend_from_slice(chunk_data);
     parser.spans.body.extend_from_slice(&parser.spans.chunk_data);
 
-    data_slice_callback!(on_data_chunk_data, on_data_body, chunk_data);
+    data_slice_callback!(on_data_chunk_data, on_data_body, chunk_data, remaining);
 
     callback!(on_chunk_data, chunk_data);
     move_to!(chunk_end, 0)
@@ -931,6 +1009,17 @@ state!(chunk_end, {
       move_to!(chunk_start, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Unexpected character after chunk data"),
+    _ => suspend!(),
+  }
+});
+
+state!(crlf_after_last_chunk, {
+  match data {
+    crlf!() => {
+      parser.values.continue_without_data = 1;
+      move_to!(body_complete, 2)
+    }
+    otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Expected CRLF after the last chunk"),
     _ => suspend!(),
   }
 });
@@ -1011,4 +1100,193 @@ state!(message_complete, {
   }
 });
 
-generate_parser!();
+generate_parser!({
+  pub fn get_span(&self, span: &Vec<u8>) -> String {
+    unsafe { String::from_utf8_unchecked((*span).clone()) }
+  }
+
+  fn move_to(&mut self, state: State, advance: isize) -> isize {
+    #[cfg(debug_assertions)]
+    {
+      let fail_advance = if advance < 0 { advance } else { -advance };
+
+      // Notify the end of the current state
+      let result = if let Some(cb) = self.callbacks.before_state_change {
+        cb(self, std::ptr::null(), 0)
+      } else {
+        0
+      };
+
+      match result {
+        0 => (),
+        -1 => return fail_advance,
+        _ => {
+          return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+        }
+      };
+    };
+
+    // Change the state
+    self.state = state;
+
+    #[cfg(debug_assertions)]
+    {
+      let fail_advance = if advance < 0 { advance } else { -advance };
+
+      let result = if let Some(cb) = self.callbacks.after_state_change {
+        cb(self, std::ptr::null(), 0)
+      } else {
+        0
+      };
+
+      match result {
+        0 => advance,
+        -1 => fail_advance,
+        _ => {
+          return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+        }
+      }
+    };
+
+    advance
+  }
+
+  fn fail(&mut self, code: Error, reason: String) -> isize {
+    self.error_code = code;
+    self.error_description = reason;
+    self.state = State::ERROR;
+
+    0
+  }
+
+  fn fail_str(&mut self, code: Error, reason: &str) -> isize {
+    self.fail(code, reason.into())
+  }
+
+  pub fn pause(&mut self) {
+    self.paused = true;
+  }
+
+  pub fn resume(&mut self) {
+    self.values.skip_next_callback = 1;
+    self.paused = false;
+  }
+
+  pub fn finish(&mut self) {
+    match self.state {
+      State::START | State::REQUEST_START | State::RESPONSE_START | State::FINISH => {
+        self.state = State::FINISH;
+      }
+      State::BODY_WITH_NO_LENGTH => {
+        if let Some(cb) = self.callbacks.on_message_complete {
+          let action = cb(self, std::ptr::null(), 0);
+
+          if action != 0 {
+            self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+          }
+        }
+
+        self.state = State::FINISH;
+      }
+      State::ERROR => (),
+      _ => {
+        self.fail_str(Error::UNEXPECTED_EOF, "Unexpected end of data");
+      }
+    };
+  }
+});
+
+generate_parser_interface!({
+  #[no_mangle]
+  pub extern "C" fn free_string(s: *mut c_char) {
+    unsafe {
+      if s.is_null() {
+        return;
+      }
+
+      let _ = CString::from_raw(s);
+    }
+  }
+
+  #[no_mangle]
+  pub extern "C" fn create_parser() -> *mut Parser {
+    Box::into_raw(Box::new(Parser::new()))
+  }
+
+  #[no_mangle]
+  pub extern "C" fn free_parser(ptr: *mut Parser) {
+    if ptr.is_null() {
+      return;
+    }
+
+    unsafe {
+      let _ = Box::from_raw(ptr);
+    }
+  }
+
+  #[no_mangle]
+  pub extern "C" fn parse(parser: *mut Parser, data: *const c_char, limit: usize) -> usize {
+    unsafe { parser.as_mut().unwrap().parse(data, limit) }
+  }
+
+  #[no_mangle]
+  pub extern "C" fn pause_parser(parser: *mut Parser) {
+    unsafe { parser.as_mut().unwrap().pause() }
+  }
+
+  #[no_mangle]
+  pub extern "C" fn resume_parser(parser: *mut Parser) {
+    unsafe { parser.as_mut().unwrap().resume() }
+  }
+
+  #[no_mangle]
+  pub extern "C" fn finish_parser(parser: *mut Parser) {
+    unsafe { parser.as_mut().unwrap().finish() }
+  }
+
+  #[no_mangle]
+  pub extern "C" fn is_paused(parser: *mut Parser) -> bool {
+    unsafe { parser.as_mut().unwrap().paused }
+  }
+
+  #[no_mangle]
+  pub extern "C" fn get_owner(parser: *mut Parser) -> *mut c_void {
+    unsafe {
+      match parser.as_mut().unwrap().owner {
+        Some(x) => x,
+        None => std::ptr::null_mut(),
+      }
+    }
+  }
+
+  #[no_mangle]
+  pub extern "C" fn set_owner(parser: *mut Parser, ptr: *mut c_void) {
+    unsafe {
+      parser.as_mut().unwrap().owner = if ptr.is_null() { None } else { Some(ptr) };
+    }
+  }
+
+  #[no_mangle]
+  pub extern "C" fn get_state(parser: *mut Parser) -> u8 {
+    unsafe { parser.as_mut().unwrap().state as u8 }
+  }
+
+  #[no_mangle]
+  pub extern "C" fn get_position(parser: *mut Parser) -> usize {
+    unsafe { (*parser).position }
+  }
+
+  #[no_mangle]
+  pub extern "C" fn get_error_code(parser: *mut Parser) -> u8 {
+    unsafe { (*parser).error_code as u8 }
+  }
+
+  #[no_mangle]
+  pub extern "C" fn get_error_code_description(parser: *mut Parser) -> *mut c_char {
+    unsafe {
+      std::ffi::CString::new((*parser).error_description.clone())
+        .unwrap()
+        .into_raw()
+    }
+  }
+});

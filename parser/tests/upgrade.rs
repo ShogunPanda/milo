@@ -7,7 +7,7 @@ mod test {
   fn upgrade_connect_request() {
     let mut parser = create_parser();
 
-    let message = http(
+    let message1 = http(
       r#"
         CONNECT example.com HTTP/1.1\r\n
         Host: example.com\r\n
@@ -17,11 +17,17 @@ mod test {
       "#,
     );
 
-    let consumed1 = parser.parse(message, 0, length(message));
+    let message2 = http(
+      r#"
+        abc\r\n\r\n
+      "#,
+    );
+
+    let consumed1 = parser.parse(message1, length(message1));
     assert!(consumed1 == 70);
     assert!(matches!(parser.state, State::TUNNEL));
 
-    let consumed2 = parser.parse(message, 0, length(message));
+    let consumed2 = parser.parse(message2, length(message2));
     assert!(consumed2 == 0);
     assert!(matches!(parser.state, State::TUNNEL));
   }
@@ -30,7 +36,7 @@ mod test {
   fn upgrade_connection_upgrade() {
     let mut parser = create_parser();
 
-    let message = http(
+    let message1 = http(
       r#"
         GET / HTTP/1.1\r\n
         Host: example.com\r\n
@@ -42,11 +48,17 @@ mod test {
       "#,
     );
 
-    let consumed1 = parser.parse(message, 0, length(message));
+    let message2 = http(
+      r#"
+        abc\r\n\r\n
+      "#,
+    );
+
+    let consumed1 = parser.parse(message1, length(message1));
     assert!(consumed1 == 95);
     assert!(matches!(parser.state, State::TUNNEL));
 
-    let consumed2 = parser.parse(message, 0, length(message));
+    let consumed2 = parser.parse(message2, length(message2));
     assert!(consumed2 == 0);
     assert!(matches!(parser.state, State::TUNNEL));
   }

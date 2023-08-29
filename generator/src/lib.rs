@@ -8,7 +8,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use std::path::Path;
 use std::sync::Mutex;
-use syn::{parse_macro_input, parse_str, Arm, ExprMethodCall, Ident, LitByte, LitInt, LitStr};
+use syn::{parse_macro_input, parse_str, Arm, Block, ExprMethodCall, Ident, LitByte, LitInt, LitStr};
 
 use parsing::{Char, CharRange, Failure, Identifiers, Move, State};
 
@@ -29,7 +29,7 @@ lazy_static! {
   static ref ERRORS: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref PERSISTENT_VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
-  static ref SETTABLE_VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
+  static ref USER_WRITABLE_VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref SPANS: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref CALLBACKS: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
 }
@@ -53,10 +53,10 @@ pub fn values(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn persistent_values(input: TokenStream) -> TokenStream {
+pub fn user_writable_values(input: TokenStream) -> TokenStream {
   let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
 
-  let mut values = PERSISTENT_VALUES.lock().unwrap();
+  let mut values = USER_WRITABLE_VALUES.lock().unwrap();
 
   for value in definition.identifiers {
     values.insert(value.to_string());
@@ -66,10 +66,10 @@ pub fn persistent_values(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn settable_values(input: TokenStream) -> TokenStream {
+pub fn persistent_values(input: TokenStream) -> TokenStream {
   let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
 
-  let mut values = SETTABLE_VALUES.lock().unwrap();
+  let mut values = PERSISTENT_VALUES.lock().unwrap();
 
   for value in definition.identifiers {
     values.insert(value.to_string());
@@ -368,12 +368,14 @@ pub fn append(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn data_slice_callback(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::minimum_two);
-  let callbacks: Vec<Ident> = definition.identifiers[0..definition.identifiers.len() - 1].to_vec();
-  let source = definition.identifiers.last().unwrap();
+  let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
+
+  let second_last_index = definition.identifiers.len() - 2;
+  let callbacks: &[Ident] = &definition.identifiers[0..second_last_index];
+  let source = definition.identifiers.get(second_last_index).unwrap();
+  let len = definition.identifiers.last().unwrap();
 
   TokenStream::from(quote! {
-    #[cfg(debug_assertions)]
     {
       let callbacks: Vec<ActiveCallback> = [#(parser.callbacks.#callbacks),*]
         .iter()
@@ -381,28 +383,21 @@ pub fn data_slice_callback(input: TokenStream) -> TokenStream {
         .map(|x| x.unwrap())
         .collect();
 
-      for d in #source {
-        for cb in callbacks.iter() {
-          let action = cb(
-            parser,
-            std::ffi::CStr::from_bytes_with_nul(&[*d, b'\0']).unwrap().as_ptr(),
-            1,
-          );
+      for cb in callbacks.iter() {
+        let action = cb(
+          parser,
+          #source as *const _ as *const i8,
+          #len,
+        );
 
-          if action < 0 {
-            return action;
-          } else if action != 0 {
-            return parser.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
-          }
+        if action < 0 {
+          return action;
+        } else if action != 0 {
+          return parser.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
         }
-
-        parser.position += 1;
       }
-    }
 
-    #[cfg(not(debug_assertions))]
-    {
-      parser.position += #source.len();
+      parser.position += #len;
     }
   })
 }
@@ -484,7 +479,10 @@ pub fn suspend(_input: TokenStream) -> TokenStream {
 // #endregion actions
 
 #[proc_macro]
-pub fn generate_parser(_input: TokenStream) -> TokenStream {
+pub fn generate_parser(input: TokenStream) -> TokenStream {
+  let body_block: Block = parse_macro_input!(input as Block);
+  let body = body_block.stmts;
+
   let methods: Vec<Ident> = METHODS
     .lock()
     .unwrap()
@@ -509,16 +507,8 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
     })
     .collect();
 
-  let states_to_string_arms: Vec<Arm> = states_ref
-    .iter()
-    .map(|x| parse_str::<Arm>(&format!("State::{} => \"{}\"", x, x)).unwrap())
-    .collect();
-
   let values_ref = VALUES.lock().unwrap();
-  let mut values: Vec<Ident> = values_ref.iter().map(|x| format_ident!("{}", x)).collect();
-  values.insert(0, format_ident!("continue_without_data"));
-  values.insert(0, format_ident!("skip_next_callback"));
-  values.insert(0, format_ident!("mode"));
+  let values: Vec<Ident> = values_ref.iter().map(|x| format_ident!("{}", x)).collect();
 
   let persistent_values_ref = PERSISTENT_VALUES.lock().unwrap();
   let clearable_values: Vec<Ident> = values_ref
@@ -527,99 +517,25 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
     .map(|x| format_ident!("{}", x))
     .collect();
 
-  let values_getters: Vec<_> = values
-    .iter()
-    .map(|value| {
-      let getter = format_ident!("get_{}", value);
-
-      quote! {
-        #[no_mangle]
-        pub extern "C" fn #getter(parser: *mut Parser) -> isize {
-          unsafe { (*parser).values.#value }
-        }
-      }
-    })
-    .collect();
-
-  let settable_values_ref = SETTABLE_VALUES.lock().unwrap();
-  let values_setters: Vec<_> = settable_values_ref
-    .iter()
-    .map(|value| {
-      let setter = format_ident!("set_{}", value);
-      let key = format_ident!("{}", value);
-
-      quote! {
-        #[no_mangle]
-        pub extern "C" fn #setter(parser: *mut Parser, value: isize) {
-          unsafe { (*parser).values.#key = value; }
-        }
-      }
-    })
-    .collect();
-
   let spans: Vec<Ident> = SPANS.lock().unwrap().iter().map(|x| format_ident!("{}", x)).collect();
-
-  let spans_getters: Vec<_> = spans
-    .iter()
-    .map(|span| {
-      let getter = format_ident!("get_{}_string", span);
-
-      quote! {
-        #[no_mangle]
-        pub extern "C" fn #getter(parser: *mut Parser) -> *mut c_char {
-          unsafe { CString::from_vec_unchecked((*parser).spans.#span.clone()).into_raw() }
-        }
-      }
-    })
-    .collect();
 
   let errors: Vec<Ident> = ERRORS.lock().unwrap().iter().map(|x| format_ident!("{}", x)).collect();
 
-  let error_to_string_arms: Vec<Arm> = errors
+  let mut callbacks: Vec<Ident> = CALLBACKS
+    .lock()
+    .unwrap()
     .iter()
-    .map(|x| parse_str::<Arm>(&format!("Error::{} => \"{}\"", x, x)).unwrap())
+    .map(|x| format_ident!("{}", x))
     .collect();
-
-  let callbacks_ref = CALLBACKS.lock().unwrap();
-  let mut callbacks: Vec<Ident> = callbacks_ref.iter().map(|x| format_ident!("{}", x)).collect();
-
-  callbacks.insert(0, format_ident!("on_error"));
-  callbacks.insert(0, format_ident!("on_finish"));
-  callbacks.insert(0, format_ident!("after_state_change"));
-  callbacks.insert(0, format_ident!("before_state_change"));
 
   for x in spans.iter() {
     callbacks.push(format_ident!("on_data_{}", x));
   }
 
-  let callbacks_setters: Vec<_> = callbacks
-    .iter()
-    .map(|callback| {
-      let setter = format_ident!("set_{}", callback);
-
-      quote! {
-        #[no_mangle]
-        pub extern "C" fn #setter(parser: *mut Parser, callback: Callback) {
-          unsafe { (*parser).callbacks.#callback = callback };
-        }
-      }
-    })
-    .collect();
-
-  let mut states_debug: Vec<Arm> = states
+  let states_debug: Vec<Arm> = states
     .iter()
     .map(|x| parse_str::<Arm>(&format!("State::{} => write!(f, \"State::{}\")", x, x)).unwrap())
     .collect();
-
-  states_debug.insert(
-    0,
-    parse_str::<Arm>("State::ERROR => write!(f, \"State::ERROR\")").unwrap(),
-  );
-
-  states_debug.insert(
-    0,
-    parse_str::<Arm>("State::FINISH => write!(f, \"State::FINISH\")").unwrap(),
-  );
 
   let values_debug: ExprMethodCall = parse_str::<ExprMethodCall>(&format!(
     "f.debug_struct(\"Values\"){}.finish()",
@@ -645,14 +561,6 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
       .join("")
   ))
   .unwrap();
-
-  let method_as_int_arms: Vec<Arm> = METHODS
-    .lock()
-    .unwrap()
-    .iter()
-    .enumerate()
-    .map(|(i, x)| parse_str::<Arm>(&format!("\"{}\" => {}", x, i)).unwrap())
-    .collect();
 
   let callbacks_debug: ExprMethodCall = parse_str::<ExprMethodCall>(&format!(
     "f.debug_struct(\"Callbacks\"){}.finish()",
@@ -694,18 +602,12 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
     #[repr(u8)]
     #[derive(Copy, Clone)]
     pub enum State {
-      ERROR = 0,
-      FINISH,
       #(#states),*
     }
 
     #[repr(u8)]
     #[derive(Copy, Clone, Debug)]
     pub enum Error {
-      NONE = 0,
-      UNEXPECTED_DATA,
-      UNEXPECTED_EOF,
-      CALLBACK_ERROR,
       #(#errors),*
     }
 
@@ -820,79 +722,23 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
         self.error_description = String::new();
       }
 
-      pub fn get_span(&self, span: &Vec<u8>) -> String {
-        unsafe { String::from_utf8_unchecked((*span).clone()) }
-      }
-
-      fn move_to(&mut self, state: State, advance: isize) -> isize {
-        #[cfg(debug_assertions)]
-        {
-          let fail_advance = if advance < 0 { advance } else { -advance };
-
-          // Notify the end of the current state
-          let result = if let Some(cb) = self.callbacks.after_state_change {
-              cb(self, std::ptr::null(), 0)
-          } else {
-              0
-          };
-
-          match result {
-            0 => (),
-            -1 => {
-                return fail_advance
-            },
-            _ => {
-                return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
-            }
-          };
-        };
-
-        // Change the state
-        self.state = state;
-
-        #[cfg(debug_assertions)]
-        {
-          let fail_advance = if advance < 0 { advance } else { -advance };
-
-          let result = if let Some(cb) = self.callbacks.before_state_change {
-            cb(self, std::ptr::null(), 0)
-          } else {
-            0
-          };
-
-          match result {
-            0 => advance,
-            -1 => fail_advance,
-            _ => {
-                return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
-            }
-          }
-        };
-
-        advance
-      }
-
-      fn fail(&mut self, code: Error, reason: String) -> isize {
-        self.error_code = code;
-        self.error_description = reason;
-        self.state = State::ERROR;
-
-        0
-      }
-
-      fn fail_str(&mut self, code: Error, reason: &str) -> isize {
-        self.fail(code, reason.into())
-      }
-
-      pub fn parse(&mut self, data: *const c_char, skip: usize, limit: usize) -> usize {
+      pub fn parse(&mut self, data: *const c_char, mut limit: usize) -> usize {
         if self.paused {
           return 0;
         }
 
+        let mut aggregate: Vec<u8>;
+        let unconsumed_len = self.spans.unconsumed.len();
         let mut consumed: usize = 0;
-        let mut current = unsafe { std::ffi::CStr::from_ptr(data) }.to_bytes();
+        let mut current = unsafe { &*(std::slice::from_raw_parts(data, limit) as *const _ as *const [u8]) };
 
-        // Notify the initial status - Note this invocation is not pauseable
+        if unconsumed_len > 0 {
+          limit += unconsumed_len;
+          aggregate = self.spans.unconsumed.clone();
+          aggregate.extend_from_slice(current);
+          current = &aggregate[..];
+        }
+
         #[cfg(debug_assertions)]
         if self.position == 0 {
           if let Some(cb) = self.callbacks.before_state_change {
@@ -902,11 +748,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
           }
         }
 
-        current = &current[..(skip + limit)];
-
-        if skip > 0 {
-          current = &current[skip..];
-        }
+        current = &current[..limit];
 
         #[cfg(debug_assertions)]
         let mut last = SystemTime::now();
@@ -940,7 +782,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
                 cb(self, std::ffi::CString::new(error).unwrap().as_c_str().as_ptr(), error.len());
               }
 
-              return consumed;
+              break;
             },
             _ => {}
           }
@@ -955,13 +797,13 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
             if result < RESERVED_NEGATIVE_ADVANCES {
               // If SUSPEND was returned, it means the parser is not to be paused but there is not enough data yet
               self.paused = result == PAUSE;
-              return consumed;
+              break;
             }
 
             let advance = -result as usize;
             self.position += advance;
             consumed += advance;
-            return consumed;
+            break;
           }
 
           let advance = result as usize;
@@ -983,103 +825,126 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
           }
         }
 
+        if consumed < limit {
+          self.spans.unconsumed = current.to_vec();
+        } else {
+          self.spans.unconsumed.clear();
+        }
+
         consumed
       }
 
-      pub fn pause(&mut self) {
-        self.paused = true;
-      }
-
-      pub fn resume(&mut self) {
-        self.values.skip_next_callback = 1;
-        self.paused = false;
-      }
-
-      pub fn finish(&mut self) {
-        match self.state {
-          State::START | State::FINISH => {
-            self.state = State::FINISH;
-          },
-          _ => {
-            self.fail_str(Error::UNEXPECTED_EOF, "unexpected end of data");
-          }
-        };
-      }
+      #(#body)*
     }
+  };
 
-    #[no_mangle]
-    pub extern "C" fn free_string(s: *mut c_char) {
-      unsafe {
-        if s.is_null() {
-          return;
-        }
+  TokenStream::from(output)
+}
 
-        let _ = CString::from_raw(s);
-      }
-    }
+#[proc_macro]
+pub fn generate_parser_interface(input: TokenStream) -> TokenStream {
+  let body_block: Block = parse_macro_input!(input as Block);
+  let body = body_block.stmts;
 
-    #[no_mangle]
-    pub extern "C" fn create_parser() -> *mut Parser {
-      Box::into_raw(Box::new(Parser::new()))
-    }
+  let states_to_string_arms: Vec<Arm> = STATES
+    .lock()
+    .unwrap()
+    .iter()
+    .map(|x| parse_str::<Arm>(&format!("State::{} => \"{}\"", x, x)).unwrap())
+    .collect();
 
-    #[no_mangle]
-    pub extern "C" fn free_parser(ptr: *mut Parser) {
-      if ptr.is_null() {
-        return;
-      }
+  let error_to_string_arms: Vec<Arm> = ERRORS
+    .lock()
+    .unwrap()
+    .iter()
+    .map(|x| parse_str::<Arm>(&format!("Error::{} => \"{}\"", x, x)).unwrap())
+    .collect();
 
-      unsafe {
-        let _ =  Box::from_raw(ptr);
-      }
-    }
+  let method_as_int_arms: Vec<Arm> = METHODS
+    .lock()
+    .unwrap()
+    .iter()
+    .enumerate()
+    .map(|(i, x)| parse_str::<Arm>(&format!("\"{}\" => {}", x, i)).unwrap())
+    .collect();
 
-    #[no_mangle]
-    pub extern "C" fn get_owner(parser: *mut Parser) -> *mut c_void {
-      unsafe {
-        match parser.as_mut().unwrap().owner {
-          Some(x) => x,
-          None => std::ptr::null_mut()
+  let values_getters: Vec<_> = VALUES
+    .lock()
+    .unwrap()
+    .iter()
+    .map(|value| {
+      let getter = format_ident!("get_{}", value);
+      let key = format_ident!("{}", value);
+
+      quote! {
+        #[no_mangle]
+        pub extern "C" fn #getter(parser: *mut Parser) -> isize {
+          unsafe { (*parser).values.#key }
         }
       }
-    }
+    })
+    .collect();
 
-    #[no_mangle]
-    pub extern "C" fn set_owner(parser: *mut Parser, ptr: *mut c_void) {
-      unsafe {
-        parser.as_mut().unwrap().owner = if ptr.is_null() { None } else { Some(ptr) };
+  let user_writable_values_ref = USER_WRITABLE_VALUES.lock().unwrap();
+  let values_setters: Vec<_> = user_writable_values_ref
+    .iter()
+    .map(|value| {
+      let setter = format_ident!("set_{}", value);
+      let key = format_ident!("{}", value);
+
+      quote! {
+        #[no_mangle]
+        pub extern "C" fn #setter(parser: *mut Parser, value: isize) {
+          unsafe { (*parser).values.#key = value; }
+        }
       }
-    }
+    })
+    .collect();
 
-    #[no_mangle]
-    pub extern "C" fn parse(parser: *mut Parser, data: *const c_char, skip: usize, limit: usize) -> usize {
-      unsafe { parser.as_mut().unwrap().parse(data, skip, limit) }
-    }
+  let spans_ref = SPANS.lock().unwrap();
+  let spans_getters: Vec<_> = spans_ref
+    .iter()
+    .map(|span| {
+      let getter = format_ident!("get_{}_string", span);
+      let key = format_ident!("{}", span);
 
-    #[no_mangle]
-    pub extern "C" fn pause_parser(parser: *mut Parser) {
-      unsafe { parser.as_mut().unwrap().pause() }
-    }
+      quote! {
+        #[no_mangle]
+        pub extern "C" fn #getter(parser: *mut Parser) -> *mut c_char {
+          unsafe { CString::from_vec_unchecked((*parser).spans.#key.clone()).into_raw() }
+        }
+      }
+    })
+    .collect();
 
-    #[no_mangle]
-    pub extern "C" fn resume_parser(parser: *mut Parser) {
-      unsafe { parser.as_mut().unwrap().resume() }
-    }
+  let mut callbacks: Vec<Ident> = CALLBACKS
+    .lock()
+    .unwrap()
+    .iter()
+    .map(|x| format_ident!("{}", x))
+    .collect();
 
-    #[no_mangle]
-    pub extern "C" fn finish_parser(parser: *mut Parser) {
-      unsafe { parser.as_mut().unwrap().finish() }
-    }
+  for x in spans_ref.iter() {
+    callbacks.push(format_ident!("on_data_{}", x));
+  }
 
-    #[no_mangle]
-    pub extern "C" fn is_paused(parser: *mut Parser) -> bool {
-      unsafe { parser.as_mut().unwrap().paused }
-    }
+  let callbacks_setters: Vec<_> = callbacks
+    .iter()
+    .map(|callback| {
+      let setter = format_ident!("set_{}", callback);
+      let key = format_ident!("{}", callback);
 
-    #[no_mangle]
-    pub extern "C" fn get_state(parser: *mut Parser) -> u8 {
-      unsafe { parser.as_mut().unwrap().state as u8 }
-    }
+      quote! {
+        #[no_mangle]
+        pub extern "C" fn #setter(parser: *mut Parser, callback: Callback) {
+          unsafe { (*parser).callbacks.#key = callback };
+        }
+      }
+    })
+    .collect();
+
+  let output = quote! {
+    #(#body)*
 
     #[no_mangle]
     pub extern "C" fn get_state_string(parser: *mut Parser) -> *mut c_char {
@@ -1092,39 +957,19 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
       std::ffi::CString::new(string).unwrap().into_raw()
     }
 
-    #[no_mangle]
-    pub extern "C" fn get_position(parser: *mut Parser) -> usize {
-      unsafe { (*parser).position }
-    }
-
-    #(#values_getters)*
-
-    #(#values_setters)*
-
-    #(#spans_getters)*
-
-    #[no_mangle]
-    pub extern "C" fn get_error_code(parser: *mut Parser) -> u8 {
-      unsafe { (*parser).error_code as u8 }
-    }
 
     #[no_mangle]
     pub extern "C" fn get_error_code_string(parser: *mut Parser) -> *mut c_char {
       let string = match unsafe { (*parser).error_code } {
         Error::NONE => "NONE",
-        Error::UNEXPECTED_DATA => "UNEXPECTED_DATA`",
-        Error::UNEXPECTED_EOF => "UNEXPECTED_EOF`",
+        Error::UNEXPECTED_DATA => "UNEXPECTED_DATA",
+        Error::UNEXPECTED_EOF => "UNEXPECTED_EOF",
         Error::CALLBACK_ERROR => "CALLBACK_ERROR",
 
         #(#error_to_string_arms),*
       };
 
       std::ffi::CString::new(string).unwrap().into_raw()
-    }
-
-    #[no_mangle]
-    pub extern "C" fn get_error_code_description(parser: *mut Parser) -> *mut c_char {
-      unsafe { std::ffi::CString::new((*parser).error_description.clone()).unwrap().into_raw() }
     }
 
     #[no_mangle]
@@ -1136,6 +981,12 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
         }
       }
     }
+
+    #(#values_getters)*
+
+    #(#values_setters)*
+
+    #(#spans_getters)*
 
     #(#callbacks_setters)*
   };

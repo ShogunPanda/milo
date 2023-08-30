@@ -32,7 +32,7 @@ mod test {
     parser.parse(response, length(response));
     assert!(matches!(parser.state, State::ERROR));
 
-    parser.reset();
+    parser.reset(false);
 
     parser.values.mode = RESPONSE;
     parser.parse(request, length(request));
@@ -227,7 +227,7 @@ mod test {
     parser.parse(close_connection, length(close_connection));
     assert!(matches!(parser.state, State::FINISH));
 
-    parser.reset();
+    parser.reset(false);
 
     let keep_alive_connection = http(
       r#"
@@ -290,7 +290,7 @@ mod test {
     parser.finish();
     assert!(matches!(parser.state, State::FINISH));
 
-    parser.reset();
+    parser.reset(false);
 
     let close_connection = http(
       r#"
@@ -307,7 +307,7 @@ mod test {
     parser.finish();
     assert!(matches!(parser.state, State::FINISH));
 
-    parser.reset();
+    parser.reset(false);
 
     let keep_alive_connection = http(
       r#"
@@ -323,7 +323,7 @@ mod test {
     parser.finish();
     assert!(matches!(parser.state, State::FINISH));
 
-    parser.reset();
+    parser.reset(false);
 
     let incomplete = http(
       r#"

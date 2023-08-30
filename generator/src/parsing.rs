@@ -33,8 +33,8 @@ pub struct State {
 
 impl Parse for Char {
   fn parse(input: ParseStream) -> Result<Self> {
-    let mut identifier: Option<Ident> = None;
-    let mut byte: Option<LitByte> = None;
+    let mut identifier = None;
+    let mut byte = None;
 
     if input.peek(Ident) {
       identifier = Some(input.parse()?);
@@ -56,13 +56,13 @@ impl Parse for Char {
 impl Parse for CharRange {
   fn parse(input: ParseStream) -> Result<Self> {
     // Get the state name
-    let identifier: Ident = input.parse()?;
+    let identifier = input.parse()?;
     input.parse::<Token![,]>()?;
 
     // Get the range
-    let from: LitChar = input.parse()?;
+    let from = input.parse::<LitChar>()?;
     input.parse::<Token![,]>()?;
-    let to: LitChar = input.parse()?;
+    let to = input.parse::<LitChar>()?;
 
     Ok(CharRange {
       identifier,
@@ -90,7 +90,7 @@ impl Identifiers {
   }
 
   fn parse(input: ParseStream, min: usize, max: usize) -> Result<Self> {
-    let mut identifiers: Vec<Ident> = vec![];
+    let mut identifiers = vec![];
 
     while !input.is_empty() {
       identifiers.push(input.parse()?);
@@ -113,13 +113,13 @@ impl Identifiers {
 impl Parse for Failure {
   fn parse(input: ParseStream) -> Result<Self> {
     // Get the code
-    let error: Ident = input.parse()?;
+    let error = input.parse()?;
 
     // Discard the comma
     input.parse::<Token![,]>()?;
 
     // Get the message
-    let message: LitStr = input.parse()?;
+    let message = input.parse()?;
 
     Ok(Failure { error, message })
   }
@@ -127,8 +127,8 @@ impl Parse for Failure {
 
 impl Parse for Move {
   fn parse(input: ParseStream) -> Result<Self> {
-    let state: Ident = input.parse()?;
-    let mut advance: isize = 1;
+    let state = input.parse()?;
+    let mut advance = 1;
 
     if !input.is_empty() {
       // Discard the comma
@@ -144,13 +144,13 @@ impl Parse for Move {
 impl Parse for State {
   fn parse(input: ParseStream) -> Result<Self> {
     // Get the state name
-    let name: Ident = input.parse()?;
+    let name = input.parse()?;
 
     // Skip the comma
     input.parse::<Token![,]>()?;
 
     // Get the body
-    let body: Block = input.parse()?;
+    let body = input.parse::<Block>()?;
 
     Ok(State {
       name,

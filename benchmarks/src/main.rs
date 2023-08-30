@@ -11,7 +11,7 @@ static KBYTES: usize = 8 << 30;
 mod benchmark;
 
 fn main() {
-  let mut samples: Vec<(&str, *mut i8)> = vec![];
+  let mut samples = vec![];
 
   samples.push(
     (
@@ -57,7 +57,7 @@ fn main() {
 
   for (name, payload) in samples {
     let len = length(payload) as f64;
-    let iterations: f64 = KBYTES as f64 / len;
+    let iterations = KBYTES as f64 / len;
     let total = iterations * len;
     let mut parser = Parser::new();
 

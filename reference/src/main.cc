@@ -456,7 +456,7 @@ int main()
   milo::set_on_trailer_value(parser, on_trailer_value);
   milo::set_on_trailers_complete(parser, on_trailers_complete);
 
-  usize consumed = milo::parse(parser, request1, strlen(request1));
+  usize consumed = milo::execute_parser(parser, request1, strlen(request1));
   usize pos = milo::get_position(parser);
   auto *state = milo::get_state_string(parser);
 
@@ -464,7 +464,7 @@ int main()
   milo::free_string(state);
 
   printf("--- --- --- ---\n");
-  consumed = milo::parse(parser, request2, strlen(request2));
+  consumed = milo::execute_parser(parser, request2, strlen(request2));
   pos = milo::get_position(parser);
   state = milo::get_state_string(parser);
 

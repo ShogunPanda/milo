@@ -43,7 +43,7 @@ values!(
 
 user_writable_values!(id, mode, is_connect_request, skip_body);
 
-persistent_values!(id, mode, continue_without_data, skip_next_callback, uncu);
+persistent_values!(id, mode, continue_without_data, skip_next_callback);
 
 spans!(
   unconsumed,
@@ -79,7 +79,8 @@ errors!(
   INVALID_CONTENT_LENGTH,
   INVALID_TRANSFER_ENCODING,
   INVALID_CHUNK_SIZE,
-  MISSING_CONNECTION_UPGRADE
+  MISSING_CONNECTION_UPGRADE,
+  UNSUPPORTED_HTTP_VERSION
 );
 
 callbacks!(
@@ -198,16 +199,16 @@ state!(request_method, {
       1
     }
     char!(' ') => {
+      // TODO@PI: Can we avoid CString here?
       let method_str = get_span!(method);
-
-      if get_span!(method) == "CONNECT" {
-        parser.values.is_connect_request = 1;
-      }
-
       let method = method_as_int(std::ffi::CString::new(method_str).unwrap().into_raw());
 
       if method == -1 {
         return fail!(UNEXPECTED_CHARACTER, "Invalid method");
+      }
+
+      if method == METHOD_CONNECT {
+        parser.values.is_connect_request = 1;
       }
 
       parser.values.method = method;
@@ -324,6 +325,10 @@ state!(request_version_minor, {
 });
 
 state!(request_version_complete, {
+  if parser.values.method == METHOD_PRI {
+    return fail!(UNSUPPORTED_HTTP_VERSION, "HTTP/2.0 is not supported");
+  }
+
   callback!(on_version_complete);
   move_to!(header_start, 0)
 });
@@ -481,7 +486,6 @@ state!(response_reason_complete, {
 // #region headers
 fn save_header(parser: &mut Parser, field: &str, raw_value: &str) -> bool {
   let value = raw_value.to_lowercase();
-  let value = value.trim();
 
   // Save some headers which impact how we parse the rest of the message
   match field {
@@ -523,8 +527,8 @@ fn save_header(parser: &mut Parser, field: &str, raw_value: &str) -> bool {
         );
 
         return false;
-      } else if status / 100 == 1 || status == 304 {
-        // Note that Transfer-Encoding is allowed in 304
+      } else if status == 304 {
+        // Note that Transfer-Encoding is NOT allowed in 304
         parser.fail(
           Error::UNEXPECTED_TRANSFER_ENCODING,
           format!(
@@ -537,6 +541,7 @@ fn save_header(parser: &mut Parser, field: &str, raw_value: &str) -> bool {
       }
 
       // If chunked is the last encoding
+      let value = value.trim();
       if value == "chunked" || value.ends_with(",chunked") || value.ends_with(", chunked") {
         /*
           If this is 1, it means the Transfer-Encoding header was specified more than once.
@@ -562,7 +567,7 @@ fn save_header(parser: &mut Parser, field: &str, raw_value: &str) -> bool {
         return false;
       }
     }
-    "connection" => match value {
+    "connection" => match value.as_str() {
       "close" => {
         parser.values.connection = CONNECTION_CLOSE;
       }
@@ -700,7 +705,7 @@ state!(headers_complete, {
 state!(choose_body, {
   parser.values.continue_without_data = 1;
 
-  let method = get_span!(method);
+  let method = parser.values.method;
   let status = parser.values.status;
 
   // In case of Connection: Upgrade
@@ -724,7 +729,7 @@ state!(choose_body, {
     return move_to!(tunnel, 0);
   }
 
-  if method == "GET" || method == "HEAD" {
+  if method == METHOD_GET || method == METHOD_HEAD {
     if parser.values.expected_content_length > 0 {
       parser.values.continue_without_data = 0;
 
@@ -737,11 +742,15 @@ state!(choose_body, {
 
   // RFC 9110 section 6.3
   if parser.values.message_type == REQUEST {
-    if parser.values.has_content_length == 0 && parser.values.has_chunked_transfer_encoding == 0 {
+    if parser.values.has_content_length == 1 {
+      if parser.values.expected_content_length == 0 {
+        return complete_message(parser, 0);
+      }
+    } else if parser.values.has_chunked_transfer_encoding == 0 {
       return complete_message(parser, 0);
     }
   } else {
-    if (status < 200 && status != 101) || method == "HEAD" || parser.values.skip_body == 1 {
+    if (status < 200 && status != 101) || method == METHOD_HEAD || parser.values.skip_body == 1 {
       return complete_message(parser, 0);
     }
 
@@ -762,6 +771,8 @@ state!(choose_body, {
 // RFC 9110 section 6.4.1
 #[inline(always)]
 fn complete_message(parser: &mut Parser, advance: isize) -> isize {
+  callback!(on_message_complete);
+
   let connection = parser.values.connection;
 
   parser.values.clear();
@@ -1091,8 +1102,6 @@ state!(message_complete, {
   let must_close = parser.values.connection == CONNECTION_CLOSE;
   parser.values.connection = 0;
 
-  callback!(on_message_complete);
-
   if must_close {
     move_to!(finish, 0)
   } else {
@@ -1168,7 +1177,6 @@ generate_parser!({
   }
 
   pub fn resume(&mut self) {
-    self.values.skip_next_callback = 1;
     self.paused = false;
   }
 
@@ -1225,7 +1233,12 @@ generate_parser_interface!({
   }
 
   #[no_mangle]
-  pub extern "C" fn parse(parser: *mut Parser, data: *const c_char, limit: usize) -> usize {
+  pub extern "C" fn reset_parser(parser: *mut Parser, keep_position: bool) {
+    unsafe { parser.as_mut().unwrap().reset(keep_position) }
+  }
+
+  #[no_mangle]
+  pub extern "C" fn execute_parser(parser: *mut Parser, data: *const c_char, limit: usize) -> usize {
     unsafe { parser.as_mut().unwrap().parse(data, limit) }
   }
 

@@ -12,9 +12,9 @@ const toReplace = `#define MILO_H`
 const code = `
 ${toReplace}
 #define MILO_VERSION "${version}"
-#define MILO_VERSION_MAJOR "${semver.major(version)}"
-#define MILO_VERSION_MINOR "${semver.minor(version)}"
-#define MILO_VERSION_PATCH "${semver.patch(version)}"
+#define MILO_VERSION_MAJOR ${semver.major(version)}
+#define MILO_VERSION_MINOR ${semver.minor(version)}
+#define MILO_VERSION_PATCH ${semver.patch(version)}
 `.trim()
 
 const header = await readFile(headerPath, 'utf-8')

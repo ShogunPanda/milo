@@ -8,7 +8,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use std::path::Path;
 use std::sync::Mutex;
-use syn::{parse_macro_input, parse_str, Arm, Block, ExprMethodCall, Ident, LitByte, LitInt, LitStr};
+use syn::{parse_macro_input, parse_str, Arm, Block, ExprMethodCall, Ident, ItemConst, LitByte, LitInt, LitStr};
 
 use parsing::{Char, CharRange, Failure, Identifiers, Move, State};
 
@@ -21,7 +21,7 @@ lazy_static! {
     let mut absolute_path = Path::new(file!()).parent().unwrap().to_path_buf();
     absolute_path.push("methods.yml");
     let f = std::fs::File::open(absolute_path.to_str().unwrap()).unwrap();
-    let methods: Vec<String> = serde_yaml::from_reader(f).unwrap();
+    let methods = serde_yaml::from_reader(f).unwrap();
 
     Mutex::new(methods)
   };
@@ -41,7 +41,7 @@ fn format_state(ident: &Ident) -> Ident {
 // #region definitions
 #[proc_macro]
 pub fn values(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
+  let definition = parse_macro_input!(input with Identifiers::unbound);
 
   let mut values = VALUES.lock().unwrap();
 
@@ -54,7 +54,7 @@ pub fn values(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn user_writable_values(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
+  let definition = parse_macro_input!(input with Identifiers::unbound);
 
   let mut values = USER_WRITABLE_VALUES.lock().unwrap();
 
@@ -67,7 +67,7 @@ pub fn user_writable_values(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn persistent_values(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
+  let definition = parse_macro_input!(input with Identifiers::unbound);
 
   let mut values = PERSISTENT_VALUES.lock().unwrap();
 
@@ -80,7 +80,7 @@ pub fn persistent_values(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn spans(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
+  let definition = parse_macro_input!(input with Identifiers::unbound);
 
   let mut spans = SPANS.lock().unwrap();
 
@@ -93,7 +93,7 @@ pub fn spans(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn errors(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
+  let definition = parse_macro_input!(input with Identifiers::unbound);
 
   let mut errors = ERRORS.lock().unwrap();
 
@@ -106,7 +106,7 @@ pub fn errors(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn callbacks(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
+  let definition = parse_macro_input!(input with Identifiers::unbound);
 
   let mut callbacks = CALLBACKS.lock().unwrap();
 
@@ -119,7 +119,7 @@ pub fn callbacks(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn measure(input: TokenStream) -> TokenStream {
-  let definition: State = parse_macro_input!(input as State);
+  let definition = parse_macro_input!(input as State);
   let name = definition.name.to_string();
   let statements = definition.statements;
 
@@ -139,7 +139,7 @@ pub fn measure(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn state(input: TokenStream) -> TokenStream {
-  let definition: State = parse_macro_input!(input as State);
+  let definition = parse_macro_input!(input as State);
   let name = definition.name;
   let statements = definition.statements;
 
@@ -155,7 +155,7 @@ pub fn state(input: TokenStream) -> TokenStream {
 // #region matchers
 #[proc_macro]
 pub fn char(input: TokenStream) -> TokenStream {
-  let definition: Char = parse_macro_input!(input as Char);
+  let definition = parse_macro_input!(input as Char);
 
   let quote = if let Some(identifier) = definition.identifier {
     if let Some(byte) = definition.byte {
@@ -173,7 +173,7 @@ pub fn char(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn char_in_range(input: TokenStream) -> TokenStream {
-  let definition: CharRange = parse_macro_input!(input as CharRange);
+  let definition = parse_macro_input!(input as CharRange);
   let identifier = definition.identifier;
   let from = definition.from;
   let to = definition.to;
@@ -183,8 +183,8 @@ pub fn char_in_range(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn string(input: TokenStream) -> TokenStream {
-  let definition: LitStr = parse_macro_input!(input as LitStr);
-  let bytes: Vec<LitByte> = definition
+  let definition = parse_macro_input!(input as LitStr);
+  let bytes: Vec<_> = definition
     .value()
     .bytes()
     .map(|b| LitByte::new(b, definition.span()))
@@ -209,7 +209,7 @@ pub fn digit(input: TokenStream) -> TokenStream {
   if input.is_empty() {
     TokenStream::from(quote! { [0x30..=0x39, ..] })
   } else {
-    let identifier: Ident = parse_macro_input!(input as Ident);
+    let identifier = parse_macro_input!(input as Ident);
 
     TokenStream::from(quote! { [#identifier @ (0x30..=0x39), ..] })
   }
@@ -220,7 +220,7 @@ pub fn hex_digit(input: TokenStream) -> TokenStream {
   if input.is_empty() {
     TokenStream::from(quote! { [0x30..=0x39 | 0x41..=0x46 | 0x61..=0x66, ..] })
   } else {
-    let identifier: Ident = parse_macro_input!(input as Ident);
+    let identifier = parse_macro_input!(input as Ident);
 
     TokenStream::from(quote! { [#identifier @ (0x30..=0x39 | 0x41..=0x46 | 0x61..=0x66), ..] })
   }
@@ -244,7 +244,7 @@ pub fn token(input: TokenStream) -> TokenStream {
   if input.is_empty() {
     TokenStream::from(quote! { [ #tokens, ..] })
   } else {
-    let identifier: Ident = parse_macro_input!(input as Ident);
+    let identifier = parse_macro_input!(input as Ident);
 
     TokenStream::from(quote! { [ #identifier @(#tokens) , ..] })
   }
@@ -252,9 +252,9 @@ pub fn token(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn otherwise(input: TokenStream) -> TokenStream {
-  let definition: LitInt = parse_macro_input!(input as LitInt);
+  let definition = parse_macro_input!(input as LitInt);
   let tokens = definition.base10_parse::<isize>().unwrap();
-  let quotes: Vec<Ident> = (0..tokens).map(|x| format_ident!("_u{}", format!("{}", x))).collect();
+  let quotes: Vec<_> = (0..tokens).map(|x| format_ident!("_u{}", format!("{}", x))).collect();
 
   TokenStream::from(quote! { [ #(#quotes),*, .. ] })
 }
@@ -271,7 +271,7 @@ pub fn method(input: TokenStream) -> TokenStream {
   let output: Vec<_> = if input.is_empty() {
     methods.iter().map(|x| quote! { string!(#x) }).collect()
   } else {
-    let identifier: Ident = parse_macro_input!(input as Ident);
+    let identifier = parse_macro_input!(input as Ident);
     methods.iter().map(|x| quote! { #identifier @ string!(#x) }).collect()
   };
 
@@ -297,7 +297,7 @@ pub fn url(input: TokenStream) -> TokenStream {
   if input.is_empty() {
     TokenStream::from(quote! { [ #tokens, ..] })
   } else {
-    let identifier: Ident = parse_macro_input!(input as Ident);
+    let identifier = parse_macro_input!(input as Ident);
     TokenStream::from(quote! { [ #identifier @ (#tokens), ..] })
   }
 }
@@ -306,7 +306,7 @@ pub fn url(input: TokenStream) -> TokenStream {
 // #region actions
 #[proc_macro]
 pub fn fail(input: TokenStream) -> TokenStream {
-  let definition: Failure = parse_macro_input!(input as Failure);
+  let definition = parse_macro_input!(input as Failure);
   let error = definition.error;
   let message = definition.message;
 
@@ -315,7 +315,7 @@ pub fn fail(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn move_to(input: TokenStream) -> TokenStream {
-  let definition: Move = parse_macro_input!(input as Move);
+  let definition = parse_macro_input!(input as Move);
   let state = format_state(&definition.state);
   let advance = definition.advance;
 
@@ -324,7 +324,7 @@ pub fn move_to(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn clear(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::one);
+  let definition = parse_macro_input!(input with Identifiers::one);
   let span = &definition.identifiers[0];
 
   TokenStream::from(quote! { parser.spans.#span.clear(); })
@@ -332,12 +332,12 @@ pub fn clear(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn reset(_input: TokenStream) -> TokenStream {
-  TokenStream::from(quote! { parser.reset(); })
+  TokenStream::from(quote! { parser.reset(false); })
 }
 
 #[proc_macro]
 pub fn append(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::two);
+  let definition = parse_macro_input!(input with Identifiers::two);
   let span = &definition.identifiers[0];
   let value = &definition.identifiers[1];
 
@@ -368,7 +368,7 @@ pub fn append(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn data_slice_callback(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::unbound);
+  let definition = parse_macro_input!(input with Identifiers::unbound);
 
   let second_last_index = definition.identifiers.len() - 2;
   let callbacks: &[Ident] = &definition.identifiers[0..second_last_index];
@@ -377,7 +377,7 @@ pub fn data_slice_callback(input: TokenStream) -> TokenStream {
 
   TokenStream::from(quote! {
     {
-      let callbacks: Vec<ActiveCallback> = [#(parser.callbacks.#callbacks),*]
+      let callbacks: Vec<_> = [#(parser.callbacks.#callbacks),*]
         .iter()
         .filter(|x| x.is_some())
         .map(|x| x.unwrap())
@@ -404,7 +404,7 @@ pub fn data_slice_callback(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn get_span(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::one);
+  let definition = parse_macro_input!(input with Identifiers::one);
   let span = &definition.identifiers[0];
 
   TokenStream::from(quote! { parser.get_span(&parser.spans.#span) })
@@ -412,7 +412,7 @@ pub fn get_span(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn get_value(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::one);
+  let definition = parse_macro_input!(input with Identifiers::one);
   let value = &definition.identifiers[0];
 
   TokenStream::from(quote! { parser.values.#value })
@@ -420,7 +420,7 @@ pub fn get_value(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn set_value(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::two);
+  let definition = parse_macro_input!(input with Identifiers::two);
   let name = &definition.identifiers[0];
   let value = &definition.identifiers[1];
 
@@ -429,7 +429,7 @@ pub fn set_value(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn inc(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::one);
+  let definition = parse_macro_input!(input with Identifiers::one);
   let value = &definition.identifiers[0];
 
   TokenStream::from(quote! { parser.values.#value += 1; })
@@ -437,7 +437,7 @@ pub fn inc(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn dec(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::one);
+  let definition = parse_macro_input!(input with Identifiers::one);
   let value = &definition.identifiers[0];
 
   TokenStream::from(quote! { parser.values.#value -= 1; })
@@ -445,7 +445,7 @@ pub fn dec(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn callback(input: TokenStream) -> TokenStream {
-  let definition: Identifiers = parse_macro_input!(input with Identifiers::one_or_two);
+  let definition = parse_macro_input!(input with Identifiers::one_or_two);
   let callback = &definition.identifiers[0];
   let span = definition.identifiers.get(1);
 
@@ -480,22 +480,28 @@ pub fn suspend(_input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn generate_parser(input: TokenStream) -> TokenStream {
-  let body_block: Block = parse_macro_input!(input as Block);
+  let body_block = parse_macro_input!(input as Block);
   let body = body_block.stmts;
 
-  let methods: Vec<Ident> = METHODS
-    .lock()
-    .unwrap()
+  let methods_ref = METHODS.lock().unwrap();
+
+  let methods: Vec<_> = methods_ref
     .iter()
     .map(|x| format_ident!("{}", x.replace("-", "_")))
     .collect();
 
+  let methods_consts: Vec<_> = methods_ref
+    .iter()
+    .enumerate()
+    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const METHOD_{}: isize = {};", x.replace("-", "_"), i)).unwrap())
+    .collect();
+
   let states_ref = STATES.lock().unwrap();
   let initial_state = format_ident!("{}", states_ref[0]);
-  let states: Vec<Ident> = states_ref.iter().map(|x| format_ident!("{}", x)).collect();
+  let states: Vec<_> = states_ref.iter().map(|x| format_ident!("{}", x)).collect();
 
   // Generate all the branches
-  let states_arms: Vec<Arm> = states_ref
+  let states_arms: Vec<_> = states_ref
     .iter()
     .map(|x| {
       parse_str::<Arm>(&format!(
@@ -507,21 +513,35 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
     })
     .collect();
 
+  let states_consts: Vec<_> = states_ref
+    .iter()
+    .enumerate()
+    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const STATES_{}: isize = {};", x, i)).unwrap())
+    .collect();
+
   let values_ref = VALUES.lock().unwrap();
-  let values: Vec<Ident> = values_ref.iter().map(|x| format_ident!("{}", x)).collect();
+  let values: Vec<_> = values_ref.iter().map(|x| format_ident!("{}", x)).collect();
 
   let persistent_values_ref = PERSISTENT_VALUES.lock().unwrap();
-  let clearable_values: Vec<Ident> = values_ref
+  let clearable_values: Vec<_> = values_ref
     .iter()
     .filter(|x| !persistent_values_ref.contains(x.clone()))
     .map(|x| format_ident!("{}", x))
     .collect();
 
-  let spans: Vec<Ident> = SPANS.lock().unwrap().iter().map(|x| format_ident!("{}", x)).collect();
+  let spans: Vec<_> = SPANS.lock().unwrap().iter().map(|x| format_ident!("{}", x)).collect();
 
-  let errors: Vec<Ident> = ERRORS.lock().unwrap().iter().map(|x| format_ident!("{}", x)).collect();
+  let errors_ref = ERRORS.lock().unwrap();
 
-  let mut callbacks: Vec<Ident> = CALLBACKS
+  let errors: Vec<_> = errors_ref.iter().map(|x| format_ident!("{}", x)).collect();
+
+  let errors_consts: Vec<_> = errors_ref
+    .iter()
+    .enumerate()
+    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const ERROR_{}: isize = {};", x, i)).unwrap())
+    .collect();
+
+  let mut callbacks: Vec<_> = CALLBACKS
     .lock()
     .unwrap()
     .iter()
@@ -532,12 +552,12 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
     callbacks.push(format_ident!("on_data_{}", x));
   }
 
-  let states_debug: Vec<Arm> = states
+  let states_debug: Vec<_> = states
     .iter()
     .map(|x| parse_str::<Arm>(&format!("State::{} => write!(f, \"State::{}\")", x, x)).unwrap())
     .collect();
 
-  let values_debug: ExprMethodCall = parse_str::<ExprMethodCall>(&format!(
+  let values_debug = parse_str::<ExprMethodCall>(&format!(
     "f.debug_struct(\"Values\"){}.finish()",
     values
       .iter()
@@ -547,7 +567,7 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
   ))
   .unwrap();
 
-  let spans_debug: ExprMethodCall = parse_str::<ExprMethodCall>(&format!(
+  let spans_debug = parse_str::<ExprMethodCall>(&format!(
     "f.debug_struct(\"Spans\"){}.finish()",
     spans
       .iter()
@@ -562,7 +582,7 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
   ))
   .unwrap();
 
-  let callbacks_debug: ExprMethodCall = parse_str::<ExprMethodCall>(&format!(
+  let callbacks_debug = parse_str::<ExprMethodCall>(&format!(
     "f.debug_struct(\"Callbacks\"){}.finish()",
     callbacks
       .iter()
@@ -579,6 +599,12 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
     pub const RESERVED_NEGATIVE_ADVANCES: isize = #RESERVED_NEGATIVE_ADVANCES;
     pub const SUSPEND: isize = #SUSPEND;
     pub const PAUSE: isize = #PAUSE;
+
+    #(#errors_consts)*
+
+    #(#methods_consts)*
+
+    #(#states_consts)*
 
     #[derive(Debug)]
     pub struct Parser {
@@ -712,10 +738,13 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
         }
       }
 
-      pub fn reset(&mut self) {
+      pub fn reset(&mut self, keep_position: bool) {
         self.state = State::#initial_state;
         self.paused = false;
-        self.position = 0;
+
+        if !keep_position {
+          self.position = 0;
+        }
         self.values.clear();
         self.spans.clear();
         self.error_code = Error::NONE;
@@ -729,7 +758,7 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
 
         let mut aggregate: Vec<u8>;
         let unconsumed_len = self.spans.unconsumed.len();
-        let mut consumed: usize = 0;
+        let mut consumed = 0;
         let mut current = unsafe { &*(std::slice::from_raw_parts(data, limit) as *const _ as *const [u8]) };
 
         if unconsumed_len > 0 {
@@ -797,6 +826,10 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
             if result < RESERVED_NEGATIVE_ADVANCES {
               // If SUSPEND was returned, it means the parser is not to be paused but there is not enough data yet
               self.paused = result == PAUSE;
+
+              // Do not re-execute the callback when pausing due a callback
+              self.values.skip_next_callback = if result == PAUSE { 1 } else { 0 };
+
               break;
             }
 
@@ -843,24 +876,24 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn generate_parser_interface(input: TokenStream) -> TokenStream {
-  let body_block: Block = parse_macro_input!(input as Block);
+  let body_block = parse_macro_input!(input as Block);
   let body = body_block.stmts;
 
-  let states_to_string_arms: Vec<Arm> = STATES
+  let states_to_string_arms: Vec<_> = STATES
     .lock()
     .unwrap()
     .iter()
     .map(|x| parse_str::<Arm>(&format!("State::{} => \"{}\"", x, x)).unwrap())
     .collect();
 
-  let error_to_string_arms: Vec<Arm> = ERRORS
+  let error_to_string_arms: Vec<_> = ERRORS
     .lock()
     .unwrap()
     .iter()
     .map(|x| parse_str::<Arm>(&format!("Error::{} => \"{}\"", x, x)).unwrap())
     .collect();
 
-  let method_as_int_arms: Vec<Arm> = METHODS
+  let method_as_int_arms: Vec<_> = METHODS
     .lock()
     .unwrap()
     .iter()
@@ -917,7 +950,7 @@ pub fn generate_parser_interface(input: TokenStream) -> TokenStream {
     })
     .collect();
 
-  let mut callbacks: Vec<Ident> = CALLBACKS
+  let mut callbacks: Vec<_> = CALLBACKS
     .lock()
     .unwrap()
     .iter()

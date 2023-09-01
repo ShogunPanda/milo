@@ -1,8 +1,9 @@
+#![allow(unused_attributes)]
 #![feature(test)]
 
 use std::time::SystemTime;
 
-use milo::test_utils::{http, length};
+use milo::test_utils::http;
 use milo::Parser;
 
 static KBYTES: usize = 8 << 30;
@@ -56,17 +57,16 @@ fn main() {
   ));
 
   for (name, payload) in samples {
-    let len = length(payload) as f64;
+    let len = payload.len() as f64;
     let iterations = KBYTES as f64 / len;
+    println!("{} {}", len, iterations);
     let total = iterations * len;
     let mut parser = Parser::new();
 
     let start = SystemTime::now();
 
-    println!("{}", name);
-
     for _i in 0..(iterations as usize) {
-      parser.parse(payload, length(payload));
+      parser.parse(payload.as_ptr(), payload.len());
     }
 
     let time = SystemTime::now().duration_since(start).unwrap().as_secs_f64();

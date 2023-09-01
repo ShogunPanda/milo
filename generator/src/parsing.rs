@@ -1,3 +1,4 @@
+use std::os::raw::c_uchar;
 use syn::parse::{Parse, ParseStream};
 use syn::{Block, Ident, LitByte, LitChar, LitInt, LitStr, Result, Stmt, Token};
 
@@ -48,7 +49,10 @@ impl Parse for Char {
 
     // Get the state name
     let character = input.parse::<LitChar>()?;
-    byte = Some(LitByte::new(u8::try_from(character.value()).unwrap(), character.span()));
+    byte = Some(LitByte::new(
+      c_uchar::try_from(character.value()).unwrap(),
+      character.span(),
+    ));
     return Ok(Char { identifier, byte });
   }
 }
@@ -66,8 +70,8 @@ impl Parse for CharRange {
 
     Ok(CharRange {
       identifier,
-      from: LitByte::new(u8::try_from(from.value()).unwrap(), from.span()),
-      to: LitByte::new(u8::try_from(to.value()).unwrap(), to.span()),
+      from: LitByte::new(c_uchar::try_from(from.value()).unwrap(), from.span()),
+      to: LitByte::new(c_uchar::try_from(to.value()).unwrap(), to.span()),
     })
   }
 }

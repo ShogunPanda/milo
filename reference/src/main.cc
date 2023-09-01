@@ -1,413 +1,316 @@
 #include "milo.h"
 #include "stdio.h"
+#include "string.h"
 
-typedef intptr_t isize;
-typedef uintptr_t usize;
-const usize MAX_FORMAT = 1000;
+typedef intptr_t isize_t;
+typedef uintptr_t usize_t;
+typedef unsigned char uchar_t;
+const usize_t MAX_FORMAT = 1000;
 
-isize append_output(milo::Parser *parser, const char *message)
-{
-  printf("%s", message);
+uchar_t* create_string() {
+  return reinterpret_cast<uchar_t*>(malloc(sizeof(uchar_t) * MAX_FORMAT));
+}
+
+isize_t append_output(milo::Parser* parser, uchar_t* message, const uchar_t* data, usize_t size) {
+  if (data == NULL) {
+    printf("%-50s | cb_len=%lu cb_data=NULL\n", message, size);
+  } else {
+    uchar_t* read_data = create_string();
+    strncpy(reinterpret_cast<char*>(read_data), reinterpret_cast<const char*>(data), size);
+
+    printf("%-50s | cb_len=%lu cb_data=\"%s\"\n", message, size, read_data);
+  }
+
+  free(message);
   return 0;
 }
 
-isize show_data(const char *name, milo::Parser *parser, const char *data, usize size)
-{
-  usize position = milo::get_position(parser);
-  auto *message = (char *)malloc(sizeof(char) * MAX_FORMAT);
-  snprintf(message, MAX_FORMAT, "pos=%lu data[%s]=\"%s\" (len=%lu)\n", position, name, data, size);
-  return append_output(parser, message);
+isize_t show_data(const char* name, milo::Parser* parser, const uchar_t* data, usize_t size) {
+  usize_t position = milo::get_position(parser);
+  auto message = create_string();
+  uchar_t* read_data = create_string();
+  strncpy(reinterpret_cast<char*>(read_data), reinterpret_cast<const char*>(data), size);
+  snprintf((char*) message, MAX_FORMAT, "pos=%lu data[%s]=\"%s\" (len=%lu)", position, name, read_data, size);
+  return append_output(parser, message, data, size);
 }
 
-isize show_span(milo::Parser *parser, const char *name, const char *value)
-{
-  usize position = milo::get_position(parser);
-  auto *message = (char *)malloc(sizeof(char) * MAX_FORMAT);
-  snprintf(message, MAX_FORMAT, "pos=%lu span[%s]=\"%s\"\n", position, name, value);
-  return append_output(parser, message);
+isize_t show_span(milo::Parser* parser, const char* name, const uchar_t* value, const uchar_t* data, usize_t size) {
+  usize_t position = milo::get_position(parser);
+  auto message = create_string();
+  snprintf((char*) message, MAX_FORMAT, "pos=%lu span[%s]=\"%s\"", position, name, value);
+  return append_output(parser, message, data, size);
 }
 
-isize status_complete(const char *name, milo::Parser *parser)
-{
-  usize position = milo::get_position(parser);
-  auto *message = (char *)malloc(sizeof(char) * MAX_FORMAT);
-  snprintf(message, MAX_FORMAT, "pos=%lu %s complete\n", position, name);
-  return append_output(parser, message);
+isize_t status_complete(const char* name, milo::Parser* parser, const uchar_t* data, usize_t size) {
+  usize_t position = milo::get_position(parser);
+  auto message = create_string();
+  snprintf((char*) message, MAX_FORMAT, "pos=%lu %s complete", position, name);
+  return append_output(parser, message, data, size);
 }
 
-isize on_data_method(milo::Parser *parser, const char *data, usize size)
-{
+isize_t on_data_method(milo::Parser* parser, const uchar_t* data, usize_t size) {
   return show_data("method", parser, data, size);
 }
 
-isize on_data_url(milo::Parser *parser, const char *data, usize size)
-{
+isize_t on_data_url(milo::Parser* parser, const uchar_t* data, usize_t size) {
   return show_data("url", parser, data, size);
 }
 
-isize on_data_protocol(milo::Parser *parser, const char *data, usize size)
-{
+isize_t on_data_protocol(milo::Parser* parser, const uchar_t* data, usize_t size) {
   return show_data("protocol", parser, data, size);
 }
 
-isize on_data_version(milo::Parser *parser, const char *data, usize size)
-{
+isize_t on_data_version(milo::Parser* parser, const uchar_t* data, usize_t size) {
   return show_data("version", parser, data, size);
 }
 
-isize on_data_header_field(milo::Parser *parser, const char *data, usize size)
-{
+isize_t on_data_header_field(milo::Parser* parser, const uchar_t* data, usize_t size) {
   return show_data("header_field", parser, data, size);
 }
 
-isize on_data_header_value(milo::Parser *parser, const char *data, usize size)
-{
+isize_t on_data_header_value(milo::Parser* parser, const uchar_t* data, usize_t size) {
   return show_data("header_value", parser, data, size);
 }
 
-isize on_data_chunk_length(milo::Parser *parser, const char *data, usize size)
-{
+isize_t on_data_chunk_length(milo::Parser* parser, const uchar_t* data, usize_t size) {
   return show_data("chunk_length", parser, data, size);
 }
 
-isize on_data_chunk_extension_name(milo::Parser *parser, const char *data, usize size)
-{
+isize_t on_data_chunk_extension_name(milo::Parser* parser, const uchar_t* data, usize_t size) {
   return show_data("chunk_extension_name", parser, data, size);
 }
 
-isize on_data_chunk_extension_value(milo::Parser *parser, const char *data, usize size)
-{
+isize_t on_data_chunk_extension_value(milo::Parser* parser, const uchar_t* data, usize_t size) {
   return show_data("chunk_extension_value", parser, data, size);
 }
 
-isize on_data_chunk_data(milo::Parser *parser, const char *data, usize size)
-{
+isize_t on_data_chunk_data(milo::Parser* parser, const uchar_t* data, usize_t size) {
   return show_data("chunk_data", parser, data, size);
 }
 
-isize on_data_body(milo::Parser *parser, const char *data, usize size)
-{
+isize_t on_data_body(milo::Parser* parser, const uchar_t* data, usize_t size) {
   return show_data("body", parser, data, size);
 }
 
-isize on_data_trailer_field(milo::Parser *parser, const char *data, usize size)
-{
+isize_t on_data_trailer_field(milo::Parser* parser, const uchar_t* data, usize_t size) {
   return show_data("trailer_field", parser, data, size);
 }
 
-isize on_data_trailer_value(milo::Parser *parser, const char *data, usize size)
-{
+isize_t on_data_trailer_value(milo::Parser* parser, const uchar_t* data, usize_t size) {
   return show_data("trailer_value", parser, data, size);
 }
 
-isize on_error(milo::Parser *parser,
-               const char *data, usize size)
-{
-  usize position = milo::get_position(parser);
-  usize error_code = milo::get_error_code(parser);
+isize_t on_error(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  usize_t position = milo::get_position(parser);
+  usize_t error_code = milo::get_error_code(parser);
   auto error_code_string = milo::get_error_code_string(parser);
-  auto error_code_description = milo::get_error_code_description(parser);
+  auto error_code_description = milo::get_error_description_string(parser);
 
-  auto *message = (char *)malloc(sizeof(char) * MAX_FORMAT);
-  snprintf(message, MAX_FORMAT, "pos=%lu error code=%lu (%s) description=\"%s\"\n", position, error_code, error_code_string, error_code_description);
+  auto message = create_string();
+  snprintf(reinterpret_cast<char*>(message), MAX_FORMAT, "pos=%lu error code=%lu (%s) description=\"%s\"", position,
+           error_code, error_code_string, error_code_description);
 
-  milo::free_string(error_code_string);
-  milo::free_string(error_code_description);
-
-  return append_output(parser, message);
+  return append_output(parser, message, data, size);
 }
 
-isize on_finish(milo::Parser *parser,
-                const char *data, usize size)
-{
-  usize position = milo::get_position(parser);
+isize_t on_finish(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  usize_t position = milo::get_position(parser);
 
-  auto *message = (char *)malloc(sizeof(char) * MAX_FORMAT);
-  snprintf(message, MAX_FORMAT, "pos=%lu finish\n", position);
+  auto message = create_string();
+  snprintf(reinterpret_cast<char*>(message), MAX_FORMAT, "pos=%lu finish", position);
 
-  return 0;
+  return append_output(parser, message, data, size);
 }
 
-isize on_request(milo::Parser *parser,
-                 const char *data, usize size)
-{
-  usize position = milo::get_position(parser);
+isize_t on_request(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  usize_t position = milo::get_position(parser);
 
-  auto *message = (char *)malloc(sizeof(char) * MAX_FORMAT);
-  snprintf(message, MAX_FORMAT, "pos=%lu request\n", position);
+  auto message = create_string();
+  snprintf(reinterpret_cast<char*>(message), MAX_FORMAT, "pos=%lu request", position);
 
-  return 0;
+  return append_output(parser, message, data, size);
 }
 
-isize on_response(milo::Parser *parser,
-                  const char *data, usize size)
-{
-  usize position = milo::get_position(parser);
+isize_t on_response(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  usize_t position = milo::get_position(parser);
 
-  auto *message = (char *)malloc(sizeof(char) * MAX_FORMAT);
-  snprintf(message, MAX_FORMAT, "pos=%lu response\n", position);
+  auto message = create_string();
+  snprintf(reinterpret_cast<char*>(message), MAX_FORMAT, "pos=%lu response", position);
 
-  return 0;
+  return append_output(parser, message, data, size);
 }
 
-isize on_message_start(milo::Parser *parser,
-                       const char *data, usize size)
-{
-  usize position = milo::get_position(parser);
+isize_t on_message_start(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  usize_t position = milo::get_position(parser);
 
-  auto *message = (char *)malloc(sizeof(char) * MAX_FORMAT);
-  snprintf(message, MAX_FORMAT, "pos=%lu message_start\n", position);
+  auto message = create_string();
+  snprintf(reinterpret_cast<char*>(message), MAX_FORMAT, "pos=%lu message_start", position);
 
-  return 0;
+  return append_output(parser, message, data, size);
 }
 
-isize on_message_complete(milo::Parser *parser,
-                          const char *data, usize size)
-{
-  usize position = milo::get_position(parser);
+isize_t on_message_complete(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  usize_t position = milo::get_position(parser);
 
-  auto *message = (char *)malloc(sizeof(char) * MAX_FORMAT);
-  snprintf(message, MAX_FORMAT, "pos=%lu message_complete\n", position);
+  auto message = create_string();
+  snprintf(reinterpret_cast<char*>(message), MAX_FORMAT, "pos=%lu message_complete", position);
 
-  return 0;
+  return append_output(parser, message, data, size);
 }
 
-isize on_method(milo::Parser *parser,
-                const char *data, usize size)
-{
-  return show_span(parser, "method", milo::get_method_string(parser));
+isize_t on_method(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "method", milo::get_method_string(parser), data, size);
 }
 
-isize on_method_complete(milo::Parser *parser,
-                         const char *data, usize size)
-{
-  return status_complete("method", parser);
+isize_t on_method_complete(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return status_complete("method", parser, data, size);
 }
 
-isize on_url(milo::Parser *parser,
-             const char *data, usize size)
-{
-  return show_span(parser, "url", milo::get_url_string(parser));
+isize_t on_url(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "url", milo::get_url_string(parser), data, size);
 }
 
-isize on_url_complete(milo::Parser *parser,
-                      const char *data, usize size)
-{
-  return status_complete("url", parser);
+isize_t on_url_complete(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return status_complete("url", parser, data, size);
 }
 
-isize on_protocol(milo::Parser *parser,
-                  const char *data, usize size)
-{
-  return show_span(parser, "protocol", milo::get_protocol_string(parser));
+isize_t on_protocol(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "protocol", milo::get_protocol_string(parser), data, size);
 }
 
-isize on_protocol_complete(milo::Parser *parser,
-                           const char *data, usize size)
-{
-  return status_complete("protocol", parser);
+isize_t on_protocol_complete(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return status_complete("protocol", parser, data, size);
 }
 
-isize on_version(milo::Parser *parser,
-                 const char *data, usize size)
-{
-  return show_span(parser, "version", milo::get_version_string(parser));
+isize_t on_version(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "version", milo::get_version_string(parser), data, size);
 }
 
-isize on_version_complete(milo::Parser *parser,
-                          const char *data, usize size)
-{
-  return status_complete("version", parser);
+isize_t on_version_complete(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return status_complete("version", parser, data, size);
 }
 
-isize on_status(milo::Parser *parser,
-                const char *data, usize size)
-{
-  return show_span(parser, "status", milo::get_status_string(parser));
+isize_t on_status(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "status", milo::get_status_string(parser), data, size);
 }
 
-isize on_status_complete(milo::Parser *parser,
-                         const char *data, usize size)
-{
-  return status_complete("status", parser);
+isize_t on_status_complete(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return status_complete("status", parser, data, size);
 }
 
-isize on_reason(milo::Parser *parser,
-                const char *data, usize size)
-{
-  return show_span(parser, "reason", milo::get_reason_string(parser));
+isize_t on_reason(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "reason", milo::get_reason_string(parser), data, size);
 }
 
-isize on_reason_complete(milo::Parser *parser,
-                         const char *data, usize size)
-{
-  return status_complete("reason", parser);
+isize_t on_reason_complete(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return status_complete("reason", parser, data, size);
 }
 
-isize on_header_field(milo::Parser *parser,
-                      const char *data, usize size)
-{
-  return show_span(parser, "header_field", milo::get_header_field_string(parser));
+isize_t on_header_field(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "header_field", milo::get_header_field_string(parser), data, size);
 }
 
-isize on_header_field_complete(milo::Parser *parser,
-                               const char *data, usize size)
-{
-  return status_complete("header_field", parser);
+isize_t on_header_field_complete(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return status_complete("header_field", parser, data, size);
 }
 
-isize on_header_value(milo::Parser *parser,
-                      const char *data, usize size)
-{
-  return show_span(parser, "header_value", milo::get_header_value_string(parser));
+isize_t on_header_value(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "header_value", milo::get_header_value_string(parser), data, size);
 }
 
-isize on_header_value_complete(milo::Parser *parser,
-                               const char *data, usize size)
-{
-  return status_complete("header_value", parser);
+isize_t on_header_value_complete(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return status_complete("header_value", parser, data, size);
 }
 
-isize on_headers_complete(milo::Parser *parser,
-                          const char *data, usize size)
-{
-  usize position = milo::get_position(parser);
+isize_t on_headers_complete(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  usize_t position = milo::get_position(parser);
   auto version = milo::get_version_string(parser);
-  usize content_length = milo::get_expected_content_length(parser);
+  usize_t content_length = milo::get_expected_content_length(parser);
   bool chunked = milo::get_has_chunked_transfer_encoding(parser) == 1;
   auto protocol = milo::get_protocol_string(parser);
 
-  auto *message = (char *)malloc(sizeof(char) * MAX_FORMAT);
+  auto message = create_string();
 
-  if (milo::get_message_type(parser) == milo::RESPONSE)
-  {
-    if (chunked)
-    {
-      snprintf(
-          message,
-          MAX_FORMAT,
-          "pos=%lu headers complete type=response status=%lu protocol=%s v=%s chunked\n",
-          position, milo::get_status(parser), protocol, version);
+  if (milo::get_message_type(parser) == milo::RESPONSE) {
+    if (chunked) {
+      snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
+               "pos=%lu headers complete type=response status=%lu protocol=%s v=%s chunked", position,
+               milo::get_status(parser), protocol, version);
+    } else if (content_length > 0) {
+      snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
+               "pos=%lu headers complete type=response status=%lu protocol=%s v=%s content_length=%lu", position,
+               milo::get_status(parser), protocol, version, content_length);
+    } else {
+      snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
+               "pos=%lu headers complete type=response status=%lu protocol=%s v=%s no-body", position,
+               milo::get_status(parser), protocol, version);
     }
-    else if (content_length > 0)
-    {
-      snprintf(
-          message,
-          MAX_FORMAT,
-          "pos=%lu headers complete type=response status=%lu protocol=%s v=%s content_length=%lu\n",
-          position, milo::get_status(parser), protocol, version, content_length);
-    }
-    else
-    {
-      snprintf(
-          message,
-          MAX_FORMAT,
-          "pos=%lu headers complete type=response status=%lu protocol=%s v=%s no-body\n",
-          position, milo::get_status(parser), protocol, version);
-    }
-  }
-  else
-  {
+  } else {
     auto method = milo::get_method_string(parser);
     auto url = milo::get_url_string(parser);
 
-    if (chunked)
-    {
-      snprintf(
-          message,
-          MAX_FORMAT,
-          "pos=%lu headers complete type=request method=%s url=%s protocol=%s v=%s chunked\n",
-          position, method, url, protocol, version);
+    if (chunked) {
+      snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
+               "pos=%lu headers complete type=request method=%s url=%s protocol=%s v=%s chunked", position, method, url,
+               protocol, version);
+    } else if (content_length > 0) {
+      snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
+               "pos=%lu headers complete type=request method=%s url=%s protocol=%s v=%s content_length=%lu", position,
+               method, url, protocol, version, content_length);
+    } else {
+      snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
+               "pos=%lu headers complete type=request method=%s url=%s protocol=%s v=%s no-body", position, method, url,
+               protocol, version);
     }
-    else if (content_length > 0)
-    {
-      snprintf(
-          message,
-          MAX_FORMAT,
-          "pos=%lu headers complete type=request method=%s url=%s protocol=%s v=%s content_length=%lu\n",
-          position, method, url, protocol, version, content_length);
-    }
-    else
-    {
-      snprintf(
-          message,
-          MAX_FORMAT,
-          "pos=%lu headers complete type=request method=%s url=%s protocol=%s v=%s no-body\n",
-          position, method, url, protocol, version);
-    }
-
-    milo::free_string(method);
-    milo::free_string(url);
   }
 
-  milo::free_string(version);
-  milo::free_string(protocol);
-
-  return append_output(parser, message);
+  return append_output(parser, message, data, size);
 }
 
-isize on_upgrade(milo::Parser *parser,
-                 const char *data, usize size)
-{
-  return status_complete("upgrade", parser);
+isize_t on_upgrade(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return status_complete("upgrade", parser, data, size);
 }
 
-isize on_chunk_length(milo::Parser *parser,
-                      const char *data, usize size)
-{
-  return show_span(parser, "chunk_length", milo::get_chunk_length_string(parser));
+isize_t on_chunk_length(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "chunk_length", milo::get_chunk_length_string(parser), data, size);
 }
 
-isize on_chunk_extension_name(milo::Parser *parser,
-                              const char *data, usize size)
-{
-  return show_span(parser, "chunk_extensions_name", milo::get_chunk_extension_name_string(parser));
+isize_t on_chunk_extension_name(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "chunk_extensions_name", milo::get_chunk_extension_name_string(parser), data, size);
 }
 
-isize on_chunk_extension_value(milo::Parser *parser,
-                               const char *data, usize size)
-{
-  return show_span(parser, "chunk_extension_value", milo::get_chunk_extension_value_string(parser));
+isize_t on_chunk_extension_value(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "chunk_extension_value", milo::get_chunk_extension_value_string(parser), data, size);
 }
 
-isize on_chunk_data(milo::Parser *parser,
-                    const char *data, usize size)
-{
-  return show_span(parser, "chunk", milo::get_chunk_data_string(parser));
+isize_t on_chunk_data(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "chunk", milo::get_chunk_data_string(parser), data, size);
 }
 
-isize on_body(milo::Parser *parser,
-              const char *data, usize size)
-{
-  return show_span(parser, "body", milo::get_body_string(parser));
+isize_t on_body(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "body", milo::get_body_string(parser), data, size);
 }
 
-isize on_trailer_field(milo::Parser *parser,
-                       const char *data, usize size)
-{
-  return show_span(parser, "trailer_field", milo::get_trailer_field_string(parser));
+isize_t on_trailer_field(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "trailer_field", milo::get_trailer_field_string(parser), data, size);
 }
 
-isize on_trailer_value(milo::Parser *parser,
-                       const char *data, usize size)
-{
-  return show_span(parser, "trailer_value", milo::get_trailer_value_string(parser));
+isize_t on_trailer_value(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return show_span(parser, "trailer_value", milo::get_trailer_value_string(parser), data, size);
 }
 
-isize on_trailers_complete(milo::Parser *parser,
-                           const char *data, usize size)
-{
-  return status_complete("trailers", parser);
+isize_t on_trailers_complete(milo::Parser* parser, const uchar_t* data, usize_t size) {
+  return status_complete("trailers", parser, data, size);
 }
 
-int main()
-{
+int main() {
   auto parser = milo::create_parser();
 
-  const char *request1 = "GET / HTTP/1.1\r\n\r\n";
-  const char *request2 = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: x-trailer\r\n\r\nc;need=love\r\nhello world!\r\n0\r\nX-Trailer: value\r\n\r\n";
+  const char* request1 = "GET / HTTP/1.1\r\n\r\n";
+  const char* request2 = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: "
+                         "x-trailer\r\n\r\nc;need=love\r\nhello world!\r\n0\r\nX-Trailer: value\r\n\r\n";
 
-#ifdef TEST_DEBUG
+#ifdef MILO_TEST_DEBUG
   milo::set_on_data_method(parser, on_data_method);
   milo::set_on_data_url(parser, on_data_url);
   milo::set_on_data_protocol(parser, on_data_protocol);
@@ -456,15 +359,15 @@ int main()
   milo::set_on_trailer_value(parser, on_trailer_value);
   milo::set_on_trailers_complete(parser, on_trailers_complete);
 
-  usize consumed = milo::execute_parser(parser, request1, strlen(request1));
-  usize pos = milo::get_position(parser);
-  auto *state = milo::get_state_string(parser);
+  usize_t consumed = milo::execute_parser(parser, reinterpret_cast<const uchar_t*>(request1), strlen(request1));
+  usize_t pos = milo::get_position(parser);
+  auto* state = milo::get_state_string(parser);
 
   printf("pos=%lu consumed=%lu state=%s\n", pos, consumed, state);
-  milo::free_string(state);
 
-  printf("--- --- --- ---\n");
-  consumed = milo::execute_parser(parser, request2, strlen(request2));
+  printf("------------------------------------------------------------------------------------------\n");
+
+  consumed = milo::execute_parser(parser, reinterpret_cast<const uchar_t*>(request2), strlen(request2));
   pos = milo::get_position(parser);
   state = milo::get_state_string(parser);
 

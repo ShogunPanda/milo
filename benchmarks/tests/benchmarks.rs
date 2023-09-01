@@ -1,8 +1,10 @@
+#![feature(test)]
+
 #[cfg(test)]
 mod tests {
   extern crate test;
 
-  use milo::test_utils::{http, length};
+  use milo::test_utils::http;
   use milo::Parser;
   use test::Bencher;
 
@@ -25,7 +27,7 @@ mod tests {
 
     let mut parser = Parser::new();
 
-    b.iter(|| parser.parse(message, length(message)));
+    b.iter(|| parser.parse(message.as_ptr(), message.len()));
   }
 
   #[bench]
@@ -51,6 +53,6 @@ mod tests {
 
     let mut parser = Parser::new();
 
-    b.iter(|| parser.parse(message, length(message)));
+    b.iter(|| parser.parse(message.as_ptr(), message.len()));
   }
 }

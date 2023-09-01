@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-  use milo::test_utils::{create_parser, http, length};
+  use milo::test_utils::{create_parser, http};
   use milo::State;
 
   #[test]
@@ -23,11 +23,11 @@ mod test {
       "#,
     );
 
-    let consumed1 = parser.parse(message1, length(message1));
+    let consumed1 = parser.parse(message1.as_ptr(), message1.len());
     assert!(consumed1 == 70);
     assert!(matches!(parser.state, State::TUNNEL));
 
-    let consumed2 = parser.parse(message2, length(message2));
+    let consumed2 = parser.parse(message2.as_ptr(), message2.len());
     assert!(consumed2 == 0);
     assert!(matches!(parser.state, State::TUNNEL));
   }
@@ -54,11 +54,11 @@ mod test {
       "#,
     );
 
-    let consumed1 = parser.parse(message1, length(message1));
+    let consumed1 = parser.parse(message1.as_ptr(), message1.len());
     assert!(consumed1 == 95);
     assert!(matches!(parser.state, State::TUNNEL));
 
-    let consumed2 = parser.parse(message2, length(message2));
+    let consumed2 = parser.parse(message2.as_ptr(), message2.len());
     assert!(consumed2 == 0);
     assert!(matches!(parser.state, State::TUNNEL));
   }

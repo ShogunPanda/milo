@@ -6,6 +6,7 @@ mod parsing;
 use indexmap::IndexSet;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
+use std::fs::File;
 use std::path::Path;
 use std::sync::Mutex;
 use syn::{parse_macro_input, parse_str, Arm, Block, ExprMethodCall, Ident, ItemConst, LitByte, LitInt, LitStr};
@@ -20,7 +21,7 @@ lazy_static! {
   static ref METHODS: Mutex<Vec<String>> = {
     let mut absolute_path = Path::new(file!()).parent().unwrap().to_path_buf();
     absolute_path.push("methods.yml");
-    let f = std::fs::File::open(absolute_path.to_str().unwrap()).unwrap();
+    let f = File::open(absolute_path.to_str().unwrap()).unwrap();
     let methods = serde_yaml::from_reader(f).unwrap();
 
     Mutex::new(methods)
@@ -147,7 +148,7 @@ pub fn state(input: TokenStream) -> TokenStream {
 
   TokenStream::from(quote! {
     #[inline(always)]
-    fn #name (parser: &mut Parser, data: &[u8]) -> isize { #(#statements)* }
+    fn #name (parser: &mut Parser, data: &[c_uchar]) -> isize { #(#statements)* }
   })
 }
 // #endregion definitions
@@ -348,11 +349,7 @@ pub fn append(input: TokenStream) -> TokenStream {
 
     #[cfg(debug_assertions)]
     if let Some(cb) = parser.callbacks.#callback {
-      let action = cb(
-        parser,
-        std::ffi::CStr::from_bytes_with_nul(&[*#value, b'\0']).unwrap().as_ptr(),
-        1
-      );
+      let action = cb(parser, #value, 1);
 
       if action < 0 {
         return action;
@@ -384,11 +381,7 @@ pub fn data_slice_callback(input: TokenStream) -> TokenStream {
         .collect();
 
       for cb in callbacks.iter() {
-        let action = cb(
-          parser,
-          #source as *const _ as *const i8,
-          #len,
-        );
+        let action = cb(parser, #source.as_ptr(), #len);
 
         if action < 0 {
           return action;
@@ -407,7 +400,12 @@ pub fn get_span(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input with Identifiers::one);
   let span = &definition.identifiers[0];
 
-  TokenStream::from(quote! { parser.get_span(&parser.spans.#span) })
+  TokenStream::from(quote! {
+    unsafe {
+      let slice = parser.spans.#span.clone();
+      String::from_utf8_unchecked(slice)
+    }
+  })
 }
 
 #[proc_macro]
@@ -450,15 +448,19 @@ pub fn callback(input: TokenStream) -> TokenStream {
   let span = definition.identifiers.get(1);
 
   let invocation = if let Some(span) = span {
-    quote! { cb(parser, unsafe { std::ffi::CString::from_vec_unchecked(parser.spans.#span.clone()).as_c_str().as_ptr() }, parser.spans.#span.len()) }
+    quote! {
+      let action = cb(parser, parser.spans.#span.as_ptr(), parser.spans.#span.len());
+    }
   } else {
-    quote! { cb(parser, std::ptr::null(), 0) }
+    quote! {
+      let action = cb(parser, ptr::null(), 0);
+    }
   };
 
   TokenStream::from(quote! {
     if parser.values.skip_next_callback == 0 {
       if let Some(cb) = parser.callbacks.#callback {
-        let action = #invocation;
+        #invocation
 
         if action < 0 {
           return action;
@@ -475,6 +477,42 @@ pub fn callback(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn suspend(_input: TokenStream) -> TokenStream {
   TokenStream::from(quote! { SUSPEND })
+}
+
+#[proc_macro]
+pub fn find_method(_input: TokenStream) -> TokenStream {
+  let methods: Vec<_> = METHODS
+    .lock()
+    .unwrap()
+    .iter()
+    .enumerate()
+    .map(|(i, x)| {
+      let matcher = x
+        .chars()
+        .map(|b| format!("b'{}'", b))
+        .collect::<Vec<String>>()
+        .join(", ");
+
+      if x == "CONNECT" {
+        parse_str::<Arm>(&format!(
+          "[{}, ..] => {{ parser.values.is_connect_request = 1; {} }}",
+          matcher, i
+        ))
+        .unwrap()
+      } else {
+        parse_str::<Arm>(&format!("[{}, ..] => {{ {} }}", matcher, i)).unwrap()
+      }
+    })
+    .collect();
+
+  TokenStream::from(quote! {
+    let method = match &parser.spans.method[..] {
+      #(#methods),*
+      _ => {
+        return fail!(UNEXPECTED_CHARACTER, "Invalid method")
+      }
+    };
+  })
 }
 // #endregion actions
 
@@ -573,7 +611,7 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
       .iter()
       .map(|x| {
         format!(
-          ".field(\"{}\", &unsafe {{ std::ffi::CString::from_vec_unchecked(self.{}.clone()) }})",
+          ".field(\"{}\", &unsafe {{ str::from_utf8_unchecked(&self.{}[..]) }})",
           x, x
         )
       })
@@ -593,8 +631,12 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
   .unwrap();
 
   let output = quote! {
+    use std::fmt::{Debug, Display, Formatter, Result};
+    use std::os::raw::{c_uchar,c_void};
+    use std::ptr;
+    use std::str;
+    use std::slice;
     use std::time::SystemTime;
-    use std::ffi::{CString,c_void};
 
     pub const RESERVED_NEGATIVE_ADVANCES: isize = #RESERVED_NEGATIVE_ADVANCES;
     pub const SUSPEND: isize = #SUSPEND;
@@ -616,7 +658,7 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
       pub callbacks: Callbacks,
       pub spans: Spans,
       pub error_code: Error,
-      pub error_description: String
+      pub error_description: Vec<c_uchar>
     }
 
     #[repr(u8)]
@@ -642,27 +684,27 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
     }
 
     pub struct Spans {
-      #( pub #spans: Vec<u8> ),*
+      #( pub #spans: Vec<c_uchar> ),*
     }
 
-    type ActiveCallback = fn (&mut Parser, *const c_char, usize) -> isize;
+    type ActiveCallback = fn (&mut Parser, *const c_uchar, usize) -> isize;
     // Do not use ActiveCallback here to ensure C headers are properly generated
-    type Callback = Option<fn (&mut Parser, *const c_char, usize) -> isize>;
+    type Callback = Option<fn (&mut Parser, *const c_uchar, usize) -> isize>;
 
     pub struct Callbacks {
       #( pub #callbacks: Callback),*
     }
 
-    impl std::fmt::Display for State {
-      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    impl Display for State {
+      fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match *self {
           #(#states_debug),*
         }
       }
     }
 
-    impl std::fmt::Debug for State {
-      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    impl Debug for State {
+      fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match *self {
           #(#states_debug),*
         }
@@ -705,20 +747,20 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
       }
     }
 
-    impl std::fmt::Debug for Values {
-      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    impl Debug for Values {
+      fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         #values_debug
       }
     }
 
-    impl std::fmt::Debug for Spans {
-      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    impl Debug for Spans {
+      fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         #spans_debug
       }
     }
 
-    impl std::fmt::Debug for Callbacks {
-      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    impl Debug for Callbacks {
+      fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         #callbacks_debug
       }
     }
@@ -734,7 +776,7 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
           spans: Spans::new(),
           callbacks: Callbacks::new(),
           error_code: Error::NONE,
-          error_description: String::new(),
+          error_description: vec![]
         }
       }
 
@@ -748,30 +790,36 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
         self.values.clear();
         self.spans.clear();
         self.error_code = Error::NONE;
-        self.error_description = String::new();
+        self.error_description.clear();
       }
 
-      pub fn parse(&mut self, data: *const c_char, mut limit: usize) -> usize {
+      pub fn parse(&mut self, data: *const c_uchar, mut limit: usize) -> usize {
         if self.paused {
           return 0;
         }
 
-        let mut aggregate: Vec<u8>;
         let unconsumed_len = self.spans.unconsumed.len();
+        let mut aggregate: Vec<c_uchar>;
         let mut consumed = 0;
-        let mut current = unsafe { &*(std::slice::from_raw_parts(data, limit) as *const _ as *const [u8]) };
+        let mut additional = unsafe { slice::from_raw_parts(data, limit) };
 
-        if unconsumed_len > 0 {
+        let mut current = if unconsumed_len > 0 {
           limit += unconsumed_len;
-          aggregate = self.spans.unconsumed.clone();
-          aggregate.extend_from_slice(current);
-          current = &aggregate[..];
-        }
+          let unconsumed = &self.spans.unconsumed[..];
+
+          aggregate = vec![];
+          aggregate.extend_from_slice(unconsumed);
+          aggregate.extend_from_slice(additional);
+
+          &aggregate[..]
+        } else {
+          additional
+        };
 
         #[cfg(debug_assertions)]
         if self.position == 0 {
           if let Some(cb) = self.callbacks.before_state_change {
-            if cb(self, std::ptr::null(), 0) > 0 {
+            if cb(self, ptr::null(), 0) > 0 {
               self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
             }
           }
@@ -802,13 +850,12 @@ pub fn generate_parser(input: TokenStream) -> TokenStream {
           match &self.state {
             State::FINISH => {
               if let Some(cb) = self.callbacks.on_finish {
-                cb(self, std::ptr::null(), 0);
+                cb(self, ptr::null(), 0);
               }
             },
             State::ERROR => {
               if let Some(cb) = self.callbacks.on_error {
-                let error = self.error_description.as_str();
-                cb(self, std::ffi::CString::new(error).unwrap().as_c_str().as_ptr(), error.len());
+                cb(self, self.error_description.as_ptr(), self.error_description.len());
               }
 
               break;
@@ -893,14 +940,6 @@ pub fn generate_parser_interface(input: TokenStream) -> TokenStream {
     .map(|x| parse_str::<Arm>(&format!("Error::{} => \"{}\"", x, x)).unwrap())
     .collect();
 
-  let method_as_int_arms: Vec<_> = METHODS
-    .lock()
-    .unwrap()
-    .iter()
-    .enumerate()
-    .map(|(i, x)| parse_str::<Arm>(&format!("\"{}\" => {}", x, i)).unwrap())
-    .collect();
-
   let values_getters: Vec<_> = VALUES
     .lock()
     .unwrap()
@@ -943,8 +982,8 @@ pub fn generate_parser_interface(input: TokenStream) -> TokenStream {
 
       quote! {
         #[no_mangle]
-        pub extern "C" fn #getter(parser: *mut Parser) -> *mut c_char {
-          unsafe { CString::from_vec_unchecked((*parser).spans.#key.clone()).into_raw() }
+        pub extern "C" fn #getter(parser: *mut Parser) -> *const c_uchar {
+          unsafe { CString::from_vec_unchecked((*parser).spans.#key.clone()).into_raw() as *const c_uchar }
         }
       }
     })
@@ -980,19 +1019,19 @@ pub fn generate_parser_interface(input: TokenStream) -> TokenStream {
     #(#body)*
 
     #[no_mangle]
-    pub extern "C" fn get_state_string(parser: *mut Parser) -> *mut c_char {
+    pub extern "C" fn get_state_string(parser: *mut Parser) -> *const c_uchar {
       let string = match unsafe { (*parser).state } {
         State::FINISH => "FINISH",
         State::ERROR => "ERROR",
         #(#states_to_string_arms),*
       };
 
-      std::ffi::CString::new(string).unwrap().into_raw()
+      CString::new(string).unwrap().into_raw() as *const c_uchar
     }
 
 
     #[no_mangle]
-    pub extern "C" fn get_error_code_string(parser: *mut Parser) -> *mut c_char {
+    pub extern "C" fn get_error_code_string(parser: *mut Parser) -> *const c_uchar {
       let string = match unsafe { (*parser).error_code } {
         Error::NONE => "NONE",
         Error::UNEXPECTED_DATA => "UNEXPECTED_DATA",
@@ -1002,17 +1041,7 @@ pub fn generate_parser_interface(input: TokenStream) -> TokenStream {
         #(#error_to_string_arms),*
       };
 
-      std::ffi::CString::new(string).unwrap().into_raw()
-    }
-
-    #[no_mangle]
-    pub extern "C" fn method_as_int(data: *mut c_char) -> isize {
-      unsafe {
-        match std::ffi::CStr::from_ptr(data).to_str().unwrap() {
-          #(#method_as_int_arms),*,
-          _ => -1,
-        }
-      }
+      CString::new(string).unwrap().into_raw() as *const c_uchar
     }
 
     #(#values_getters)*

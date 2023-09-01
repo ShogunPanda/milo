@@ -1,12 +1,13 @@
 #[macro_use]
 extern crate lazy_static;
 
+use std::{ffi::CString, os::raw::c_char};
+
 use milo_parser_generator::{
-  append, callback, callbacks, char, clear, crlf, data_slice_callback, digit, errors, fail, generate_parser,
-  generate_parser_interface, get_span, hex_digit, method, move_to, otherwise, persistent_values, set_value, spans,
-  state, string, suspend, token, url, user_writable_values, values,
+  append, callback, callbacks, char, clear, crlf, data_slice_callback, digit, errors, fail, find_method,
+  generate_parser, generate_parser_interface, get_span, hex_digit, method, move_to, otherwise, persistent_values,
+  set_value, spans, state, string, suspend, token, url, user_writable_values, values,
 };
-use std::os::raw::c_char;
 
 pub mod test_utils;
 
@@ -122,7 +123,7 @@ callbacks!(
   on_trailers_complete
 );
 
-fn store_parsed_http_version(parser: &mut Parser, major: u8) {
+fn store_parsed_http_version(parser: &mut Parser, major: c_uchar) {
   if major == b'1' {
     parser.values.version_major = 1;
     parser.values.version_minor = 1;
@@ -199,17 +200,7 @@ state!(request_method, {
       1
     }
     char!(' ') => {
-      // TODO@PI: Can we avoid CString here?
-      let method_str = get_span!(method);
-      let method = method_as_int(std::ffi::CString::new(method_str).unwrap().into_raw());
-
-      if method == -1 {
-        return fail!(UNEXPECTED_CHARACTER, "Invalid method");
-      }
-
-      if method == METHOD_CONNECT {
-        parser.values.is_connect_request = 1;
-      }
+      find_method!();
 
       parser.values.method = method;
 
@@ -307,7 +298,9 @@ state!(request_version_minor, {
     }
     crlf!() => {
       // Validate the version
-      match parser.spans.version[..] {
+      let version = &parser.spans.version[..];
+
+      match version {
         string!("1.1") | string!("2.0") => {
           callback!(on_version, version);
           store_parsed_http_version(parser, parser.spans.version[0]);
@@ -387,11 +380,7 @@ state!(response_version_major, {
     }
     _ => parser.fail(
       Error::UNEXPECTED_CHARACTER,
-      format!(
-        "Expected {} major version {}",
-        unsafe { String::from_utf8_unchecked(parser.spans.protocol.clone()) },
-        data[0]
-      ),
+      format!("Expected {} major version {}", get_span!(protocol), data[0]),
     ),
   }
 });
@@ -403,8 +392,10 @@ state!(response_version_minor, {
       1
     }
     char!(' ') => {
+      let version = &parser.spans.version[..];
+
       // Validate the version
-      match parser.spans.version[..] {
+      match version {
         string!("1.1") | string!("2.0") => {
           callback!(on_version, version);
           store_parsed_http_version(parser, parser.spans.version[0]);
@@ -484,11 +475,11 @@ state!(response_reason_complete, {
 // #endregion response
 
 // #region headers
-fn save_header(parser: &mut Parser, field: &str, raw_value: &str) -> bool {
+fn save_header(parser: &mut Parser, field: String, raw_value: String) -> bool {
   let value = raw_value.to_lowercase();
 
   // Save some headers which impact how we parse the rest of the message
-  match field {
+  match field.to_lowercase().as_str() {
     "content-length" => {
       let status = parser.values.status;
 
@@ -640,11 +631,9 @@ state!(header_value, {
       1
     }
     [b'\r', b'\n', b'\r', b'\n', ..] => {
-      if !save_header(
-        parser,
-        get_span!(header_field).to_lowercase().as_str(),
-        get_span!(header_value).as_str(),
-      ) {
+      let field = get_span!(header_field);
+      let value = get_span!(header_value);
+      if !save_header(parser, field, value) {
         return 0;
       }
 
@@ -652,11 +641,7 @@ state!(header_value, {
       move_to!(header_value_complete_last, 2)
     }
     crlf!() => {
-      if !save_header(
-        parser,
-        get_span!(header_field).to_lowercase().as_str(),
-        get_span!(header_value).as_str(),
-      ) {
+      if !save_header(parser, get_span!(header_field), get_span!(header_value)) {
         return 0;
       }
 
@@ -854,7 +839,7 @@ state!(chunk_start, {
       1
     }
     char!(';') => {
-      if let Ok(length) = isize::from_str_radix(get_span!(chunk_length).as_str(), 16) {
+      if let Ok(length) = usize::from_str_radix(get_span!(chunk_length).as_str(), 16) {
         callback!(on_chunk_length, chunk_length);
         clear!(chunk_length);
         set_value!(expected_chunk_size, length);
@@ -864,7 +849,7 @@ state!(chunk_start, {
       }
     }
     crlf!() => {
-      if let Ok(length) = isize::from_str_radix(get_span!(chunk_length).as_str(), 16) {
+      if let Ok(length) = usize::from_str_radix(get_span!(chunk_length).as_str(), 16) {
         callback!(on_chunk_length, chunk_length);
         clear!(chunk_length);
         set_value!(expected_chunk_size, length);
@@ -1003,8 +988,7 @@ state!(chunk_data, {
   } else {
     let chunk_data = data.get(..remaining).unwrap();
     parser.spans.chunk_data.extend_from_slice(chunk_data);
-    parser.spans.body.extend_from_slice(&parser.spans.chunk_data);
-
+    parser.spans.body.extend_from_slice(chunk_data);
     data_slice_callback!(on_data_chunk_data, on_data_body, chunk_data, remaining);
 
     callback!(on_chunk_data, chunk_data);
@@ -1110,10 +1094,6 @@ state!(message_complete, {
 });
 
 generate_parser!({
-  pub fn get_span(&self, span: &Vec<u8>) -> String {
-    unsafe { String::from_utf8_unchecked((*span).clone()) }
-  }
-
   fn move_to(&mut self, state: State, advance: isize) -> isize {
     #[cfg(debug_assertions)]
     {
@@ -1121,7 +1101,7 @@ generate_parser!({
 
       // Notify the end of the current state
       let result = if let Some(cb) = self.callbacks.before_state_change {
-        cb(self, std::ptr::null(), 0)
+        cb(self, ptr::null(), 0)
       } else {
         0
       };
@@ -1143,7 +1123,7 @@ generate_parser!({
       let fail_advance = if advance < 0 { advance } else { -advance };
 
       let result = if let Some(cb) = self.callbacks.after_state_change {
-        cb(self, std::ptr::null(), 0)
+        cb(self, ptr::null(), 0)
       } else {
         0
       };
@@ -1162,7 +1142,7 @@ generate_parser!({
 
   fn fail(&mut self, code: Error, reason: String) -> isize {
     self.error_code = code;
-    self.error_description = reason;
+    self.error_description = reason.as_bytes().to_vec();
     self.state = State::ERROR;
 
     0
@@ -1187,7 +1167,7 @@ generate_parser!({
       }
       State::BODY_WITH_NO_LENGTH => {
         if let Some(cb) = self.callbacks.on_message_complete {
-          let action = cb(self, std::ptr::null(), 0);
+          let action = cb(self, ptr::null(), 0);
 
           if action != 0 {
             self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
@@ -1206,13 +1186,13 @@ generate_parser!({
 
 generate_parser_interface!({
   #[no_mangle]
-  pub extern "C" fn free_string(s: *mut c_char) {
+  pub extern "C" fn free_string(s: *const c_uchar) {
     unsafe {
       if s.is_null() {
         return;
       }
 
-      let _ = CString::from_raw(s);
+      let _ = CString::from_raw(s as *mut c_char);
     }
   }
 
@@ -1238,7 +1218,7 @@ generate_parser_interface!({
   }
 
   #[no_mangle]
-  pub extern "C" fn execute_parser(parser: *mut Parser, data: *const c_char, limit: usize) -> usize {
+  pub extern "C" fn execute_parser(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize {
     unsafe { parser.as_mut().unwrap().parse(data, limit) }
   }
 
@@ -1267,7 +1247,7 @@ generate_parser_interface!({
     unsafe {
       match parser.as_mut().unwrap().owner {
         Some(x) => x,
-        None => std::ptr::null_mut(),
+        None => ptr::null_mut(),
       }
     }
   }
@@ -1295,11 +1275,7 @@ generate_parser_interface!({
   }
 
   #[no_mangle]
-  pub extern "C" fn get_error_code_description(parser: *mut Parser) -> *mut c_char {
-    unsafe {
-      std::ffi::CString::new((*parser).error_description.clone())
-        .unwrap()
-        .into_raw()
-    }
+  pub extern "C" fn get_error_description_string(parser: *mut Parser) -> *const c_uchar {
+    unsafe { CString::from_vec_unchecked((*parser).error_description.clone()).into_raw() as *const c_uchar }
   }
 });

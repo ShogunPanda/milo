@@ -256,7 +256,7 @@ mod test {
     let sample3 = http(r#"abc"#);
 
     parser.callbacks.on_headers_complete =
-      Some(|_parser: &mut Parser, _data: *const c_uchar, _size: usize| -> isize { PAUSE });
+      |_parser: &mut Parser, _data: *const c_uchar, _size: usize| -> isize { PAUSE };
 
     assert!(!parser.paused);
 

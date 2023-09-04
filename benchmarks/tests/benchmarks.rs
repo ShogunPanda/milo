@@ -39,8 +39,8 @@ mod tests {
         DNT: 1\r\n
         Accept-Encoding: gzip, deflate, sdch\r\n
         Accept-Language: ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4\r\n
-        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) 
-        AppleWebKit/537.36 (KHTML, like Gecko) 
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1)
+        AppleWebKit/537.36 (KHTML, like Gecko)
         Chrome/39.0.2171.65 Safari/537.36\r\n
         Accept: text/html,application/xhtml+xml,application/xml;q=0.9,
         image/webp,*/*;q=0.8\r\n

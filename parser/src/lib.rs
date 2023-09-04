@@ -1,12 +1,21 @@
 #[macro_use]
 extern crate lazy_static;
 
-use std::{ffi::CString, os::raw::c_char};
+use std::ffi::CString;
+use std::fmt::{Debug, Display, Formatter, Result};
+use std::os::raw::{c_char, c_uchar, c_void};
+use std::ptr;
+use std::slice;
+use std::str;
+
+#[cfg(all(debug_assertions, feature = "milo_debug_loop"))]
+use std::time::SystemTime;
 
 use milo_parser_generator::{
-  append, callback, callbacks, char, clear, crlf, data_slice_callback, digit, errors, fail, find_method,
-  generate_parser, generate_parser_interface, get_span, hex_digit, method, move_to, otherwise, persistent_values,
-  set_value, spans, state, string, suspend, token, url, user_writable_values, values,
+  append, append_lowercase, apply_state, callback, callbacks, callbacks_setters, char, clear, crlf,
+  data_slice_callback, digit, errors, fail, find_method, generate_parser, get_span, hex_digit, initial_state,
+  match_error_code_string, match_state_string, method, move_to, otherwise, persistent_values, set_value, spans,
+  spans_getters, state, string, suspend, token, url, user_writable_values, values, values_getters, values_setters,
 };
 
 pub mod test_utils;
@@ -123,6 +132,7 @@ callbacks!(
   on_trailers_complete
 );
 
+#[inline(always)]
 fn store_parsed_http_version(parser: &mut Parser, major: c_uchar) {
   if major == b'1' {
     parser.values.version_major = 1;
@@ -475,12 +485,11 @@ state!(response_reason_complete, {
 // #endregion response
 
 // #region headers
-fn save_header(parser: &mut Parser, field: String, raw_value: String) -> bool {
-  let value = raw_value.to_lowercase();
-
+#[inline(always)]
+fn save_header(parser: &mut Parser) -> bool {
   // Save some headers which impact how we parse the rest of the message
-  match field.to_lowercase().as_str() {
-    "content-length" => {
+  match parser.spans.header_field[..] {
+    string!("content-length") => {
       let status = parser.values.status;
 
       if parser.values.has_chunked_transfer_encoding == 1 {
@@ -500,7 +509,7 @@ fn save_header(parser: &mut Parser, field: String, raw_value: String) -> bool {
       } else if parser.values.expected_content_length != 0 {
         fail!(INVALID_CONTENT_LENGTH, "Invalid duplicate Content-Length header");
         return false;
-      } else if let Ok(length) = value.parse::<usize>() {
+      } else if let Ok(length) = unsafe { str::from_utf8_unchecked(&parser.spans.header_value[..]) }.parse::<usize>() {
         parser.values.has_content_length = 1;
         set_value!(expected_content_length, length);
       } else {
@@ -508,7 +517,7 @@ fn save_header(parser: &mut Parser, field: String, raw_value: String) -> bool {
         return false;
       }
     }
-    "transfer-encoding" => {
+    string!("transfer-encoding") => {
       let status = parser.values.status;
 
       if parser.values.expected_content_length > 0 {
@@ -531,49 +540,55 @@ fn save_header(parser: &mut Parser, field: String, raw_value: String) -> bool {
         return false;
       }
 
-      // If chunked is the last encoding
-      let value = value.trim();
-      if value == "chunked" || value.ends_with(",chunked") || value.ends_with(", chunked") {
-        /*
-          If this is 1, it means the Transfer-Encoding header was specified more than once.
-          This is the second repetition and therefore, the previous one is no longer the last one, making it invalid.
-        */
-        if parser.values.has_chunked_transfer_encoding == 1 {
-          fail!(
-            INVALID_TRANSFER_ENCODING,
-            "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can be provided only once"
-          );
-
-          return false;
-        } else {
-          parser.values.has_chunked_transfer_encoding = 1;
+      match &parser.spans.header_value[..] {
+        // If chunked is the last encoding
+        [b'c', b'h', b'u', b'n', b'k', b'e', b'd'] | // "chunked"
+        [.., b' ', b',', b'c', b'h', b'u', b'n', b'k', b'e', b'd'] | // ".., chuncked"
+        [.., b',', b'c', b'h', b'u', b'n', b'k', b'e', b'd'] => { // "..,chuncked"         
+          /*
+            If this is 1, it means the Transfer-Encoding header was specified more than once.
+            This is the second repetition and therefore, the previous one is no longer the last one, making it invalid.
+          */
+          if parser.values.has_chunked_transfer_encoding == 1 {
+            fail!(
+              INVALID_TRANSFER_ENCODING,
+              "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can be provided only once"
+            );
+  
+            return false;
+          } else {
+            parser.values.has_chunked_transfer_encoding = 1;
+          }
         }
-      } else if parser.values.has_chunked_transfer_encoding == 1 {
-        // Any other value when chunked was already specified is invalid
-        fail!(
-          INVALID_TRANSFER_ENCODING,
-          "The value \"chunked\" in the Transfer-Encoding header must be the last provided"
-        );
-
-        return false;
+        _ => {
+          if parser.values.has_chunked_transfer_encoding == 1 {
+            // Any other value when chunked was already specified is invalid
+            fail!(
+              INVALID_TRANSFER_ENCODING,
+              "The value \"chunked\" in the Transfer-Encoding header must be the last provided"
+            );
+    
+            return false;
+          }
+        }
       }
     }
-    "connection" => match value.as_str() {
-      "close" => {
+    string!("connection") => match parser.spans.header_value[..] {
+      string!("close") => {
         parser.values.connection = CONNECTION_CLOSE;
       }
-      "keep-alive" => {
+      string!("keep-alive") => {
         parser.values.connection = CONNECTION_KEEPALIVE;
       }
-      "upgrade" => {
+      string!("upgrade") => {
         parser.values.connection = CONNECTION_UPGRADE;
       }
       _ => (),
     },
-    "trailer" => {
+    string!("trailer") => {
       parser.values.has_trailers = 1;
     }
-    "upgrade" => {
+    string!("upgrade") => {
       parser.values.has_upgrade = 1;
     }
     _ => (),
@@ -586,7 +601,7 @@ fn save_header(parser: &mut Parser, field: String, raw_value: String) -> bool {
 state!(header_start, {
   match data {
     token!(x) => {
-      append!(header_field, x);
+      append_lowercase!(header_field, x);
       1
     }
     [b':', b'\t' | b' ', ..] => {
@@ -631,9 +646,7 @@ state!(header_value, {
       1
     }
     [b'\r', b'\n', b'\r', b'\n', ..] => {
-      let field = get_span!(header_field);
-      let value = get_span!(header_value);
-      if !save_header(parser, field, value) {
+      if !save_header(parser) {
         return 0;
       }
 
@@ -641,7 +654,7 @@ state!(header_value, {
       move_to!(header_value_complete_last, 2)
     }
     crlf!() => {
-      if !save_header(parser, get_span!(header_field), get_span!(header_value)) {
+      if !save_header(parser) {
         return 0;
       }
 
@@ -1026,7 +1039,7 @@ state!(crlf_after_last_chunk, {
 state!(trailer_start, {
   match data {
     token!(x) => {
-      append!(trailer_field, x);
+      append_lowercase!(trailer_field, x);
       1
     }
     [b':', b'\t' | b' ', ..] => {
@@ -1093,20 +1106,156 @@ state!(message_complete, {
   }
 });
 
-generate_parser!({
+generate_parser!();
+
+impl Parser {
+  pub fn new() -> Parser {
+    Parser {
+      owner: None,
+      paused: false,
+      state: initial_state!(),
+      position: 0,
+      values: Values::new(),
+      spans: Spans::new(),
+      callbacks: Callbacks::new(),
+      error_code: Error::NONE,
+      error_description: vec![],
+    }
+  }
+
+  pub fn reset(&mut self, keep_position: bool) {
+    self.state = initial_state!();
+    self.paused = false;
+
+    if !keep_position {
+      self.position = 0;
+    }
+    self.values.clear();
+    self.spans.clear();
+    self.error_code = Error::NONE;
+    self.error_description.clear();
+  }
+
+  pub fn parse(&mut self, data: *const c_uchar, mut limit: usize) -> usize {
+    if self.paused {
+      return 0;
+    }
+
+    let unconsumed_len = self.spans.unconsumed.len();
+    let mut aggregate: Vec<c_uchar>;
+    let mut consumed = 0;
+    let additional = unsafe { slice::from_raw_parts(data, limit) };
+
+    let mut current = if unconsumed_len > 0 {
+      limit += unconsumed_len;
+      let unconsumed = &self.spans.unconsumed[..];
+
+      aggregate = vec![];
+      aggregate.extend_from_slice(unconsumed);
+      aggregate.extend_from_slice(additional);
+
+      &aggregate[..]
+    } else {
+      additional
+    };
+
+    #[cfg(debug_assertions)]
+    if self.position == 0 {
+      if (self.callbacks.before_state_change)(self, ptr::null(), 0) > 0 {
+        self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+      }
+    }
+
+    current = &current[..limit];
+
+    #[cfg(all(debug_assertions, feature = "milo_debug_loop"))]
+    let mut last = SystemTime::now();
+
+    while current.len() > 0 || self.values.continue_without_data == 1 {
+      self.values.continue_without_data = 0;
+
+      // Since states might advance position manually, we have to explicitly track it
+      let initial_position = self.position;
+
+      if let State::FINISH = self.state {
+        self.fail_str(Error::UNEXPECTED_DATA, "unexpected data");
+        continue;
+      }
+
+      let result = apply_state!();
+
+      match &self.state {
+        State::FINISH => {
+          (self.callbacks.on_finish)(self, ptr::null(), 0);
+        }
+        State::ERROR => {
+          (self.callbacks.on_error)(self, self.error_description.as_ptr(), self.error_description.len());
+          break;
+        }
+        _ => {}
+      }
+
+      /*
+        Negative return values mean to consume N bytes and then pause.
+        Returning PAUSE from a callback instructs to pause without consuming any byte.
+      */
+      if result < 0 {
+        self.paused = true;
+
+        if result < RESERVED_NEGATIVE_ADVANCES {
+          // If SUSPEND was returned, it means the parser is not to be paused but there is not enough data yet
+          self.paused = result == PAUSE;
+
+          // Do not re-execute the callback when pausing due a callback
+          self.values.skip_next_callback = if result == PAUSE { 1 } else { 0 };
+
+          break;
+        }
+
+        let advance = -result as usize;
+        self.position += advance;
+        consumed += advance;
+        break;
+      }
+
+      let advance = result as usize;
+      self.position += advance;
+
+      let difference = self.position - initial_position;
+      consumed += difference;
+      current = &current[difference..];
+
+      #[cfg(all(debug_assertions, feature = "milo_debug_loop"))]
+      {
+        let duration = SystemTime::now().duration_since(last).unwrap().as_nanos();
+
+        if duration > 10 {
+          println!(
+            "[milo::debug] loop iteration (ending in state {}) completed in {} ns",
+            self.state, duration
+          );
+        }
+
+        last = SystemTime::now();
+      }
+    }
+
+    if consumed < limit {
+      self.spans.unconsumed = current.to_vec();
+    } else {
+      self.spans.unconsumed.clear();
+    }
+
+    consumed
+  }
+
   fn move_to(&mut self, state: State, advance: isize) -> isize {
     #[cfg(debug_assertions)]
     {
       let fail_advance = if advance < 0 { advance } else { -advance };
 
       // Notify the end of the current state
-      let result = if let Some(cb) = self.callbacks.before_state_change {
-        cb(self, ptr::null(), 0)
-      } else {
-        0
-      };
-
-      match result {
+      match (self.callbacks.before_state_change)(self, ptr::null(), 0) {
         0 => (),
         -1 => return fail_advance,
         _ => {
@@ -1122,13 +1271,8 @@ generate_parser!({
     {
       let fail_advance = if advance < 0 { advance } else { -advance };
 
-      let result = if let Some(cb) = self.callbacks.after_state_change {
-        cb(self, ptr::null(), 0)
-      } else {
-        0
-      };
-
-      match result {
+      // Notify the beginning of the next state
+      match (self.callbacks.after_state_change)(self, ptr::null(), 0) {
         0 => advance,
         -1 => fail_advance,
         _ => {
@@ -1166,12 +1310,10 @@ generate_parser!({
         self.state = State::FINISH;
       }
       State::BODY_WITH_NO_LENGTH => {
-        if let Some(cb) = self.callbacks.on_message_complete {
-          let action = cb(self, ptr::null(), 0);
+        let action = (self.callbacks.on_message_complete)(self, ptr::null(), 0);
 
-          if action != 0 {
-            self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
-          }
+        if action != 0 {
+          self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
         }
 
         self.state = State::FINISH;
@@ -1182,100 +1324,120 @@ generate_parser!({
       }
     };
   }
-});
+}
 
-generate_parser_interface!({
-  #[no_mangle]
-  pub extern "C" fn free_string(s: *const c_uchar) {
-    unsafe {
-      if s.is_null() {
-        return;
-      }
-
-      let _ = CString::from_raw(s as *mut c_char);
-    }
-  }
-
-  #[no_mangle]
-  pub extern "C" fn create_parser() -> *mut Parser {
-    Box::into_raw(Box::new(Parser::new()))
-  }
-
-  #[no_mangle]
-  pub extern "C" fn free_parser(ptr: *mut Parser) {
-    if ptr.is_null() {
+#[no_mangle]
+pub extern "C" fn free_string(s: *const c_uchar) {
+  unsafe {
+    if s.is_null() {
       return;
     }
 
-    unsafe {
-      let _ = Box::from_raw(ptr);
+    let _ = CString::from_raw(s as *mut c_char);
+  }
+}
+
+#[no_mangle]
+pub extern "C" fn create_parser() -> *mut Parser {
+  Box::into_raw(Box::new(Parser::new()))
+}
+
+#[no_mangle]
+pub extern "C" fn free_parser(ptr: *mut Parser) {
+  if ptr.is_null() {
+    return;
+  }
+
+  unsafe {
+    let _ = Box::from_raw(ptr);
+  }
+}
+
+#[no_mangle]
+pub extern "C" fn reset_parser(parser: *mut Parser, keep_position: bool) {
+  unsafe { parser.as_mut().unwrap().reset(keep_position) }
+}
+
+#[no_mangle]
+pub extern "C" fn execute_parser(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize {
+  unsafe { parser.as_mut().unwrap().parse(data, limit) }
+}
+
+#[no_mangle]
+pub extern "C" fn pause_parser(parser: *mut Parser) {
+  unsafe { parser.as_mut().unwrap().pause() }
+}
+
+#[no_mangle]
+pub extern "C" fn resume_parser(parser: *mut Parser) {
+  unsafe { parser.as_mut().unwrap().resume() }
+}
+
+#[no_mangle]
+pub extern "C" fn finish_parser(parser: *mut Parser) {
+  unsafe { parser.as_mut().unwrap().finish() }
+}
+
+#[no_mangle]
+pub extern "C" fn is_paused(parser: *mut Parser) -> bool {
+  unsafe { parser.as_mut().unwrap().paused }
+}
+
+#[no_mangle]
+pub extern "C" fn get_owner(parser: *mut Parser) -> *mut c_void {
+  unsafe {
+    match parser.as_mut().unwrap().owner {
+      Some(x) => x,
+      None => ptr::null_mut(),
     }
   }
+}
 
-  #[no_mangle]
-  pub extern "C" fn reset_parser(parser: *mut Parser, keep_position: bool) {
-    unsafe { parser.as_mut().unwrap().reset(keep_position) }
+#[no_mangle]
+pub extern "C" fn set_owner(parser: *mut Parser, ptr: *mut c_void) {
+  unsafe {
+    parser.as_mut().unwrap().owner = if ptr.is_null() { None } else { Some(ptr) };
   }
+}
 
-  #[no_mangle]
-  pub extern "C" fn execute_parser(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize {
-    unsafe { parser.as_mut().unwrap().parse(data, limit) }
-  }
+#[no_mangle]
+pub extern "C" fn get_state(parser: *mut Parser) -> u8 {
+  unsafe { parser.as_mut().unwrap().state as u8 }
+}
 
-  #[no_mangle]
-  pub extern "C" fn pause_parser(parser: *mut Parser) {
-    unsafe { parser.as_mut().unwrap().pause() }
-  }
+#[no_mangle]
+pub extern "C" fn get_state_string(parser: *mut Parser) -> *const c_uchar {
+  let string = match_state_string!();
 
-  #[no_mangle]
-  pub extern "C" fn resume_parser(parser: *mut Parser) {
-    unsafe { parser.as_mut().unwrap().resume() }
-  }
+  CString::new(string).unwrap().into_raw() as *const c_uchar
+}
 
-  #[no_mangle]
-  pub extern "C" fn finish_parser(parser: *mut Parser) {
-    unsafe { parser.as_mut().unwrap().finish() }
-  }
+#[no_mangle]
+pub extern "C" fn get_position(parser: *mut Parser) -> usize {
+  unsafe { (*parser).position }
+}
 
-  #[no_mangle]
-  pub extern "C" fn is_paused(parser: *mut Parser) -> bool {
-    unsafe { parser.as_mut().unwrap().paused }
-  }
+#[no_mangle]
+pub extern "C" fn get_error_code(parser: *mut Parser) -> u8 {
+  unsafe { (*parser).error_code as u8 }
+}
 
-  #[no_mangle]
-  pub extern "C" fn get_owner(parser: *mut Parser) -> *mut c_void {
-    unsafe {
-      match parser.as_mut().unwrap().owner {
-        Some(x) => x,
-        None => ptr::null_mut(),
-      }
-    }
-  }
+#[no_mangle]
+pub extern "C" fn get_error_code_string(parser: *mut Parser) -> *const c_uchar {
+  let string = match_error_code_string!();
 
-  #[no_mangle]
-  pub extern "C" fn set_owner(parser: *mut Parser, ptr: *mut c_void) {
-    unsafe {
-      parser.as_mut().unwrap().owner = if ptr.is_null() { None } else { Some(ptr) };
-    }
-  }
+  CString::new(string).unwrap().into_raw() as *const c_uchar
+}
 
-  #[no_mangle]
-  pub extern "C" fn get_state(parser: *mut Parser) -> u8 {
-    unsafe { parser.as_mut().unwrap().state as u8 }
-  }
+#[no_mangle]
+pub extern "C" fn get_error_description_string(parser: *mut Parser) -> *const c_uchar {
+  unsafe { CString::from_vec_unchecked((*parser).error_description.clone()).into_raw() as *const c_uchar }
+}
 
-  #[no_mangle]
-  pub extern "C" fn get_position(parser: *mut Parser) -> usize {
-    unsafe { (*parser).position }
-  }
+values_getters!();
 
-  #[no_mangle]
-  pub extern "C" fn get_error_code(parser: *mut Parser) -> u8 {
-    unsafe { (*parser).error_code as u8 }
-  }
+values_setters!();
 
-  #[no_mangle]
-  pub extern "C" fn get_error_description_string(parser: *mut Parser) -> *const c_uchar {
-    unsafe { CString::from_vec_unchecked((*parser).error_description.clone()).into_raw() as *const c_uchar }
-  }
-});
+spans_getters!();
+
+callbacks_setters!();

@@ -59,7 +59,6 @@ fn main() {
   for (name, payload) in samples {
     let len = payload.len() as f64;
     let iterations = KBYTES as f64 / len;
-    println!("{} {}", len, iterations);
     let total = iterations * len;
     let mut parser = Parser::new();
 
@@ -73,7 +72,8 @@ fn main() {
     let bw = total / time;
 
     println!(
-      "{:.2} mb | {:.2} mb/s | {:.2} ops/sec | {:.2} s\n",
+      "{:25} | {:.2} mb | {:.2} mb/s | {:.2} ops/sec | {:.2} s",
+      name,
       total / ((1024 * 1024) as f64),
       bw / ((1024 * 1024) as f64),
       iterations / time,

@@ -56,7 +56,7 @@ name = "milo"
 version = "0.1.0"
 dependencies = [
  "lazy_static",
- "milo-parser-generator",
+ "milo-parser-macros",
  "regex",
 ]
 
@@ -68,7 +68,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "milo-parser-generator"
+name = "milo-parser-macros"
 version = "0.1.0"
 dependencies = [
  "indexmap",

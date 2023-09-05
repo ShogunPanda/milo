@@ -9,7 +9,7 @@ crate_type = ["staticlib", "lib"]
 
 [dependencies]
 lazy_static = "1.4.0"
-milo-parser-generator = { path = "../generator" }
+milo-parser-macros = { path = "../macros" }
 regex = "1.9.1"
 
 [features]

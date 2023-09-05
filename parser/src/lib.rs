@@ -9,13 +9,13 @@ use std::slice;
 use std::str;
 
 #[cfg(all(debug_assertions, feature = "milo_debug_loop"))]
-use std::time::SystemTime;
+use std::time::Instant;
 
-use milo_parser_generator::{
-  append, append_lowercase, apply_state, callback, callbacks, callbacks_setters, char, clear, crlf,
+use milo_parser_macros::{
+  append, append_lowercase, apply_state, callback, callbacks, c_callbacks_setters, char, clear, crlf,
   data_slice_callback, digit, errors, fail, find_method, generate_parser, get_span, hex_digit, initial_state,
-  match_error_code_string, match_state_string, method, move_to, otherwise, persistent_values, set_value, spans,
-  spans_getters, state, string, suspend, token, url, user_writable_values, values, values_getters, values_setters,
+  c_match_error_code_string, c_match_state_string, method, move_to, otherwise, persistent_values, set_value, spans,
+  c_spans_getters, state, string, suspend, token, url, user_writable_values, values, c_values_getters, c_values_setters,
 };
 
 pub mod test_utils;
@@ -64,7 +64,9 @@ spans!(
   status,
   reason,
   header_field,
+  header_field_lowercase,
   header_value,
+  header_value_lowercase,
   body,
   chunk_length,
   chunk_extension_name,
@@ -453,7 +455,7 @@ state!(response_status, {
 });
 
 state!(response_status_complete, {
-  parser.values.status = get_span!(status).parse::<isize>().unwrap();
+  parser.values.status = isize::from_str_radix(get_span!(status), 10).unwrap();
   callback!(on_status_complete);
   move_to!(response_reason, 0)
 });
@@ -488,7 +490,7 @@ state!(response_reason_complete, {
 #[inline(always)]
 fn save_header(parser: &mut Parser) -> bool {
   // Save some headers which impact how we parse the rest of the message
-  match parser.spans.header_field[..] {
+  match parser.spans.header_field_lowercase[..] {
     string!("content-length") => {
       let status = parser.values.status;
 
@@ -540,7 +542,7 @@ fn save_header(parser: &mut Parser) -> bool {
         return false;
       }
 
-      match &parser.spans.header_value[..] {
+      match &parser.spans.header_value_lowercase[..] {
         // If chunked is the last encoding
         [b'c', b'h', b'u', b'n', b'k', b'e', b'd'] | // "chunked"
         [.., b' ', b',', b'c', b'h', b'u', b'n', b'k', b'e', b'd'] | // ".., chuncked"
@@ -573,7 +575,7 @@ fn save_header(parser: &mut Parser) -> bool {
         }
       }
     }
-    string!("connection") => match parser.spans.header_value[..] {
+    string!("connection") => match parser.spans.header_value_lowercase[..] {
       string!("close") => {
         parser.values.connection = CONNECTION_CLOSE;
       }
@@ -601,7 +603,8 @@ fn save_header(parser: &mut Parser) -> bool {
 state!(header_start, {
   match data {
     token!(x) => {
-      append_lowercase!(header_field, x);
+      append!(header_field, x);
+      append_lowercase!(header_field_lowercase, x);
       1
     }
     [b':', b'\t' | b' ', ..] => {
@@ -643,6 +646,7 @@ state!(header_value, {
   match data {
     [x @ (b'\t' | b' ' | 0x21..=0x7e | 0x80..=0xff), ..] => {
       append!(header_value, x);
+      append_lowercase!(header_value_lowercase, x);
       1
     }
     [b'\r', b'\n', b'\r', b'\n', ..] => {
@@ -660,7 +664,9 @@ state!(header_value, {
 
       callback!(on_header_value, header_value);
       clear!(header_field);
+      clear!(header_field_lowercase);
       clear!(header_value);
+      clear!(header_value_lowercase);
       move_to!(header_value_complete, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid header field value character"),
@@ -852,7 +858,7 @@ state!(chunk_start, {
       1
     }
     char!(';') => {
-      if let Ok(length) = usize::from_str_radix(get_span!(chunk_length).as_str(), 16) {
+      if let Ok(length) = usize::from_str_radix(get_span!(chunk_length), 16) {
         callback!(on_chunk_length, chunk_length);
         clear!(chunk_length);
         set_value!(expected_chunk_size, length);
@@ -862,7 +868,7 @@ state!(chunk_start, {
       }
     }
     crlf!() => {
-      if let Ok(length) = usize::from_str_radix(get_span!(chunk_length).as_str(), 16) {
+      if let Ok(length) = usize::from_str_radix(get_span!(chunk_length), 16) {
         callback!(on_chunk_length, chunk_length);
         clear!(chunk_length);
         set_value!(expected_chunk_size, length);
@@ -1039,7 +1045,7 @@ state!(crlf_after_last_chunk, {
 state!(trailer_start, {
   match data {
     token!(x) => {
-      append_lowercase!(trailer_field, x);
+      append!(trailer_field, x);
       1
     }
     [b':', b'\t' | b' ', ..] => {
@@ -1169,7 +1175,10 @@ impl Parser {
     current = &current[..limit];
 
     #[cfg(all(debug_assertions, feature = "milo_debug_loop"))]
-    let mut last = SystemTime::now();
+    let mut last = Instant::now();
+
+    #[cfg(all(debug_assertions, feature = "milo_debug_loop"))]
+    let mut initial_state = self.state;
 
     while current.len() > 0 || self.values.continue_without_data == 1 {
       self.values.continue_without_data = 0;
@@ -1227,16 +1236,17 @@ impl Parser {
 
       #[cfg(all(debug_assertions, feature = "milo_debug_loop"))]
       {
-        let duration = SystemTime::now().duration_since(last).unwrap().as_nanos();
+        let duration = Instant::now().duration_since(last).as_nanos();
 
-        if duration > 10 {
+        if duration > 100 {
           println!(
-            "[milo::debug] loop iteration (ending in state {}) completed in {} ns",
-            self.state, duration
+            "[milo::debug] loop iteration ({} -> {}) completed in {} ns",
+            initial_state, self.state, duration
           );
         }
 
-        last = SystemTime::now();
+        last = Instant::now();
+        initial_state = self.state;
       }
     }
 
@@ -1407,7 +1417,7 @@ pub extern "C" fn get_state(parser: *mut Parser) -> u8 {
 
 #[no_mangle]
 pub extern "C" fn get_state_string(parser: *mut Parser) -> *const c_uchar {
-  let string = match_state_string!();
+  let string = c_match_state_string!();
 
   CString::new(string).unwrap().into_raw() as *const c_uchar
 }
@@ -1424,7 +1434,7 @@ pub extern "C" fn get_error_code(parser: *mut Parser) -> u8 {
 
 #[no_mangle]
 pub extern "C" fn get_error_code_string(parser: *mut Parser) -> *const c_uchar {
-  let string = match_error_code_string!();
+  let string = c_match_error_code_string!();
 
   CString::new(string).unwrap().into_raw() as *const c_uchar
 }
@@ -1434,10 +1444,15 @@ pub extern "C" fn get_error_description_string(parser: *mut Parser) -> *const c_
   unsafe { CString::from_vec_unchecked((*parser).error_description.clone()).into_raw() as *const c_uchar }
 }
 
-values_getters!();
+c_values_getters!();
 
-values_setters!();
+c_values_setters!();
 
-spans_getters!();
+c_spans_getters!();
 
-callbacks_setters!();
+c_callbacks_setters!();
+
+#[no_mangle]
+pub extern "C" fn noop(_parser: &mut Parser, _data: *const c_uchar, _len: usize) -> isize {
+  0
+}

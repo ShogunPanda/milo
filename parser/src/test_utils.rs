@@ -7,11 +7,16 @@ use std::str;
 use std::sync::Mutex;
 
 use crate::{Parser, RESPONSE};
-use milo_parser_generator::{get_span, get_value};
 
 lazy_static! {
   static ref TEST_SPANS: Mutex<HashMap<(isize, String), String>> = Mutex::new(HashMap::new());
   static ref TEST_OUTPUTS: Mutex<HashMap<isize, String>> = Mutex::new(HashMap::new());
+}
+
+macro_rules! get_span {
+  ($parser:ident, $field:ident) => {
+    unsafe { format!("{}", str::from_utf8_unchecked(&$parser.spans.$field[..])) }
+  };
 }
 
 static mut PARSER_COUNTER: isize = 0;
@@ -169,7 +174,7 @@ fn on_response(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize 
 }
 
 fn on_method(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  show_span(parser, "method", get_span!(method), data, size)
+  show_span(parser, "method", get_span!(parser, method), data, size)
 }
 
 fn on_method_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
@@ -177,7 +182,7 @@ fn on_method_complete(parser: &mut Parser, data: *const c_uchar, size: usize) ->
 }
 
 fn on_url(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  show_span(parser, "url", get_span!(url), data, size)
+  show_span(parser, "url", get_span!(parser, url), data, size)
 }
 
 fn on_url_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
@@ -185,7 +190,7 @@ fn on_url_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -> is
 }
 
 fn on_protocol(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  show_span(parser, "protocol", get_span!(protocol), data, size)
+  show_span(parser, "protocol", get_span!(parser, protocol), data, size)
 }
 
 fn on_protocol_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
@@ -193,7 +198,7 @@ fn on_protocol_complete(parser: &mut Parser, data: *const c_uchar, size: usize) 
 }
 
 fn on_version(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  show_span(parser, "version", get_span!(version), data, size)
+  show_span(parser, "version", get_span!(parser, version), data, size)
 }
 
 fn on_version_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
@@ -201,7 +206,7 @@ fn on_version_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -
 }
 
 fn on_status(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  show_span(parser, "status", get_span!(version), data, size)
+  show_span(parser, "status", get_span!(parser, version), data, size)
 }
 
 fn on_status_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
@@ -209,7 +214,7 @@ fn on_status_complete(parser: &mut Parser, data: *const c_uchar, size: usize) ->
 }
 
 fn on_reason(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  show_span(parser, "reason", get_span!(version), data, size)
+  show_span(parser, "reason", get_span!(parser, version), data, size)
 }
 
 fn on_reason_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
@@ -217,7 +222,7 @@ fn on_reason_complete(parser: &mut Parser, data: *const c_uchar, size: usize) ->
 }
 
 fn on_header_field(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  show_span(parser, "header_field", get_span!(header_field), data, size)
+  show_span(parser, "header_field", get_span!(parser, header_field), data, size)
 }
 
 fn on_header_field_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
@@ -225,7 +230,7 @@ fn on_header_field_complete(parser: &mut Parser, data: *const c_uchar, size: usi
 }
 
 fn on_header_value(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  show_span(parser, "header_value", get_span!(header_value), data, size)
+  show_span(parser, "header_value", get_span!(parser, header_value), data, size)
 }
 
 fn on_header_value_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
@@ -234,10 +239,10 @@ fn on_header_value_complete(parser: &mut Parser, data: *const c_uchar, size: usi
 
 fn on_headers_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
   let position = parser.position;
-  let version = get_span!(version).replace(".", "/");
-  let chunked = get_value!(has_chunked_transfer_encoding) == 1;
-  let content_length = get_value!(expected_content_length);
-  let protocol = get_span!(protocol);
+  let version = get_span!(parser, version).replace(".", "/");
+  let chunked = parser.values.has_chunked_transfer_encoding == 1;
+  let content_length = parser.values.expected_content_length;
+  let protocol = get_span!(parser, protocol);
 
   if parser.values.message_type == RESPONSE {
     if chunked {
@@ -272,8 +277,8 @@ fn on_headers_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -
       )
     }
   } else {
-    let method = get_span!(method);
-    let url = get_span!(url);
+    let method = get_span!(parser, method);
+    let url = get_span!(parser, url);
 
     if chunked {
       append_output(
@@ -314,14 +319,14 @@ fn on_upgrade(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
 }
 
 fn on_chunk_length(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  show_span(parser, "chunk_length", get_span!(chunk_length), data, size)
+  show_span(parser, "chunk_length", get_span!(parser, chunk_length), data, size)
 }
 
 fn on_chunk_extension_name(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
   show_span(
     parser,
     "chunk_extensions_name",
-    get_span!(chunk_extension_name),
+    get_span!(parser, chunk_extension_name),
     data,
     size,
   )
@@ -331,26 +336,26 @@ fn on_chunk_extension_value(parser: &mut Parser, data: *const c_uchar, size: usi
   show_span(
     parser,
     "chunk_extension_value",
-    get_span!(chunk_extension_value),
+    get_span!(parser, chunk_extension_value),
     data,
     size,
   )
 }
 
 fn on_chunk_data(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  show_span(parser, "chunk_data", get_span!(chunk_data), data, size)
+  show_span(parser, "chunk_data", get_span!(parser, chunk_data), data, size)
 }
 
 fn on_body(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  show_span(parser, "body", get_span!(body), data, size)
+  show_span(parser, "body", get_span!(parser, body), data, size)
 }
 
 fn on_trailer_field(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  show_span(parser, "trailer_field", get_span!(trailer_field), data, size)
+  show_span(parser, "trailer_field", get_span!(parser, trailer_field), data, size)
 }
 
 fn on_trailer_value(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  show_span(parser, "trailer_value", get_span!(trailer_value), data, size)
+  show_span(parser, "trailer_value", get_span!(parser, trailer_value), data, size)
 }
 
 fn on_trailers_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {

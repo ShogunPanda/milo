@@ -423,8 +423,7 @@ pub fn get_span(input: TokenStream) -> TokenStream {
 
   TokenStream::from(quote! {
     unsafe {
-      let slice = parser.spans.#span.clone();
-      String::from_utf8_unchecked(slice)
+      str::from_utf8_unchecked(&parser.spans.#span[..])
     }
   })
 }
@@ -570,7 +569,7 @@ pub fn apply_state(_input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn match_state_string(_input: TokenStream) -> TokenStream {
+pub fn c_match_state_string(_input: TokenStream) -> TokenStream {
   let states_to_string_arms: Vec<_> = STATES
     .lock()
     .unwrap()
@@ -588,7 +587,7 @@ pub fn match_state_string(_input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn match_error_code_string(_input: TokenStream) -> TokenStream {
+pub fn c_match_error_code_string(_input: TokenStream) -> TokenStream {
   let error_to_string_arms: Vec<_> = ERRORS
     .lock()
     .unwrap()
@@ -608,7 +607,7 @@ pub fn match_error_code_string(_input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn values_getters(_input: TokenStream) -> TokenStream {
+pub fn c_values_getters(_input: TokenStream) -> TokenStream {
   let values_getters: Vec<_> = VALUES
     .lock()
     .unwrap()
@@ -632,7 +631,7 @@ pub fn values_getters(_input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn values_setters(_input: TokenStream) -> TokenStream {
+pub fn c_values_setters(_input: TokenStream) -> TokenStream {
   let values_setters: Vec<_> = USER_WRITABLE_VALUES
     .lock()
     .unwrap()
@@ -656,7 +655,7 @@ pub fn values_setters(_input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn spans_getters(_input: TokenStream) -> TokenStream {
+pub fn c_spans_getters(_input: TokenStream) -> TokenStream {
   let spans_getters: Vec<_> = SPANS
     .lock()
     .unwrap()
@@ -680,7 +679,7 @@ pub fn spans_getters(_input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn callbacks_setters(_input: TokenStream) -> TokenStream {
+pub fn c_callbacks_setters(_input: TokenStream) -> TokenStream {
   let spans_ref = SPANS.lock().unwrap();
 
   let mut callbacks: Vec<_> = CALLBACKS
@@ -713,7 +712,6 @@ pub fn callbacks_setters(_input: TokenStream) -> TokenStream {
     #(#callbacks_setters)*
   })
 }
-
 // #endregion generators
 
 #[proc_macro]
@@ -806,8 +804,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
   let callbacks_debug = parse_str::<ExprMethodCall>(&format!("f.debug_struct(\"Callbacks\").finish()",)).unwrap();
 
   let output = quote! {
-    #[inline(always)]
-    fn noop(_parser: &mut Parser, _data: *const c_uchar, _len: usize) -> isize {
+    fn noop_internal(_parser: &mut Parser, _data: *const c_uchar, _len: usize) -> isize {
       0
     }
 
@@ -908,12 +905,12 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
     impl Callbacks {
       fn new() -> Callbacks {
         Callbacks {
-          #( #callbacks: noop ),*
+          #( #callbacks: noop_internal ),*
         }
       }
 
       fn clear(&mut self) {
-        #( self.#callbacks = noop );*
+        #( self.#callbacks = noop_internal );*
       }
     }
 

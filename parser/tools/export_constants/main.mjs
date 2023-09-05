@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 
 const headerPath = new URL('../../dist/milo.h', import.meta.url)
 
-const methods = load(await readFile(new URL('../../../generator/src/methods.yml', import.meta.url)))
+const methods = load(await readFile(new URL('../../../macros/src/methods.yml', import.meta.url)))
 
 const toReplace = `namespace milo {`
 

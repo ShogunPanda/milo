@@ -16,11 +16,11 @@ lib/milo.h:
 	cd ../parser && rustup run nightly cbindgen --config cbindgen.toml --output ../reference/lib/milo.h
 
 lib/libmilo-debug.a: ../parser/src/lib.rs
-	cd ../parser && cargo +nightly build
+	cd ../parser && cargo build
 	mv ../parser/target/debug/libmilo.a lib/libmilo-debug.a
 
 lib/libmilo-release.a: ../parser/src/lib.rs
-	cd ../parser && cargo +nightly build --release 
+	cd ../parser && cargo build --release 
 	mv ../parser/target/release/libmilo.a lib/libmilo-release.a
 
 clean: 

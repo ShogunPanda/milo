@@ -3,7 +3,7 @@ mod test {
   use std::ffi::c_uchar;
 
   use milo::test_utils::{create_parser, http};
-  use milo::{Parser, State, PAUSE, REQUEST, RESPONSE};
+  use milo::{Parser, State, REQUEST, RESPONSE};
 
   #[test]
   fn basic_disable_autodetect() {
@@ -41,6 +41,20 @@ mod test {
   }
 
   #[test]
+  fn basic_incomplete_string_2() {
+    let mut parser = create_parser();
+
+    parser.values.mode = REQUEST;
+    let sample1 = http(r#"GE"#);
+    let sample2 = http(r#"T / HTTP/1.1\r\nHost: foo\r\n\r\n"#);
+
+    parser.parse(sample1.as_ptr(), sample1.len());
+    parser.parse(sample2.as_ptr(), sample2.len());
+
+    assert!(!matches!(parser.state, State::ERROR));
+  }
+
+  #[test]
   fn basic_incomplete_string() {
     let mut parser = create_parser();
 
@@ -52,17 +66,17 @@ mod test {
     let sample6 = http(r#"\r\n\r\n"#);
 
     let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
-    assert!(consumed1 == sample1.len() - 1);
+    assert!(consumed1 == sample1.len() - 4);
     let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
-    assert!(consumed2 == sample2.len() + 1);
+    assert!(consumed2 == sample2.len() + 4);
     let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
-    assert!(consumed3 == sample3.len());
+    assert!(consumed3 == 0);
     let consumed4 = parser.parse(sample4.as_ptr(), sample4.len());
-    assert!(consumed4 == sample4.len());
+    assert!(consumed4 == sample3.len() + sample4.len());
     let consumed5 = parser.parse(sample5.as_ptr(), sample5.len());
-    assert!(consumed5 == sample5.len());
+    assert!(consumed5 == 0);
     let consumed6 = parser.parse(sample6.as_ptr(), sample6.len());
-    assert!(consumed6 == sample6.len());
+    assert!(consumed6 == sample5.len() + sample6.len());
 
     assert!(!matches!(parser.state, State::ERROR));
   }
@@ -160,9 +174,9 @@ mod test {
         Transfer-Encoding: chunked\r\n
         Trailer: host,cache-control\r\n
         \r\n
-        5;ilovew3;somuchlove="arethesepara\"metersfor"\r\n
+        5;ilovew3;somuchlove="arethesepara\"metersfor";another="1111\"2222\"3333"\r\n
         hello\r\n
-        7;blahblah;blah\r\n
+        7;blahblah;blah;somuchlove="arethesepara"\r\n
         \s world\r\n
         0\r\n
         Host: example.com\r\n
@@ -183,11 +197,11 @@ mod test {
     let sample3 = http(r#"890\r\n"#);
 
     let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
-    assert!(consumed1 == sample1.len());
+    assert!(consumed1 == sample1.len() - 5);
     let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
-    assert!(consumed2 == sample2.len());
+    assert!(consumed2 == 0);
     let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
-    assert!(consumed3 == sample3.len());
+    assert!(consumed3 == 12);
 
     assert!(!matches!(parser.state, State::ERROR));
   }
@@ -201,11 +215,11 @@ mod test {
     let sample3 = http(r#"890\r\n0\r\nx-foo: value\r\n\r\n"#);
 
     let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
-    assert!(consumed1 == sample1.len());
+    assert!(consumed1 == sample1.len() - 5);
     let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
-    assert!(consumed2 == sample2.len());
+    assert!(consumed2 == 0);
     let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
-    assert!(consumed3 == sample3.len());
+    assert!(consumed3 == sample3.len() + 7);
 
     assert!(!matches!(parser.state, State::ERROR));
   }
@@ -255,8 +269,10 @@ mod test {
     let sample2 = http(r#"\r\nabc"#); // This will be paused before the body
     let sample3 = http(r#"abc"#);
 
-    parser.callbacks.on_headers_complete =
-      |_parser: &mut Parser, _data: *const c_uchar, _size: usize| -> isize { PAUSE };
+    parser.callbacks.on_headers = |p: &mut Parser, _data: *const c_uchar, _size: usize| -> isize {
+      p.pause();
+      0
+    };
 
     assert!(!parser.paused);
 
@@ -332,7 +348,8 @@ mod test {
     );
 
     parser.parse(incomplete.as_ptr(), incomplete.len());
-    assert!(matches!(parser.state, State::REQUEST_VERSION_COMPLETE));
+
+    assert!(matches!(parser.state, State::HEADER_NAME));
     parser.finish();
     assert!(matches!(parser.state, State::ERROR));
   }

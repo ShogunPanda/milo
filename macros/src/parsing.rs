@@ -1,30 +1,18 @@
-use std::os::raw::c_uchar;
 use syn::parse::{Parse, ParseStream};
-use syn::{Block, Ident, LitByte, LitChar, LitInt, LitStr, Result, Stmt, Token};
-
-pub struct Char {
-  pub identifier: Option<Ident>,
-  pub byte: Option<LitByte>,
-}
-
-pub struct CharRange {
-  pub identifier: Ident,
-  pub from: LitByte,
-  pub to: LitByte,
-}
+use syn::{Block, Expr, Ident, LitInt, LitStr, Result, Stmt, Token};
 
 pub struct Identifiers {
   pub identifiers: Vec<Ident>,
 }
 
-pub struct Failure {
-  pub error: Ident,
-  pub message: LitStr,
+pub struct IdentifiersWithExpr {
+  pub identifier: Ident,
+  pub expr: Option<Expr>,
 }
 
-pub struct Move {
-  pub state: Ident,
-  pub advance: isize,
+pub struct Failure {
+  pub error: Ident,
+  pub message: Expr,
 }
 
 pub struct State {
@@ -32,63 +20,12 @@ pub struct State {
   pub statements: Vec<Stmt>,
 }
 
-impl Parse for Char {
-  fn parse(input: ParseStream) -> Result<Self> {
-    let mut identifier = None;
-    let mut byte = None;
-
-    if input.peek(Ident) {
-      identifier = Some(input.parse()?);
-
-      if input.is_empty() {
-        return Ok(Char { identifier, byte });
-      } else {
-        input.parse::<Token![@]>()?;
-      }
-    }
-
-    // Get the state name
-    let character = input.parse::<LitChar>()?;
-    byte = Some(LitByte::new(
-      c_uchar::try_from(character.value()).unwrap(),
-      character.span(),
-    ));
-    return Ok(Char { identifier, byte });
-  }
-}
-
-impl Parse for CharRange {
-  fn parse(input: ParseStream) -> Result<Self> {
-    // Get the state name
-    let identifier = input.parse()?;
-    input.parse::<Token![,]>()?;
-
-    // Get the range
-    let from = input.parse::<LitChar>()?;
-    input.parse::<Token![,]>()?;
-    let to = input.parse::<LitChar>()?;
-
-    Ok(CharRange {
-      identifier,
-      from: LitByte::new(c_uchar::try_from(from.value()).unwrap(), from.span()),
-      to: LitByte::new(c_uchar::try_from(to.value()).unwrap(), to.span()),
-    })
-  }
+pub struct StringLength {
+  pub string: LitStr,
+  pub modifier: isize,
 }
 
 impl Identifiers {
-  pub fn one(input: ParseStream) -> Result<Self> {
-    Identifiers::parse(input, 1, 1)
-  }
-
-  pub fn one_or_two(input: ParseStream) -> Result<Self> {
-    Identifiers::parse(input, 1, 2)
-  }
-
-  pub fn two(input: ParseStream) -> Result<Self> {
-    Identifiers::parse(input, 2, 2)
-  }
-
   pub fn unbound(input: ParseStream) -> Result<Self> {
     Identifiers::parse(input, 0, usize::MAX)
   }
@@ -129,19 +66,19 @@ impl Parse for Failure {
   }
 }
 
-impl Parse for Move {
+impl Parse for IdentifiersWithExpr {
   fn parse(input: ParseStream) -> Result<Self> {
-    let state = input.parse()?;
-    let mut advance = 1;
+    let identifier = input.parse()?;
+    let mut expr = None;
 
     if !input.is_empty() {
       // Discard the comma
       input.parse::<Token![,]>()?;
 
-      advance = input.parse::<LitInt>()?.base10_parse::<isize>()?;
+      expr = Some(input.parse::<Expr>()?);
     }
 
-    Ok(Move { state, advance })
+    Ok(IdentifiersWithExpr { identifier, expr })
   }
 }
 
@@ -160,5 +97,21 @@ impl Parse for State {
       name,
       statements: body.stmts,
     })
+  }
+}
+
+impl Parse for StringLength {
+  fn parse(input: ParseStream) -> Result<Self> {
+    let string = input.parse()?;
+    let mut modifier = 0;
+
+    if !input.is_empty() {
+      // Discard the comma
+      input.parse::<Token![,]>()?;
+
+      modifier = input.parse::<LitInt>()?.base10_parse::<isize>()?;
+    }
+
+    Ok(StringLength { string, modifier })
   }
 }

@@ -7,10 +7,10 @@ debug: dist/milo.h target/debug/libmilo.a
 	cp target/aarch64-apple-darwin/debug/libmilo.a dist/libmilo.a
 
 target/release/libmilo.a: src/lib.rs
-	cargo +nightly build --release --target aarch64-apple-darwin
+	cargo build -Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort --release --target aarch64-apple-darwin
 
 target/debug/libmilo.a: src/lib.rs
-	cargo +nightly build --target aarch64-apple-darwin
+	cargo build --target aarch64-apple-darwin
 
 dist/milo.h:
 	rustup run nightly cbindgen --config cbindgen.toml --output dist/milo.h

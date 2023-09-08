@@ -7,6 +7,25 @@ publish = false
 [dependencies]
 milo = { path = "../parser" }
 
+[profile.bench]
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+lto = false
+incremental = false
+codegen-units = 16
+rpath = false
+strip = true
+
 [profile.release]
-codegen-units = 1
-lto = true
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+lto = false
+panic = 'abort'
+incremental = false
+codegen-units = 16
+rpath = false
+strip = true

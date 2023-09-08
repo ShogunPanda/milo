@@ -6,4 +6,4 @@ namespace = "milo"
 crates = ["milo"]
 
 [export]
-include = ["Method", "Parser", "State", "Error", "methods"]
+include = ["Callback", "Method", "Parser", "State", "Error", "methods"]

@@ -13,6 +13,9 @@ ${methods.map((v, i) => `  EACH(${i}, ${v.replaceAll('-', '_')}, ${v.replaceAll(
 
 
 ${toReplace}
+
+struct Parser;
+
 `.trim()
 
 const header = await readFile(headerPath, 'utf-8')

@@ -3,18 +3,16 @@ extern crate lazy_static;
 
 mod parsing;
 
-use indexmap::IndexSet;
-use proc_macro::TokenStream;
-use quote::{format_ident, quote};
 use std::ffi::c_uchar;
 use std::fs::File;
 use std::path::Path;
 use std::sync::Mutex;
-use syn::{
-  parse_macro_input, parse_str, Arm, Expr, ExprMethodCall, Ident, ItemConst, LitByte, LitChar, LitInt, LitStr,
-};
 
+use indexmap::IndexSet;
 use parsing::{Failure, Identifiers, IdentifiersWithExpr, State, StringLength};
+use proc_macro::TokenStream;
+use quote::{format_ident, quote};
+use syn::{parse_macro_input, parse_str, Arm, Expr, Ident, ItemConst, LitByte, LitChar, LitInt, LitStr};
 
 const SUSPEND: isize = isize::MIN;
 
@@ -32,13 +30,10 @@ lazy_static! {
   static ref VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref PERSISTENT_VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref USER_WRITABLE_VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
-  static ref SPANS: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref CALLBACKS: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
 }
 
-fn format_state(ident: &Ident) -> Ident {
-  format_ident!("{}", ident.to_string().to_uppercase())
-}
+fn format_state(ident: &Ident) -> Ident { format_ident!("{}", ident.to_string().to_uppercase()) }
 
 // #region definitions
 #[proc_macro]
@@ -75,19 +70,6 @@ pub fn persistent_values(input: TokenStream) -> TokenStream {
 
   for value in definition.identifiers {
     values.insert(value.to_string());
-  }
-
-  TokenStream::new()
-}
-
-#[proc_macro]
-pub fn spans(input: TokenStream) -> TokenStream {
-  let definition = parse_macro_input!(input with Identifiers::unbound);
-
-  let mut spans = SPANS.lock().unwrap();
-
-  for span in definition.identifiers {
-    spans.insert(span.to_string());
   }
 
   TokenStream::new()
@@ -143,13 +125,14 @@ pub fn measure(input: TokenStream) -> TokenStream {
 pub fn state(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as State);
   let name = definition.name;
+  let function = format_ident!("state_{}", name);
   let statements = definition.statements;
 
   STATES.lock().unwrap().insert(name.to_string().to_uppercase());
 
   TokenStream::from(quote! {
     #[inline(always)]
-    fn #name (parser: &mut Parser, data: &[c_uchar]) -> isize {
+    fn #function (parser: &mut Parser, data: &[c_uchar]) -> isize {
       let mut data = data;
       #(#statements)*
     }
@@ -167,9 +150,7 @@ pub fn char(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn digit(_input: TokenStream) -> TokenStream {
-  TokenStream::from(quote! { 0x30..=0x39 })
-}
+pub fn digit(_input: TokenStream) -> TokenStream { TokenStream::from(quote! { 0x30..=0x39 }) }
 
 #[proc_macro]
 pub fn hex_digit(_input: TokenStream) -> TokenStream {
@@ -202,23 +183,18 @@ pub fn case_insensitive_string(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn crlf(_: TokenStream) -> TokenStream {
-  TokenStream::from(quote! { [b'\r', b'\n', ..] })
-}
+pub fn crlf(_: TokenStream) -> TokenStream { TokenStream::from(quote! { [b'\r', b'\n', ..] }) }
 
 #[proc_macro]
-pub fn double_crlf(_: TokenStream) -> TokenStream {
-  TokenStream::from(quote! { [b'\r', b'\n', b'\r', b'\n', ..] })
-}
+pub fn double_crlf(_: TokenStream) -> TokenStream { TokenStream::from(quote! { [b'\r', b'\n', b'\r', b'\n', ..] }) }
 
 #[proc_macro]
 pub fn token(_input: TokenStream) -> TokenStream {
-  /*
-    RFC 9110 section 5.6.2 and RFC 5234 appendix B.1
-    DIGIT = 0x30 - 0x39
-    ALPHA = 0x41-0x5A, 0x61 - 0x7A
-    OTHER_TOKENS = '!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '.' | '^' | '_' | '`' | '|' | '~'
-  */
+  // RFC 9110 section 5.6.2 and RFC 5234 appendix B.1
+  // DIGIT = 0x30 - 0x39
+  // ALPHA = 0x41-0x5A, 0x61 - 0x7A
+  // OTHER_TOKENS = '!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '.' |
+  // '^' | '_' | '`' | '|' | '~'
   TokenStream::from(quote! {
     0x30..=0x39 |
     0x41..=0x5A |
@@ -229,10 +205,8 @@ pub fn token(_input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn token_value(_input: TokenStream) -> TokenStream {
-  /*
-    RFC 9112 section 4
-    HTAB / SP / VCHAR / obs-text
-  */
+  // RFC 9112 section 4
+  // HTAB / SP / VCHAR / obs-text
   TokenStream::from(quote! { b'\t' | b' ' | 0x21..=0x7e | 0x80..=0xff })
 }
 
@@ -247,10 +221,8 @@ pub fn otherwise(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn method(input: TokenStream) -> TokenStream {
-  /*
-     HTTP: https://www.iana.org/assignments/http-methods as stated in RFC 9110 section 16.1.1
-     RTSP: RFC 7826 section 7.1
-  */
+  // HTTP: https://www.iana.org/assignments/http-methods as stated in RFC 9110 section 16.1.1
+  // RTSP: RFC 7826 section 7.1
 
   let methods = METHODS.lock().unwrap();
 
@@ -266,12 +238,12 @@ pub fn method(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn url(_input: TokenStream) -> TokenStream {
-  /*
-    RFC 3986 appendix A and RFC 5234 appendix B.1
-    DIGIT = 0x30 - 0x39
-    ALPHA = 0x41-0x5A, 0x61 - 0x7A
-    OTHER_UNRESERVED_AND_RESERVED = '-' | '.' | '_' | '~' | ':' | '/' | '?' | '#' | '[' | ']' | '@' | '!' | '$' | '&' | ''' | '(' | ')' | '*' | '+' | ',' | ';' | '=' | '%'
-  */
+  // RFC 3986 appendix A and RFC 5234 appendix B.1
+  // DIGIT = 0x30 - 0x39
+  // ALPHA = 0x41-0x5A, 0x61 - 0x7A
+  // OTHER_UNRESERVED_AND_RESERVED = '-' | '.' | '_' | '~' | ':' | '/' | '?' | '#'
+  // | '[' | ']' | '@' | '!' | '$' | '&' | ''' | '(' | ')' | '*' | '+' | ',' | ';'
+  // | '=' | '%'
 
   TokenStream::from(quote! {
     0x30..=0x39 |
@@ -384,9 +356,7 @@ pub fn callback(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn suspend(_input: TokenStream) -> TokenStream {
-  TokenStream::from(quote! { SUSPEND })
-}
+pub fn suspend(_input: TokenStream) -> TokenStream { TokenStream::from(quote! { SUSPEND }) }
 
 #[proc_macro]
 pub fn find_method(input: TokenStream) -> TokenStream {
@@ -406,7 +376,7 @@ pub fn find_method(input: TokenStream) -> TokenStream {
 
       if x == "CONNECT" {
         parse_str::<Arm>(&format!(
-          "[{}, ..] => {{ parser.values.is_connect_request = 1; {} }}",
+          "[{}, ..] => {{ parser.is_connect_request = 1; {} }}",
           matcher, i
         ))
         .unwrap()
@@ -444,7 +414,7 @@ pub fn apply_state(_input: TokenStream) -> TokenStream {
     .iter()
     .map(|x| {
       parse_str::<Arm>(&format!(
-        "State::{} => {}(self, current)",
+        "State::{} => state_{}(self, current)",
         x,
         x.to_string().to_lowercase()
       ))
@@ -471,7 +441,7 @@ pub fn c_match_state_string(_input: TokenStream) -> TokenStream {
     .collect();
 
   TokenStream::from(quote! {
-    match unsafe { (*parser).state } {
+    match self.state {
       State::FINISH => "FINISH",
       State::ERROR => "ERROR",
       #(#states_to_string_arms),*
@@ -489,7 +459,7 @@ pub fn c_match_error_code_string(_input: TokenStream) -> TokenStream {
     .collect();
 
   TokenStream::from(quote! {
-    match unsafe { (*parser).error_code } {
+    match self.error_code {
       Error::NONE => "NONE",
       Error::UNEXPECTED_DATA => "UNEXPECTED_DATA",
       Error::UNEXPECTED_EOF => "UNEXPECTED_EOF",
@@ -499,111 +469,24 @@ pub fn c_match_error_code_string(_input: TokenStream) -> TokenStream {
   })
 }
 
-#[proc_macro]
-pub fn c_values_getters(_input: TokenStream) -> TokenStream {
-  let values_getters: Vec<_> = VALUES
-    .lock()
-    .unwrap()
-    .iter()
-    .map(|value| {
-      let getter = format_ident!("get_{}", value);
-      let key = format_ident!("{}", value);
-
-      quote! {
-        #[no_mangle]
-        pub extern "C" fn #getter(parser: *mut Parser) -> isize {
-          unsafe { (*parser).values.#key }
-        }
-      }
-    })
-    .collect();
-
-  TokenStream::from(quote! {
-    #(#values_getters)*
-  })
-}
-
-#[proc_macro]
-pub fn c_values_setters(_input: TokenStream) -> TokenStream {
-  let values_setters: Vec<_> = USER_WRITABLE_VALUES
-    .lock()
-    .unwrap()
-    .iter()
-    .map(|value| {
-      let setter = format_ident!("set_{}", value);
-      let key = format_ident!("{}", value);
-
-      quote! {
-        #[no_mangle]
-        pub extern "C" fn #setter(parser: *mut Parser, value: isize) {
-          unsafe { (*parser).values.#key = value; }
-        }
-      }
-    })
-    .collect();
-
-  TokenStream::from(quote! {
-    #(#values_setters)*
-  })
-}
-
-#[proc_macro]
-pub fn c_spans_getters(_input: TokenStream) -> TokenStream {
-  let spans_getters: Vec<_> = SPANS
-    .lock()
-    .unwrap()
-    .iter()
-    .map(|span| {
-      let getter = format_ident!("get_{}_string", span);
-      let key = format_ident!("{}", span);
-
-      quote! {
-        #[no_mangle]
-        pub extern "C" fn #getter(parser: *mut Parser) -> *const c_uchar {
-          unsafe { CString::from_vec_unchecked((*parser).spans.#key.clone()).into_raw() as *const c_uchar }
-        }
-      }
-    })
-    .collect();
-
-  TokenStream::from(quote! {
-    #(#spans_getters)*
-  })
-}
-
-#[proc_macro]
-pub fn c_callbacks_setters(_input: TokenStream) -> TokenStream {
-  let callbacks_setters: Vec<_> = CALLBACKS
-    .lock()
-    .unwrap()
-    .iter()
-    .map(|callback| {
-      let setter = format_ident!("set_{}", callback);
-      let key = format_ident!("{}", callback);
-
-      quote! {
-        #[no_mangle]
-        pub extern "C" fn #setter(parser: *mut Parser, callback: Callback) {
-          unsafe { (*parser).callbacks.#key = callback };
-        }
-      }
-    })
-    .collect();
-
-  TokenStream::from(quote! {
-    #(#callbacks_setters)*
-  })
-}
 // #endregion generators
 
 #[proc_macro]
 pub fn generate_parser(_input: TokenStream) -> TokenStream {
   let methods_ref = METHODS.lock().unwrap();
+  let states_ref = STATES.lock().unwrap();
+  let errors_ref = ERRORS.lock().unwrap();
 
   let methods: Vec<_> = methods_ref
     .iter()
     .map(|x| format_ident!("{}", x.replace("-", "_")))
     .collect();
+
+  let states: Vec<_> = states_ref.iter().map(|x| format_ident!("{}", x)).collect();
+
+  let values: Vec<_> = VALUES.lock().unwrap().iter().map(|x| format_ident!("{}", x)).collect();
+
+  let errors: Vec<_> = errors_ref.iter().map(|x| format_ident!("{}", x)).collect();
 
   let methods_consts: Vec<_> = methods_ref
     .iter()
@@ -611,30 +494,11 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
     .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const METHOD_{}: isize = {};", x.replace("-", "_"), i)).unwrap())
     .collect();
 
-  let states_ref = STATES.lock().unwrap();
-  let states: Vec<_> = states_ref.iter().map(|x| format_ident!("{}", x)).collect();
-
   let states_consts: Vec<_> = states_ref
     .iter()
     .enumerate()
     .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const STATES_{}: isize = {};", x, i)).unwrap())
     .collect();
-
-  let values_ref = VALUES.lock().unwrap();
-  let values: Vec<_> = values_ref.iter().map(|x| format_ident!("{}", x)).collect();
-
-  let persistent_values_ref = PERSISTENT_VALUES.lock().unwrap();
-  let clearable_values: Vec<_> = values_ref
-    .iter()
-    .filter(|x| !persistent_values_ref.contains(x.clone()))
-    .map(|x| format_ident!("{}", x))
-    .collect();
-
-  let spans: Vec<_> = SPANS.lock().unwrap().iter().map(|x| format_ident!("{}", x)).collect();
-
-  let errors_ref = ERRORS.lock().unwrap();
-
-  let errors: Vec<_> = errors_ref.iter().map(|x| format_ident!("{}", x)).collect();
 
   let errors_consts: Vec<_> = errors_ref
     .iter()
@@ -649,43 +513,12 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
     .map(|x| format_ident!("{}", x))
     .collect();
 
-  let states_debug: Vec<_> = states
-    .iter()
-    .map(|x| parse_str::<Arm>(&format!("State::{} => write!(f, \"State::{}\")", x, x)).unwrap())
-    .collect();
-
-  let values_debug = parse_str::<ExprMethodCall>(&format!(
-    "f.debug_struct(\"Values\"){}.finish()",
-    values
-      .iter()
-      .map(|x| { format!(".field(\"{}\", &self.{})", x, x) })
-      .collect::<Vec<String>>()
-      .join("")
-  ))
-  .unwrap();
-
-  let spans_debug = parse_str::<ExprMethodCall>(&format!(
-    "f.debug_struct(\"Spans\"){}.finish()",
-    spans
-      .iter()
-      .map(|x| {
-        format!(
-          ".field(\"{}\", &unsafe {{ str::from_utf8_unchecked(&self.{}[..]) }})",
-          x, x
-        )
-      })
-      .collect::<Vec<String>>()
-      .join("")
-  ))
-  .unwrap();
-
-  let callbacks_debug = parse_str::<ExprMethodCall>(&format!("f.debug_struct(\"Callbacks\").finish()",)).unwrap();
-
   let output = quote! {
     fn noop_internal(_parser: &mut Parser, _data: *const c_uchar, _len: usize) -> isize {
       0
     }
 
+    /// cbindgen:ignore
     const SUSPEND: isize = #SUSPEND;
 
     #(#errors_consts)*
@@ -694,18 +527,8 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
 
     #(#states_consts)*
 
-    #[derive(Debug)]
-    pub struct Parser {
-      pub owner: Option<*mut c_void>,
-      pub state: State,
-      pub paused: bool,
-      pub position: usize,
-      pub values: Values,
-      pub callbacks: Callbacks,
-      pub spans: Spans,
-      pub error_code: Error,
-      pub error_description: Vec<c_uchar>
-    }
+    #[no_mangle]
+    pub type Callback = fn (&mut Parser, *const c_uchar, usize) -> isize;
 
     #[repr(u8)]
     #[derive(Copy, Clone)]
@@ -714,7 +537,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
     }
 
     #[repr(u8)]
-    #[derive(Copy, Clone)]
+    #[derive(Copy, Clone, Debug)]
     pub enum State {
       #(#states),*
     }
@@ -725,53 +548,11 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
       #(#errors),*
     }
 
-    pub struct Values {
-      #( pub #values: isize ),*
-    }
 
-    pub struct Spans {
-      #( pub #spans: Vec<c_uchar> ),*
-    }
-    type Callback = fn (&mut Parser, *const c_uchar, usize) -> isize;
-
+    #[repr(C)]
+    #[derive(Debug)]
     pub struct Callbacks {
       #( pub #callbacks: Callback),*
-    }
-
-    impl Display for State {
-      fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match *self {
-          #(#states_debug),*
-        }
-      }
-    }
-
-    impl Debug for State {
-      fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match *self {
-          #(#states_debug),*
-        }
-      }
-    }
-
-    impl Values {
-      fn new() -> Values {
-        Values {
-          #( #values: 0 ),*
-        }
-      }
-
-      fn clear(&mut self) {
-        #( self.#clearable_values = 0 );*
-      }
-    }
-
-    impl Spans {
-      fn new() -> Spans {
-        Spans {
-          #( #spans: vec![] ),*
-        }
-      }
     }
 
     impl Callbacks {
@@ -782,24 +563,84 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
       }
     }
 
-    impl Debug for Values {
-      fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        #values_debug
-      }
-    }
-
-    impl Debug for Spans {
-      fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        #spans_debug
-      }
-    }
-
-    impl Debug for Callbacks {
-      fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        #callbacks_debug
-      }
+    #[repr(C)]
+    #[derive(Debug)]
+    pub struct Parser {
+      pub owner: *mut c_void,
+      pub state: State,
+      pub position: usize,
+      pub paused: bool,
+      pub error_code: Error,
+      pub error_description: *const c_uchar,
+      pub error_description_len: usize,
+      pub unconsumed: *const c_uchar,
+      pub unconsumed_len: usize,
+      #( pub #values: isize ),*,
+      pub callbacks: Callbacks,
     }
   };
 
   TokenStream::from(output)
+}
+
+#[proc_macro]
+pub fn generate_parser_initializers(_input: TokenStream) -> TokenStream {
+  let values_ref = VALUES.lock().unwrap();
+  let values: Vec<_> = values_ref.iter().map(|x| format_ident!("{}", x)).collect();
+
+  let persistent_values_ref = PERSISTENT_VALUES.lock().unwrap();
+  let clearable_values: Vec<_> = values_ref
+    .iter()
+    .filter(|x| !persistent_values_ref.contains(x.clone()))
+    .map(|x| format_ident!("{}", x))
+    .collect();
+
+  TokenStream::from(quote! {
+    pub fn new() -> Parser {
+      Parser {
+        owner: ptr::null_mut(),
+        state: initial_state!(),
+        position: 0,
+        paused: false,
+        error_code: Error::NONE,
+        error_description: ptr::null(),
+        error_description_len: 0,
+        unconsumed: ptr::null(),
+        unconsumed_len: 0,
+        #( #values: 0 ),*,
+        callbacks: Callbacks::new(),
+      }
+    }
+
+    pub fn reset(&mut self, keep_position: bool) {
+      self.state = initial_state!();
+      self.paused = false;
+
+      if !keep_position {
+        self.position = 0;
+      }
+
+      self.error_code = Error::NONE;
+
+      if self.error_description_len > 0 {
+        unsafe { Vec::from_raw_parts(self.error_description as *mut c_uchar, self.error_description_len, self.error_description_len); }
+
+        self.error_description = ptr::null();
+        self.error_description_len = 0;
+      }
+
+      if self.unconsumed_len > 0 {
+        unsafe { Vec::from_raw_parts(self.unconsumed as *mut c_uchar, self.unconsumed_len, self.unconsumed_len); }
+
+        self.unconsumed = ptr::null();
+        self.unconsumed_len = 0;
+      }
+
+      self.clear();
+    }
+
+    pub fn clear(&mut self) {
+      #( self.#clearable_values = 0 );*
+    }
+  })
 }

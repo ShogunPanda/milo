@@ -34,32 +34,14 @@ fn append_output(parser: &mut Parser, message: String, data: *const c_uchar, siz
   TEST_OUTPUTS
     .lock()
     .unwrap()
-    .get_mut(&parser.values.id)
+    .get_mut(&parser.id)
     .unwrap()
     .push_str((message + "\n").as_str());
 
   0
 }
 
-fn show_span(parser: &mut Parser, name: &str, data: *const c_uchar, size: usize) -> isize {
-  if name == "version" || name == "protocol" || name == "method" || name == "url" {
-    unsafe {
-      TEST_SPANS.lock().unwrap().insert(
-        (parser.values.id, name.into()),
-        String::from_utf8_unchecked(slice::from_raw_parts(data, size).into()),
-      );
-    }
-  }
-
-  append_output(
-    parser,
-    format!("\"pos\": {}, \"event\": {}", parser.position, format_event(name)),
-    data,
-    size,
-  )
-}
-
-fn status_complete(name: &str, parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
+fn event(parser: &mut Parser, name: &str, data: *const c_uchar, size: usize) -> isize {
   append_output(
     parser,
     format!("\"pos\": {}, \"event\": {}", parser.position, name),
@@ -68,22 +50,25 @@ fn status_complete(name: &str, parser: &mut Parser, data: *const c_uchar, size: 
   )
 }
 
+fn show_span(parser: &mut Parser, name: &str, data: *const c_uchar, size: usize) -> isize {
+  if name == "version" || name == "protocol" || name == "method" || name == "url" {
+    unsafe {
+      TEST_SPANS.lock().unwrap().insert(
+        (parser.id, name.into()),
+        String::from_utf8_unchecked(slice::from_raw_parts(data, size).into()),
+      );
+    }
+  }
+
+  return event(parser, name, data, size);
+}
+
 fn message_start(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  append_output(
-    parser,
-    format!("\"pos\": {}, \"event\": {}", parser.position, format_event("begin")),
-    data,
-    size,
-  )
+  return event(parser, "begin", data, size);
 }
 
 fn message_complete(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  append_output(
-    parser,
-    format!("\"pos\": {}, \"event\": {}", parser.position, format_event("complete")),
-    data,
-    size,
-  )
+  return event(parser, "complete", data, size);
 }
 
 fn on_error(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
@@ -103,30 +88,15 @@ fn on_error(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
 }
 
 fn on_finish(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  append_output(
-    parser,
-    format!("\"pos\": {}, \"event\": {}", parser.position, format_event("finish")),
-    data,
-    size,
-  )
+  return event(parser, "finish", data, size);
 }
 
 fn on_request(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  append_output(
-    parser,
-    format!("\"pos\": {}, \"event\": {}", parser.position, format_event("request")),
-    data,
-    size,
-  )
+  return event(parser, "request", data, size);
 }
 
 fn on_response(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  append_output(
-    parser,
-    format!("\"pos\": {}, \"event\": {}", parser.position, format_event("response")),
-    data,
-    size,
-  )
+  return event(parser, "response", data, size);
 }
 
 fn on_method(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
@@ -163,15 +133,12 @@ fn on_headers(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
   let spans = TEST_SPANS.lock().unwrap();
 
   let position = parser.position;
-  let version = spans
-    .get(&(parser.values.id, "version".into()))
-    .unwrap()
-    .replace(".", "/");
-  let chunked = parser.values.has_chunked_transfer_encoding == 1;
-  let content_length = parser.values.content_length;
-  let protocol = spans.get(&(parser.values.id, "protocol".into())).unwrap();
+  let version = spans.get(&(parser.id, "version".into())).unwrap().replace(".", "/");
+  let chunked = parser.has_chunked_transfer_encoding == 1;
+  let content_length = parser.content_length;
+  let protocol = spans.get(&(parser.id, "protocol".into())).unwrap();
 
-  if parser.values.message_type == RESPONSE {
+  if parser.message_type == RESPONSE {
     let heading = format!(
       "\"pos\": {}, \"event\": {}, \"type\": \"response\", ",
       position,
@@ -183,7 +150,7 @@ fn on_headers(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
         parser,
         format!(
           "{}\"status\": \"{}\", \"protocol\": \"{}\" \"version\": \"{}\", \"body\": \"chunked\"",
-          heading, parser.values.status, protocol, version,
+          heading, parser.status, protocol, version,
         ),
         data,
         size,
@@ -193,7 +160,7 @@ fn on_headers(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
         parser,
         format!(
           "{}\"status\": \"{}\", \"protocol\": \"{}\" \"version\": \"{}\", \"body\": {}\"",
-          heading, parser.values.status, protocol, version, content_length
+          heading, parser.status, protocol, version, content_length
         ),
         data,
         size,
@@ -203,7 +170,7 @@ fn on_headers(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
         parser,
         format!(
           "{}\"status\": \"{}\", \"protocol\": \"{}\" \"version\": \"{}\", \"body\": null",
-          heading, parser.values.status, protocol, version,
+          heading, parser.status, protocol, version,
         ),
         data,
         size,
@@ -215,8 +182,8 @@ fn on_headers(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
       position,
       format_event("headers")
     );
-    let method = spans.get(&(parser.values.id, "method".into())).unwrap();
-    let url = spans.get(&(parser.values.id, "url".into())).unwrap();
+    let method = spans.get(&(parser.id, "method".into())).unwrap();
+    let url = spans.get(&(parser.id, "url".into())).unwrap();
 
     if chunked {
       append_output(
@@ -252,9 +219,7 @@ fn on_headers(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
   }
 }
 
-fn on_upgrade(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  status_complete("upgrade", parser, data, size)
-}
+fn on_upgrade(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize { event(parser, "upgrade", data, size) }
 
 fn on_chunk_length(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
   show_span(parser, "chunk_length", data, size)
@@ -272,16 +237,9 @@ fn on_chunk_data(parser: &mut Parser, data: *const c_uchar, size: usize) -> isiz
   show_span(parser, "chunk_data", data, size)
 }
 
-fn on_body(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize { show_span(parser, "body", data, size) }
+fn on_body(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize { event(parser, "body", data, size) }
 
-fn on_data(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  append_output(
-    parser,
-    format!("\"pos\": {}, \"event\": {}", parser.position, format_event("data")),
-    data,
-    size,
-  )
-}
+fn on_data(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize { show_span(parser, "data", data, size) }
 
 fn on_trailer_name(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
   show_span(parser, "trailer_name", data, size)
@@ -292,7 +250,7 @@ fn on_trailer_value(parser: &mut Parser, data: *const c_uchar, size: usize) -> i
 }
 
 fn on_trailers(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
-  status_complete("trailers", parser, data, size)
+  event(parser, "trailers", data, size)
 }
 
 pub fn create_parser() -> Parser {
@@ -301,7 +259,7 @@ pub fn create_parser() -> Parser {
     PARSER_COUNTER
   };
   let mut parser = Parser::new();
-  parser.values.id = id;
+  parser.id = id;
 
   let mut outputs = TEST_OUTPUTS.lock().unwrap();
   let mut spans = TEST_SPANS.lock().unwrap();

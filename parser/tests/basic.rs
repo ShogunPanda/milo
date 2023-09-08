@@ -29,13 +29,13 @@ mod test {
       "#,
     );
 
-    parser.values.mode = REQUEST;
+    parser.mode = REQUEST;
     parser.parse(response.as_ptr(), response.len());
     assert!(matches!(parser.state, State::ERROR));
 
     parser.reset(false);
 
-    parser.values.mode = RESPONSE;
+    parser.mode = RESPONSE;
     parser.parse(request.as_ptr(), request.len());
     assert!(matches!(parser.state, State::ERROR));
   }
@@ -44,7 +44,7 @@ mod test {
   fn basic_incomplete_string_2() {
     let mut parser = create_parser();
 
-    parser.values.mode = REQUEST;
+    parser.mode = REQUEST;
     let sample1 = http(r#"GE"#);
     let sample2 = http(r#"T / HTTP/1.1\r\nHost: foo\r\n\r\n"#);
 
@@ -197,11 +197,11 @@ mod test {
     let sample3 = http(r#"890\r\n"#);
 
     let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
-    assert!(consumed1 == sample1.len() - 5);
+    assert!(consumed1 == sample1.len());
     let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
-    assert!(consumed2 == 0);
+    assert!(consumed2 == sample2.len());
     let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
-    assert!(consumed3 == 12);
+    assert!(consumed3 == sample3.len());
 
     assert!(!matches!(parser.state, State::ERROR));
   }
@@ -215,11 +215,11 @@ mod test {
     let sample3 = http(r#"890\r\n0\r\nx-foo: value\r\n\r\n"#);
 
     let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
-    assert!(consumed1 == sample1.len() - 5);
+    assert!(consumed1 == sample1.len());
     let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
-    assert!(consumed2 == 0);
+    assert!(consumed2 == sample2.len());
     let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
-    assert!(consumed3 == sample3.len() + 7);
+    assert!(consumed3 == sample3.len());
 
     assert!(!matches!(parser.state, State::ERROR));
   }

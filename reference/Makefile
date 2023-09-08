@@ -13,7 +13,8 @@ build/reference-release: lib/milo.h lib/libmilo-release.a
 	clang++ -std=c++11 -I lib -o build/reference-release lib/libmilo-release.a src/main.cc
 
 lib/milo.h:
-	cd ../parser && rustup run nightly cbindgen --config cbindgen.toml --output ../reference/lib/milo.h
+	cd ../parser && make -B dist/milo.h
+	mv ../parser/dist/milo.h lib/milo.h
 
 lib/libmilo-debug.a: ../parser/src/lib.rs
 	cd ../parser && cargo build

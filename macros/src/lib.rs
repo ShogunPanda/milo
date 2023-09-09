@@ -591,7 +591,7 @@ pub fn generate_parser_initializers(_input: TokenStream) -> TokenStream {
   let persistent_values_ref = PERSISTENT_VALUES.lock().unwrap();
   let clearable_values: Vec<_> = values_ref
     .iter()
-    .filter(|x| !persistent_values_ref.contains(x.clone()))
+    .filter(|x| !persistent_values_ref.contains(x.as_str()))
     .map(|x| format_ident!("{}", x))
     .collect();
 

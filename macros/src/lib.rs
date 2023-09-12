@@ -3,6 +3,7 @@ extern crate lazy_static;
 
 mod parsing;
 
+use std::collections::HashSet;
 use std::{ffi::c_uchar, sync::RwLock};
 use std::fs::File;
 use std::path::Path;
@@ -27,7 +28,7 @@ lazy_static! {
   static ref STATES: RwLock<IndexSet<String>> = RwLock::new(IndexSet::new());
   static ref ERRORS: RwLock<IndexSet<String>> = RwLock::new(IndexSet::new());
   static ref VALUES: RwLock<IndexSet<String>> = RwLock::new(IndexSet::new());
-  static ref PERSISTENT_VALUES: RwLock<IndexSet<String>> = RwLock::new(IndexSet::new());
+  static ref PERSISTENT_VALUES: RwLock<HashSet<String>> = RwLock::new(HashSet::new());
   static ref USER_WRITABLE_VALUES: RwLock<IndexSet<String>> = RwLock::new(IndexSet::new());
   static ref CALLBACKS: RwLock<IndexSet<String>> = RwLock::new(IndexSet::new());
 }

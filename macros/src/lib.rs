@@ -315,18 +315,9 @@ pub fn consume(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as Expr);
 
   TokenStream::from(quote! {
-    let mut consumed = 0;
-    let max = data.len();
+    let mut consumed = data.iter().take_while(|&item| matches!(item, #definition)).count();
 
-    while consumed < max {
-      if let #definition = data[consumed] {
-        consumed += 1;
-      } else {
-        break
-      }
-    }
-
-    if(consumed == max) {
+    if consumed == data.len() {
       return SUSPEND;
     }
   })

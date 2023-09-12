@@ -3,10 +3,9 @@ extern crate lazy_static;
 
 mod parsing;
 
-use std::ffi::c_uchar;
+use std::{ffi::c_uchar, sync::RwLock};
 use std::fs::File;
 use std::path::Path;
-use std::sync::Mutex;
 
 use indexmap::IndexSet;
 use parsing::{Failure, Identifiers, IdentifiersWithExpr, State, StringLength};
@@ -17,20 +16,20 @@ use syn::{parse_macro_input, parse_str, Arm, Expr, Ident, ItemConst, LitByte, Li
 const SUSPEND: isize = isize::MIN;
 
 lazy_static! {
-  static ref METHODS: Mutex<Vec<String>> = {
+  static ref METHODS: RwLock<Vec<String>> = {
     let mut absolute_path = Path::new(file!()).parent().unwrap().to_path_buf();
     absolute_path.push("methods.yml");
     let f = File::open(absolute_path.to_str().unwrap()).unwrap();
     let methods = serde_yaml::from_reader(f).unwrap();
 
-    Mutex::new(methods)
+    RwLock::new(methods)
   };
-  static ref STATES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
-  static ref ERRORS: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
-  static ref VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
-  static ref PERSISTENT_VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
-  static ref USER_WRITABLE_VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
-  static ref CALLBACKS: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
+  static ref STATES: RwLock<IndexSet<String>> = RwLock::new(IndexSet::new());
+  static ref ERRORS: RwLock<IndexSet<String>> = RwLock::new(IndexSet::new());
+  static ref VALUES: RwLock<IndexSet<String>> = RwLock::new(IndexSet::new());
+  static ref PERSISTENT_VALUES: RwLock<IndexSet<String>> = RwLock::new(IndexSet::new());
+  static ref USER_WRITABLE_VALUES: RwLock<IndexSet<String>> = RwLock::new(IndexSet::new());
+  static ref CALLBACKS: RwLock<IndexSet<String>> = RwLock::new(IndexSet::new());
 }
 
 fn format_state(ident: &Ident) -> Ident { format_ident!("{}", ident.to_string().to_uppercase()) }
@@ -40,7 +39,7 @@ fn format_state(ident: &Ident) -> Ident { format_ident!("{}", ident.to_string().
 pub fn values(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input with Identifiers::unbound);
 
-  let mut values = VALUES.lock().unwrap();
+  let mut values = VALUES.write().unwrap();
 
   for value in definition.identifiers {
     values.insert(value.to_string());
@@ -53,7 +52,7 @@ pub fn values(input: TokenStream) -> TokenStream {
 pub fn user_writable_values(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input with Identifiers::unbound);
 
-  let mut values = USER_WRITABLE_VALUES.lock().unwrap();
+  let mut values = USER_WRITABLE_VALUES.write().unwrap();
 
   for value in definition.identifiers {
     values.insert(value.to_string());
@@ -66,7 +65,7 @@ pub fn user_writable_values(input: TokenStream) -> TokenStream {
 pub fn persistent_values(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input with Identifiers::unbound);
 
-  let mut values = PERSISTENT_VALUES.lock().unwrap();
+  let mut values = PERSISTENT_VALUES.write().unwrap();
 
   for value in definition.identifiers {
     values.insert(value.to_string());
@@ -79,7 +78,7 @@ pub fn persistent_values(input: TokenStream) -> TokenStream {
 pub fn errors(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input with Identifiers::unbound);
 
-  let mut errors = ERRORS.lock().unwrap();
+  let mut errors = ERRORS.write().unwrap();
 
   for error in definition.identifiers {
     errors.insert(error.to_string().to_uppercase());
@@ -92,7 +91,7 @@ pub fn errors(input: TokenStream) -> TokenStream {
 pub fn callbacks(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input with Identifiers::unbound);
 
-  let mut callbacks = CALLBACKS.lock().unwrap();
+  let mut callbacks = CALLBACKS.write().unwrap();
 
   for cb in definition.identifiers {
     callbacks.insert(cb.to_string());
@@ -128,7 +127,7 @@ pub fn state(input: TokenStream) -> TokenStream {
   let function = format_ident!("state_{}", name);
   let statements = definition.statements;
 
-  STATES.lock().unwrap().insert(name.to_string().to_uppercase());
+  STATES.write().unwrap().insert(name.to_string().to_uppercase());
 
   TokenStream::from(quote! {
     #[inline(always)]
@@ -224,7 +223,7 @@ pub fn method(input: TokenStream) -> TokenStream {
   // HTTP: https://www.iana.org/assignments/http-methods as stated in RFC 9110 section 16.1.1
   // RTSP: RFC 7826 section 7.1
 
-  let methods = METHODS.lock().unwrap();
+  let methods = METHODS.read().unwrap();
 
   let output: Vec<_> = if input.is_empty() {
     methods.iter().map(|x| quote! { string!(#x) }).collect()
@@ -363,7 +362,7 @@ pub fn find_method(input: TokenStream) -> TokenStream {
   let identifier = parse_macro_input!(input as Expr);
 
   let methods: Vec<_> = METHODS
-    .lock()
+    .read()
     .unwrap()
     .iter()
     .enumerate()
@@ -400,7 +399,7 @@ pub fn find_method(input: TokenStream) -> TokenStream {
 // #region generators
 #[proc_macro]
 pub fn initial_state(_input: TokenStream) -> TokenStream {
-  let initial_state = format_ident!("{}", STATES.lock().unwrap()[0]);
+  let initial_state = format_ident!("{}", STATES.read().unwrap()[0]);
 
   TokenStream::from(quote! { State::#initial_state })
 }
@@ -409,7 +408,7 @@ pub fn initial_state(_input: TokenStream) -> TokenStream {
 pub fn apply_state(_input: TokenStream) -> TokenStream {
   // Generate all the branches
   let states_arms: Vec<_> = STATES
-    .lock()
+    .read()
     .unwrap()
     .iter()
     .map(|x| {
@@ -434,7 +433,7 @@ pub fn apply_state(_input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn c_match_state_string(_input: TokenStream) -> TokenStream {
   let states_to_string_arms: Vec<_> = STATES
-    .lock()
+    .read()
     .unwrap()
     .iter()
     .map(|x| parse_str::<Arm>(&format!("State::{} => \"{}\"", x, x)).unwrap())
@@ -452,7 +451,7 @@ pub fn c_match_state_string(_input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn c_match_error_code_string(_input: TokenStream) -> TokenStream {
   let error_to_string_arms: Vec<_> = ERRORS
-    .lock()
+    .read()
     .unwrap()
     .iter()
     .map(|x| parse_str::<Arm>(&format!("Error::{} => \"{}\"", x, x)).unwrap())
@@ -473,9 +472,9 @@ pub fn c_match_error_code_string(_input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn generate_parser(_input: TokenStream) -> TokenStream {
-  let methods_ref = METHODS.lock().unwrap();
-  let states_ref = STATES.lock().unwrap();
-  let errors_ref = ERRORS.lock().unwrap();
+  let methods_ref = METHODS.read().unwrap();
+  let states_ref = STATES.read().unwrap();
+  let errors_ref = ERRORS.read().unwrap();
 
   let methods: Vec<_> = methods_ref
     .iter()
@@ -484,7 +483,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
 
   let states: Vec<_> = states_ref.iter().map(|x| format_ident!("{}", x)).collect();
 
-  let values: Vec<_> = VALUES.lock().unwrap().iter().map(|x| format_ident!("{}", x)).collect();
+  let values: Vec<_> = VALUES.read().unwrap().iter().map(|x| format_ident!("{}", x)).collect();
 
   let errors: Vec<_> = errors_ref.iter().map(|x| format_ident!("{}", x)).collect();
 
@@ -507,7 +506,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
     .collect();
 
   let callbacks: Vec<_> = CALLBACKS
-    .lock()
+    .read()
     .unwrap()
     .iter()
     .map(|x| format_ident!("{}", x))
@@ -585,10 +584,10 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn generate_parser_initializers(_input: TokenStream) -> TokenStream {
-  let values_ref = VALUES.lock().unwrap();
+  let values_ref = VALUES.read().unwrap();
   let values: Vec<_> = values_ref.iter().map(|x| format_ident!("{}", x)).collect();
 
-  let persistent_values_ref = PERSISTENT_VALUES.lock().unwrap();
+  let persistent_values_ref = PERSISTENT_VALUES.read().unwrap();
   let clearable_values: Vec<_> = values_ref
     .iter()
     .filter(|x| !persistent_values_ref.contains(x.as_str()))

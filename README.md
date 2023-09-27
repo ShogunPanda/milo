@@ -105,14 +105,14 @@ If you want to build it locally, you need the following tools:
 Make sure you have the `nightly` toolchain installed locally:
 
 ```shell
-rustup toolchain install nightly
+$ rustup toolchain install nightly
 ```
 
 After all the requirements are met, you can then run:
 
-```
-cd parser
-make
+```shell
+$ cd parser
+$ make
 ```
 
 The command above will produce the release file.
@@ -122,7 +122,7 @@ If you want the debug file (which also enables the `before_state_change` and `af
 
 Add `milo` to your `Cargo.toml`:
 
-```shell
+```toml
 [package]
 name = "milo-example"
 version = "0.1.0"
@@ -135,7 +135,7 @@ milo = { path = "../parser" }
 
 Create a sample source file:
 
-```
+```rust
 use std::ffi::c_uchar;
 use std::slice;
 use std::str;

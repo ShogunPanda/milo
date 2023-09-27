@@ -302,43 +302,43 @@ The only persisted fields across resets are `owner`, `id`, `mode` and `continue_
 
 Creates a new parser.
 
-### `Parser::reset(&mut self, keep_position: bool)`
+### `Parser::reset(&mut self, keep_position: bool)`
 
 Resets a parser. The second parameters specifies if to also reset the position counter.
 
-### `Parser::clear(&mut self)`
+### `Parser::clear(&mut self)`
 
 Clears all values in the parser.
 
 Persisted fields, unconsumed data and the position are **NOT** cleared.
 
-### `Parser::parse(&mut self, data: *const c_uchar, mut limit: usize) -> usize`
+### `Parser::parse(&mut self, data: *const c_uchar, mut limit: usize) -> usize`
 
 Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
-### `Parser::pause(&mut self)`
+### `Parser::pause(&mut self)`
 
 Pauses the parser. The parser will have to be resumed via `Parser::resume`.
 
-### `Parser::resume(&mut self)`
+### `Parser::resume(&mut self)`
 
 Resumes the parser.
 
-### `Parser::finish(&mut self)`
+### `Parser::finish(&mut self)`
 
 Marks the parser as finished. Any new invocation of `Parser::parse` will put the parser in the error state.
 
-### `Parser::state_string(&mut self)`
+### `Parser::state_string(&mut self)`
 
 Returns the current parser's state as string.
 
-### `Parser::error_code_string(&mut self)`
+### `Parser::error_code_string(&mut self)`
 
 Returns the current parser's error state as string.
 
-### `Parser::error_description_string(&mut self)`
+### `Parser::error_description_string(&mut self)`
 
 Returns the current parser's error descrition.
 

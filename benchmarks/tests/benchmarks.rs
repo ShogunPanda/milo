@@ -27,7 +27,7 @@ mod tests {
 
     let mut parser = Parser::new();
 
-    b.iter(|| parser.parse(message.as_ptr(), message.len()));
+    b.iter(|| unsafe { parser.parse(message.as_ptr(), message.len()) });
   }
 
   #[bench]
@@ -53,6 +53,6 @@ mod tests {
 
     let mut parser = Parser::new();
 
-    b.iter(|| parser.parse(message.as_ptr(), message.len()));
+    b.iter(|| unsafe { parser.parse(message.as_ptr(), message.len()) });
   }
 }

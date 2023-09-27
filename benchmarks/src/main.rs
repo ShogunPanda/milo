@@ -65,7 +65,7 @@ fn main() {
     let start = Instant::now();
 
     for _i in 0..(iterations as usize) {
-      parser.parse(payload.as_ptr(), payload.len());
+      unsafe { parser.parse(payload.as_ptr(), payload.len()) };
     }
 
     let time = Instant::now().duration_since(start).as_secs_f64();

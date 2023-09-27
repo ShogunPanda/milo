@@ -23,11 +23,11 @@ mod test {
       "#,
     );
 
-    let consumed1 = parser.parse(message1.as_ptr(), message1.len());
+    let consumed1 = unsafe { parser.parse(message1.as_ptr(), message1.len()) };
     assert!(consumed1 == 70);
     assert!(matches!(parser.state, State::TUNNEL));
 
-    let consumed2 = parser.parse(message2.as_ptr(), message2.len());
+    let consumed2 = unsafe { parser.parse(message2.as_ptr(), message2.len()) };
     assert!(consumed2 == 0);
     assert!(matches!(parser.state, State::TUNNEL));
   }
@@ -54,11 +54,11 @@ mod test {
       "#,
     );
 
-    let consumed1 = parser.parse(message1.as_ptr(), message1.len());
+    let consumed1 = unsafe { parser.parse(message1.as_ptr(), message1.len()) };
     assert!(consumed1 == 95);
     assert!(matches!(parser.state, State::TUNNEL));
 
-    let consumed2 = parser.parse(message2.as_ptr(), message2.len());
+    let consumed2 = unsafe { parser.parse(message2.as_ptr(), message2.len()) };
     assert!(consumed2 == 0);
     assert!(matches!(parser.state, State::TUNNEL));
   }

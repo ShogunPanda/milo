@@ -1,23 +1,21 @@
+#[macro_use]
+extern crate lazy_static;
+
 use std::collections::HashMap;
 use std::os::raw::c_uchar;
 use std::slice;
 use std::str;
 use std::sync::Mutex;
 
-use regex::Regex;
-
-use crate::{Parser, RESPONSE};
+use milo::{Parser, RESPONSE};
 
 lazy_static! {
   static ref TEST_SPANS: Mutex<HashMap<(isize, String), String>> = Mutex::new(HashMap::new());
-  static ref TEST_OUTPUTS: Mutex<HashMap<isize, String>> = Mutex::new(HashMap::new());
 }
-
-static mut PARSER_COUNTER: isize = 0;
 
 fn format_event(name: &str) -> String { format!("{}", format!("\"{}\"", name)) }
 
-fn append_output(parser: &mut Parser, message: String, data: *const c_uchar, size: usize) -> isize {
+fn append_output(_parser: &mut Parser, message: String, data: *const c_uchar, size: usize) -> isize {
   println!(
     "{{ {}, \"data\": {} }}",
     message,
@@ -29,13 +27,6 @@ fn append_output(parser: &mut Parser, message: String, data: *const c_uchar, siz
       "null".into()
     },
   );
-
-  TEST_OUTPUTS
-    .lock()
-    .unwrap()
-    .get_mut(&parser.id)
-    .unwrap()
-    .push_str((message + "\n").as_str());
 
   0
 }
@@ -60,6 +51,32 @@ fn show_span(parser: &mut Parser, name: &str, data: *const c_uchar, size: usize)
   }
 
   event(parser, name, data, size)
+}
+
+fn before_state_change(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
+  append_output(
+    parser,
+    format!(
+      "\"pos\": {}, \"event\": \"before_state_change\", \"current_state\": \"{}\"",
+      parser.position,
+      parser.state_string()
+    ),
+    data,
+    size,
+  )
+}
+
+fn after_state_change(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
+  append_output(
+    parser,
+    format!(
+      "\"pos\": {}, \"event\": \"after_state_change\", \"current_state\": \"{}\"",
+      parser.position,
+      parser.state_string()
+    ),
+    data,
+    size,
+  )
 }
 
 fn on_message_start(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize {
@@ -246,23 +263,15 @@ fn on_trailers(parser: &mut Parser, data: *const c_uchar, size: usize) -> isize 
   event(parser, "trailers", data, size)
 }
 
-pub fn create_parser() -> Parser {
-  let id = unsafe {
-    PARSER_COUNTER += 1;
-    PARSER_COUNTER
-  };
+fn main() {
   let mut parser = Parser::new();
-  parser.id = id;
 
-  let mut outputs = TEST_OUTPUTS.lock().unwrap();
-  let mut spans = TEST_SPANS.lock().unwrap();
+  let request1 = "GET / HTTP/1.1\r\n\r\n";
+  let request2 = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: x-trailer\r\n\r\nc;need=love\r\nhello \
+                  world!\r\n0\r\nX-Trailer: value\r\n\r\n";
 
-  outputs.insert(id, String::new());
-  spans.insert((id, "method".into()), String::new());
-  spans.insert((id, "url".into()), String::new());
-  spans.insert((id, "protocol".into()), String::new());
-  spans.insert((id, "version".into()), String::new());
-
+  parser.callbacks.before_state_change = before_state_change;
+  parser.callbacks.after_state_change = after_state_change;
   parser.callbacks.on_error = on_error;
   parser.callbacks.on_finish = on_finish;
   parser.callbacks.on_request = on_request;
@@ -278,7 +287,7 @@ pub fn create_parser() -> Parser {
   parser.callbacks.on_header_name = on_header_name;
   parser.callbacks.on_header_value = on_header_value;
   parser.callbacks.on_headers = on_headers;
-  parser.callbacks.on_upgrade = on_upgrade;
+  parser.callbacks.on_body = on_upgrade;
   parser.callbacks.on_chunk_length = on_chunk_length;
   parser.callbacks.on_chunk_extension_name = on_chunk_extension_name;
   parser.callbacks.on_chunk_extension_value = on_chunk_extension_value;
@@ -288,18 +297,22 @@ pub fn create_parser() -> Parser {
   parser.callbacks.on_trailer_value = on_trailer_value;
   parser.callbacks.on_trailers = on_trailers;
 
-  parser
+  let mut consumed = unsafe { parser.parse(request1.as_ptr(), request1.len()) };
+
+  println!(
+    "{{ \"pos\": {}, \"consumed\": {}, \"state\": \"{}\" }}",
+    parser.position,
+    consumed,
+    parser.state_string()
+  );
+
+  println!("------------------------------------------------------------------------------------------\n");
+
+  consumed = unsafe { parser.parse(request2.as_ptr(), request2.len()) };
+  println!(
+    "{{ \"pos\": {}, \"consumed\": {}, \"state\": \"{}\" }}",
+    parser.position,
+    consumed,
+    parser.state_string()
+  );
 }
-
-pub fn http(input: &str) -> String {
-  let trailing_ws = Regex::new(r"(?m)^\s+").unwrap();
-
-  trailing_ws
-    .replace_all(input.trim(), "")
-    .replace('\n', "")
-    .replace("\\r", "\r")
-    .replace("\\n", "\n")
-    .replace("\\s", " ")
-}
-
-pub fn output(input: &str) -> String { input.trim().to_owned() + "\n" }

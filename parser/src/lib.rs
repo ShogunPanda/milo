@@ -16,7 +16,7 @@ use milo_parser_macros::{
   apply_state, c_match_error_code_string, c_match_state_string, callback, callbacks, case_insensitive_string, char,
   consume, crlf, digit, double_crlf, errors, fail, find_method, generate_parser, generate_parser_initializers,
   hex_digit, initial_state, method, move_to, otherwise, persistent_values, state, string, string_length, suspend,
-  token, token_value, url, user_writable_values, values,
+  token, token_value, url, values,
 };
 
 /// cbindgen:ignore
@@ -52,8 +52,6 @@ values!(
   skip_body
 );
 
-user_writable_values!(id, mode, is_connect_request, skip_body);
-
 persistent_values!(id, mode, continue_without_data);
 
 errors!(
@@ -76,8 +74,8 @@ errors!(
 );
 
 callbacks!(
-  after_state_change,
   before_state_change,
+  after_state_change,
   on_error,
   on_finish,
   on_message_start,
@@ -99,13 +97,15 @@ callbacks!(
   on_chunk_length,
   on_chunk_extension_name,
   on_chunk_extension_value,
-  on_chunk_data,
   on_body,
   on_data,
   on_trailer_name,
   on_trailer_value,
   on_trailers
 );
+
+// TODO@PI: Add define_mixin! and use_mixin! macro to avoid fn calls - This can
+// be used to eagerly process common headers
 
 #[inline(always)]
 fn store_parsed_http_version(parser: &mut Parser, major: c_uchar) {
@@ -174,9 +174,9 @@ state!(end, {
     move_to!(start, 0)
   }
 });
-// #general
+// #endregion general
 
-// #region request
+// #region request - Request line parsing
 // RFC 9112 section 3
 state!(request, {
   match data {
@@ -240,6 +240,7 @@ state!(request_version, {
         string!("1.1") | string!("2.0") => {
           store_parsed_http_version(parser, data[0]);
 
+          // Reject HTTP/2.0
           if parser.method == METHOD_PRI {
             return fail!(UNSUPPORTED_HTTP_VERSION, "HTTP/2.0 is not supported");
           }
@@ -256,7 +257,7 @@ state!(request_version, {
 });
 // #endregion request
 
-// #region response
+// #region response - Status line
 // RFC 9112 section 4
 state!(response, {
   match data {
@@ -296,7 +297,9 @@ state!(response_status, {
   // Collect the three digits
   match data {
     [digit!(), digit!(), digit!(), char!(' '), ..] => {
-      parser.status = isize::from_str_radix(unsafe { str::from_utf8_unchecked(&data[0..3]) }, 10).unwrap();
+      // Store the status as integer
+      parser.status = unsafe { str::from_utf8_unchecked(&data[0..3]).parse::<isize>().unwrap() };
+
       callback!(on_status, 3);
       move_to!(response_reason, 4)
     }
@@ -323,7 +326,7 @@ state!(response_reason, {
 });
 // #endregion response
 
-// #region headers
+// #region headers - Headers
 // RFC 9112 section 4
 state!(header_name, {
   // Special headers treating
@@ -479,7 +482,7 @@ state!(header_content_length, {
         parser.remaining_content_length = parser.content_length;
 
         callback!(on_header_value, consumed);
-        return move_to!(header_name, consumed + 2);
+        move_to!(header_name, consumed + 2)
       } else {
         fail!(INVALID_CONTENT_LENGTH, "Invalid Content-Length header")
       }
@@ -572,7 +575,8 @@ state!(header_value, {
   }
 });
 
-// RFC 9110 section 9.3.6 and 7.8
+// RFC 9110 section 9.3.6 and 7.8 - Headers have finished, check if the
+// connection must be upgraded or a body is expected.
 state!(headers, {
   parser.continue_without_data = 1;
 
@@ -611,12 +615,10 @@ state!(headers, {
     return move_to!(tunnel, 0);
   }
 
-  if method == METHOD_GET || method == METHOD_HEAD {
-    if parser.content_length > 0 {
-      parser.continue_without_data = 0;
+  if (method == METHOD_GET || method == METHOD_HEAD) && parser.content_length > 0 {
+    parser.continue_without_data = 0;
 
-      return fail!(UNEXPECTED_CONTENT, format!("Unexpected content for {} request", method));
-    }
+    return fail!(UNEXPECTED_CONTENT, format!("Unexpected content for {} request", method));
   }
 
   // RFC 9110 section 6.3
@@ -647,7 +649,7 @@ state!(headers, {
 
 // #endregion headers
 
-// RFC 9110 section 6.4.1
+// RFC 9110 section 6.4.1 - Message completed
 #[inline(always)]
 fn complete_message(parser: &mut Parser, advance: isize) -> isize {
   callback!(on_message_complete);
@@ -658,10 +660,11 @@ fn complete_message(parser: &mut Parser, advance: isize) -> isize {
   parser.continue_without_data = 1;
   parser.connection = connection;
 
+  callback!(on_reset);
   move_to!(end, advance)
 }
 
-// #region common_body
+// #region common_body - Check if the body uses chunked encoding
 state!(body, {
   if parser.content_length > 0 {
     return move_to!(body_via_content_length, 0);
@@ -677,8 +680,8 @@ state!(body, {
   move_to!(chunk_length, 0)
 });
 
-// Return PAUSE makes this method idempotent without failing - In this state all
-// data is ignored since we're not in HTTP anymore
+// Return PAUSE makes this method idempotent without failing - In this state
+// all data is ignored since the connection is not in HTTP anymore
 state!(tunnel, { suspend!() });
 
 // #endregion common_body
@@ -689,7 +692,7 @@ state!(body_via_content_length, {
   let expected = parser.remaining_content_length as usize;
   let available = data.len();
 
-  // Less data than what we expect
+  // Less data than what it is expected
   if available < expected {
     parser.remaining_content_length -= available as isize;
     callback!(on_data, available);
@@ -703,9 +706,11 @@ state!(body_via_content_length, {
 });
 // #endregion body via Content-Length
 
-// RFC 9110 section 6.3
+// RFC 9110 section 6.3 - Body with no length nor chunked encoding. This is only
+// allowed in responses.
+//
 // Note that on_body can't and will not be called here as there is no way to
-// know when the response finishes
+// know when the response finishes.
 state!(body_with_no_length, {
   let len = data.len();
   callback!(on_data, len);
@@ -719,6 +724,7 @@ state!(chunk_length, {
 
   match data[consumed..] {
     [char!(';'), ..] if consumed > 0 => {
+      // Parse the length as integer
       if let Ok(length) = usize::from_str_radix(unsafe { str::from_utf8_unchecked(&data[..consumed]) }, 16) {
         callback!(on_chunk_length, consumed);
         parser.chunk_size = length as isize;
@@ -730,6 +736,7 @@ state!(chunk_length, {
     }
     crlf!() => {
       if let Ok(length) = usize::from_str_radix(unsafe { str::from_utf8_unchecked(&data[..consumed]) }, 16) {
+        // Parse the length as integer
         callback!(on_chunk_length, consumed);
         parser.chunk_size = length as isize;
         parser.remaining_chunk_size = parser.chunk_size;
@@ -839,10 +846,9 @@ state!(chunk_extension_quoted_value, {
 });
 
 state!(chunk_data, {
+  // When receiving the last chunk
   if parser.chunk_size == 0 {
-    if (parser.callbacks.on_body)(parser, ptr::null(), 0) < 0 {
-      return fail!(CALLBACK_ERROR, "Callback returned an error.");
-    }
+    callback!(on_body);
 
     if parser.has_trailers == 1 {
       return move_to!(trailer_name, 0);
@@ -854,7 +860,7 @@ state!(chunk_data, {
   let expected = parser.remaining_chunk_size as usize;
   let available = data.len();
 
-  // Less data than what we expect for this chunk
+  // Less data than what it is expected for this chunk
   if available < expected {
     parser.remaining_chunk_size -= available as isize;
     callback!(on_data, available);
@@ -892,7 +898,7 @@ state!(crlf_after_last_chunk, {
 
 // #endregion body via chunked Transfer-Encoding
 
-// #region trailers
+// #region trailers - Trailers
 // RFC 9112 section 7.1.2
 state!(trailer_name, {
   consume!(token!());
@@ -945,7 +951,12 @@ generate_parser!();
 impl Parser {
   generate_parser_initializers!();
 
-  pub fn parse(&mut self, data: *const c_uchar, mut limit: usize) -> usize {
+  /// # Safety
+  ///
+  /// Parses a slice of characters. It returns the number of consumed
+  /// characters.
+  pub unsafe fn parse(&mut self, data: *const c_uchar, mut limit: usize) -> usize {
+    // If the parser is paused, this is a no-op
     if self.paused {
       return 0;
     }
@@ -954,6 +965,8 @@ impl Parser {
     let mut consumed = 0;
     let additional = unsafe { from_raw_parts(data, limit) };
 
+    // Set the data to analyze, prepending unconsumed data from previous iteration
+    // if needed
     let mut current = if self.unconsumed_len > 0 {
       unsafe {
         limit += self.unconsumed_len;
@@ -966,13 +979,22 @@ impl Parser {
       additional
     };
 
+    // Notify initial state change when starting
     #[cfg(debug_assertions)]
     if self.position == 0 {
-      if (self.callbacks.before_state_change)(self, ptr::null(), 0) > 0 {
-        self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+      let on_before_state_change_result = (self.callbacks.before_state_change)(self, ptr::null(), 0);
+      if on_before_state_change_result != 0 {
+        self.fail(
+          Error::CALLBACK_ERROR,
+          format!(
+            "Callback before_state_change failed with return value {}.",
+            on_before_state_change_result,
+          ),
+        );
       }
     }
 
+    // Limit the data that is currently analyzed
     current = &current[..limit];
 
     #[cfg(all(debug_assertions, feature = "milo_debug_loop"))]
@@ -981,12 +1003,16 @@ impl Parser {
     #[cfg(all(debug_assertions, feature = "milo_debug_loop"))]
     let mut initial_state = self.state;
 
-    while current.len() > 0 || self.continue_without_data == 1 {
+    // Until there is data or there is a request to continue
+    while !current.is_empty() || self.continue_without_data == 1 {
+      // Reset the continue_without_data bit
       self.continue_without_data = 0;
 
-      // Since states might advance position manually, we have to explicitly track it
+      // Since states might advance position manually, the parser have to explicitly
+      // track it
       let initial_position = self.position;
 
+      // If the parser has finished and it receives more data, error
       if let State::FINISH = self.state {
         if self.continue_without_data == 0 {
           self.fail_str(Error::UNEXPECTED_DATA, "unexpected data");
@@ -994,8 +1020,10 @@ impl Parser {
         }
       }
 
+      // Apply the current state
       let result = apply_state!();
 
+      // If the parser finished or errored, execute callbacks
       match &self.state {
         State::FINISH => {
           (self.callbacks.on_finish)(self, ptr::null(), 0);
@@ -1007,20 +1035,21 @@ impl Parser {
         _ => {}
       }
 
-      // Negative return values mean to consume N bytes and then pause.
-      // Returning PAUSE from a callback instructs to pause without consuming any
-      // byte.
+      // If the state suspended the parser, then bail out earlier
       if result == SUSPEND {
         break;
       }
 
+      // Update the position of the parser
       let advance = result as usize;
       self.position += advance;
 
+      // Compute how many bytes were actually consumed and then advance the data
       let difference = self.position - initial_position;
       consumed += difference;
       current = &current[difference..];
 
+      // Show the duration of the operation if asked to
       #[cfg(all(debug_assertions, feature = "milo_debug_loop"))]
       {
         let duration = Instant::now().duration_since(last).as_nanos();
@@ -1043,6 +1072,7 @@ impl Parser {
     }
 
     unsafe {
+      // Drop any previous retained data
       if self.unconsumed_len > 0 {
         Vec::from_raw_parts(
           self.unconsumed as *mut c_uchar,
@@ -1054,6 +1084,8 @@ impl Parser {
         self.unconsumed_len = 0;
       }
 
+      // If less bytes were consumed than requested, copy the unconsumed portion in
+      // the parser for the next iteration
       if consumed < limit {
         let (ptr, len, _) = current.to_vec().into_raw_parts();
 
@@ -1062,80 +1094,127 @@ impl Parser {
       }
     }
 
+    // Return the number of consumed bytes
     consumed
   }
 
+  /// Moves the parsers to a new state and marks a certain number of characters
+  /// as used.
+  ///
+  /// The allow annotation is needed when building in release mode.
   #[allow(dead_code)]
   fn move_to(&mut self, state: State, advance: isize) -> isize {
+    // Notify the end of the current state
     #[cfg(debug_assertions)]
     {
-      // Notify the end of the current state
+      let on_before_state_change_result = (self.callbacks.after_state_change)(self, ptr::null(), 0);
       if (self.callbacks.before_state_change)(self, ptr::null(), 0) != 0 {
-        return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+        return self.fail(
+          Error::CALLBACK_ERROR,
+          format!(
+            "Callback before_state_change failed with return value {}.",
+            on_before_state_change_result,
+          ),
+        );
       }
     };
 
     // Change the state
     self.state = state;
 
+    // Notify the end of the current state
     #[cfg(debug_assertions)]
     {
-      // Notify the end of the current state
-      if (self.callbacks.after_state_change)(self, ptr::null(), 0) != 0 {
-        return self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
-      }
-    };
+      let on_after_state_change_result = (self.callbacks.after_state_change)(self, ptr::null(), 0);
+      if on_after_state_change_result != 0 {
+        return self.fail(
+          Error::CALLBACK_ERROR,
+          format!(
+            "Callback after_state_change failed with return value {}.",
+            on_after_state_change_result,
+          ),
+        );
+      };
+    }
 
     advance
   }
 
+  /// Marks the parsing a failed, setting a error code and and error message.
   fn fail(&mut self, code: Error, reason: String) -> isize {
+    // Set the code
     self.error_code = code;
+
+    // Set the message
     let (ptr, len, _) = Vec::into_raw_parts(reason.as_bytes().into());
 
     self.error_description = ptr;
     self.error_description_len = len;
     self.state = State::ERROR;
 
+    // Do not process any additional data
     0
   }
 
+  /// Marks the parsing a failed, setting a error code and and error message.
   fn fail_str(&mut self, code: Error, reason: &str) -> isize { self.fail(code, reason.into()) }
 
+  /// Pauses the parser. It will have to be resumed via `milo_resume`.
   pub fn pause(&mut self) { self.paused = true; }
 
+  /// Resumes the parser.
   pub fn resume(&mut self) { self.paused = false; }
 
+  /// Marks the parser as finished. Any new data received via `parse` will
+  /// put the parser in the error state.
   pub fn finish(&mut self) {
     match self.state {
+      // If the parser is one of the initial states, simply jump to finish
       State::START | State::REQUEST | State::RESPONSE | State::FINISH => {
         self.state = State::FINISH;
       }
       State::BODY_WITH_NO_LENGTH => {
-        let action = (self.callbacks.on_message_complete)(self, ptr::null(), 0);
-
-        if action != 0 {
-          self.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+        // Notify that the message has been completed
+        let on_complete_result = (self.callbacks.on_message_complete)(self, ptr::null(), 0);
+        if on_complete_result != 0 {
+          self.fail(
+            Error::CALLBACK_ERROR,
+            format!("Callback on_complete failed with return value {}.", on_complete_result,),
+          );
         }
 
+        // Set the state to be finished
         self.state = State::FINISH;
       }
       State::ERROR => (),
+      // In another other state, this is an error
       _ => {
         self.fail_str(Error::UNEXPECTED_EOF, "Unexpected end of data");
       }
     };
   }
 
-  pub fn get_state_string(&mut self) -> &str { c_match_state_string!() }
+  /// Returns the current parser's state as string.
+  pub fn state_string(&self) -> &str { c_match_state_string!() }
 
-  pub fn get_error_code_string(&mut self) -> &str { c_match_error_code_string!() }
+  /// Returns the current parser's error state as string.
+  pub fn error_code_string(&self) -> &str { c_match_error_code_string!() }
 
-  pub fn get_error_description_string(&mut self) -> &str {
+  /// Returns the current parser's error descrition.
+  pub fn error_description_string(&self) -> &str {
     unsafe { str::from_utf8_unchecked(from_raw_parts(self.error_description, self.error_description_len)) }
   }
 }
 
+/// A callback that simply returns `0`.
+///
+/// Use this callback as pointer when you want to remove a callback from the
+/// parser.
+#[no_mangle]
+pub extern "C" fn milo_noop(_parser: &mut Parser, _data: *const c_uchar, _len: usize) -> isize { 0 }
+
+/// Cleans up memory used by a string previously returned by one of the milo's C
+/// public interface.
 #[no_mangle]
 pub extern "C" fn milo_free_string(s: *const c_uchar) {
   unsafe {
@@ -1147,11 +1226,15 @@ pub extern "C" fn milo_free_string(s: *const c_uchar) {
   }
 }
 
+/// Creates a new parser.
 #[no_mangle]
 pub extern "C" fn milo_create() -> *mut Parser { Box::into_raw(Box::new(Parser::new())) }
 
+/// # Safety
+///
+/// Destroys a parser.
 #[no_mangle]
-pub extern "C" fn milo_destroy(ptr: *mut Parser) {
+pub unsafe extern "C" fn milo_destroy(ptr: *mut Parser) {
   if ptr.is_null() {
     return;
   }
@@ -1161,45 +1244,76 @@ pub extern "C" fn milo_destroy(ptr: *mut Parser) {
   }
 }
 
+/// # Safety
+///
+/// Resets a parser to its initial state.
 #[no_mangle]
-pub extern "C" fn milo_reset(parser: *mut Parser, keep_position: bool) {
+pub unsafe extern "C" fn milo_reset(parser: *mut Parser, keep_position: bool) {
   unsafe { parser.as_mut().unwrap().reset(keep_position) }
 }
 
+/// # Safety
+///
+/// Parses a slice of characters. It returns the number of consumed characters.
 #[no_mangle]
-pub extern "C" fn milo_parse(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize {
+pub unsafe extern "C" fn milo_parse(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize {
   unsafe { parser.as_mut().unwrap().parse(data, limit) }
 }
 
+/// # Safety
+///
+/// Pauses the parser. It will have to be resumed via `milo_resume`.
 #[no_mangle]
-pub extern "C" fn milo_pause(parser: *mut Parser) { unsafe { parser.as_mut().unwrap().pause() } }
+pub unsafe extern "C" fn milo_pause(parser: *mut Parser) { unsafe { parser.as_mut().unwrap().pause() } }
 
+/// # Safety
+///
+/// Resumes the parser.
 #[no_mangle]
-pub extern "C" fn milo_resume(parser: *mut Parser) { unsafe { parser.as_mut().unwrap().resume() } }
+pub unsafe extern "C" fn milo_resume(parser: *mut Parser) { unsafe { parser.as_mut().unwrap().resume() } }
 
+/// # Safety
+///
+/// Marks the parser as finished. Any new data received via `milo_parse` will
+/// put the parser in the error state.
 #[no_mangle]
-pub extern "C" fn milo_finish(parser: *mut Parser) { unsafe { parser.as_mut().unwrap().finish() } }
+pub unsafe extern "C" fn milo_finish(parser: *mut Parser) { unsafe { parser.as_mut().unwrap().finish() } }
 
+/// # Safety
+///
+/// Returns the current parser's state as string.
+///
+/// The returned value must be freed using `free_string`.
 #[no_mangle]
-pub extern "C" fn get_state_string(parser: *mut Parser) -> *const c_uchar {
+pub unsafe extern "C" fn milo_state_string(parser: *mut Parser) -> *const c_uchar {
   unsafe {
-    let value = parser.as_mut().unwrap().get_state_string();
+    let value = parser.as_mut().unwrap().state_string();
     CString::new(value).unwrap().into_raw() as *const c_uchar
   }
 }
 
+/// # Safety
+///
+/// Returns the current parser's error state as string.
+///
+/// The returned value must be freed using `free_string`.
 #[no_mangle]
-pub extern "C" fn get_error_code_string(parser: *mut Parser) -> *const c_uchar {
+pub unsafe extern "C" fn milo_error_code_string(parser: *mut Parser) -> *const c_uchar {
   unsafe {
-    let value = parser.as_mut().unwrap().get_error_code_string();
+    let value = parser.as_mut().unwrap().error_code_string();
     CString::new(value).unwrap().into_raw() as *const c_uchar
   }
 }
 
+/// # Safety
+///
+/// Returns the current parser's error descrition.
+///
+/// The returned value must be freed using `free_string`.
 #[no_mangle]
-pub extern "C" fn get_error_description_string(parser: *mut Parser) -> *const c_uchar {
+pub unsafe extern "C" fn milo_error_description_string(parser: *mut Parser) -> *const c_uchar {
   unsafe {
-    let value = parser.as_mut().unwrap().get_error_description_string();
+    let value = parser.as_mut().unwrap().error_description_string();
     CString::new(value).unwrap().into_raw() as *const c_uchar
   }
 }

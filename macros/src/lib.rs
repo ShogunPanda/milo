@@ -16,6 +16,7 @@ use syn::{parse_macro_input, parse_str, Arm, Expr, Ident, ItemConst, LitByte, Li
 
 const SUSPEND: isize = isize::MIN;
 
+// Global state variables for later use
 lazy_static! {
   static ref METHODS: Mutex<Vec<String>> = {
     let mut absolute_path = Path::new(file!()).parent().unwrap().to_path_buf();
@@ -29,13 +30,15 @@ lazy_static! {
   static ref ERRORS: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref PERSISTENT_VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
-  static ref USER_WRITABLE_VALUES: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
   static ref CALLBACKS: Mutex<IndexSet<String>> = Mutex::new(IndexSet::new());
 }
 
+/// Takes a state name and returns its state variant, which is its uppercased
+/// version.
 fn format_state(ident: &Ident) -> Ident { format_ident!("{}", ident.to_string().to_uppercase()) }
 
 // #region definitions
+/// Adds one or more value for the parser.
 #[proc_macro]
 pub fn values(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input with Identifiers::unbound);
@@ -49,19 +52,9 @@ pub fn values(input: TokenStream) -> TokenStream {
   TokenStream::new()
 }
 
-#[proc_macro]
-pub fn user_writable_values(input: TokenStream) -> TokenStream {
-  let definition = parse_macro_input!(input with Identifiers::unbound);
-
-  let mut values = USER_WRITABLE_VALUES.lock().unwrap();
-
-  for value in definition.identifiers {
-    values.insert(value.to_string());
-  }
-
-  TokenStream::new()
-}
-
+/// Marks one or more values (which must have been added via values!) as
+/// persistent, which means such values will not be reset when the parser reset
+/// method is invoked.
 #[proc_macro]
 pub fn persistent_values(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input with Identifiers::unbound);
@@ -75,6 +68,7 @@ pub fn persistent_values(input: TokenStream) -> TokenStream {
   TokenStream::new()
 }
 
+/// Adds one or more new error codes.
 #[proc_macro]
 pub fn errors(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input with Identifiers::unbound);
@@ -88,6 +82,7 @@ pub fn errors(input: TokenStream) -> TokenStream {
   TokenStream::new()
 }
 
+/// Adds one or more new callback.
 #[proc_macro]
 pub fn callbacks(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input with Identifiers::unbound);
@@ -101,6 +96,7 @@ pub fn callbacks(input: TokenStream) -> TokenStream {
   TokenStream::new()
 }
 
+/// Adds time measurement to a code block.
 #[proc_macro]
 pub fn measure(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as State);
@@ -121,6 +117,7 @@ pub fn measure(input: TokenStream) -> TokenStream {
   })
 }
 
+/// Defines a new state.
 #[proc_macro]
 pub fn state(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as State);
@@ -141,6 +138,7 @@ pub fn state(input: TokenStream) -> TokenStream {
 // #endregion definitions
 
 // #region matchers
+/// Matches a character.
 #[proc_macro]
 pub fn char(input: TokenStream) -> TokenStream {
   let character = parse_macro_input!(input as LitChar);
@@ -149,14 +147,17 @@ pub fn char(input: TokenStream) -> TokenStream {
   TokenStream::from(quote! { #byte })
 }
 
+/// Matches a digit in base 10.
 #[proc_macro]
 pub fn digit(_input: TokenStream) -> TokenStream { TokenStream::from(quote! { 0x30..=0x39 }) }
 
+/// Matches a digit in base 16.
 #[proc_macro]
 pub fn hex_digit(_input: TokenStream) -> TokenStream {
   TokenStream::from(quote! { 0x30..=0x39 | 0x41..=0x46 | 0x61..=0x66 })
 }
 
+/// Matches a string in case sensitive way.
 #[proc_macro]
 pub fn string(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as LitStr);
@@ -169,6 +170,7 @@ pub fn string(input: TokenStream) -> TokenStream {
   TokenStream::from(quote! { [#(#bytes),*, ..] })
 }
 
+/// Matches a string in case insensitive way.
 #[proc_macro]
 pub fn case_insensitive_string(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as LitStr);
@@ -182,19 +184,24 @@ pub fn case_insensitive_string(input: TokenStream) -> TokenStream {
   TokenStream::from(quote! { [#(#bytes),*, ..] })
 }
 
+/// Matches a "CR LF" sequence.
 #[proc_macro]
 pub fn crlf(_: TokenStream) -> TokenStream { TokenStream::from(quote! { [b'\r', b'\n', ..] }) }
 
+/// Matches a "CR LF CR LF" sequence.
 #[proc_macro]
 pub fn double_crlf(_: TokenStream) -> TokenStream { TokenStream::from(quote! { [b'\r', b'\n', b'\r', b'\n', ..] }) }
 
+/// Matches a token according to RFC 9110 section 5.6.2 and RFC 5234 appendix
+/// B.1.
+///
+/// DIGIT | ALPHA | OTHER_TOKENS
+/// DIGIT = 0x30 - 0x39
+/// ALPHA = 0x41-0x5A, 0x61 - 0x7A
+/// OTHER_TOKENS = '!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '.' |
+/// '^' | '_' | '`' | '|' | '~'
 #[proc_macro]
 pub fn token(_input: TokenStream) -> TokenStream {
-  // RFC 9110 section 5.6.2 and RFC 5234 appendix B.1
-  // DIGIT = 0x30 - 0x39
-  // ALPHA = 0x41-0x5A, 0x61 - 0x7A
-  // OTHER_TOKENS = '!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '.' |
-  // '^' | '_' | '`' | '|' | '~'
   TokenStream::from(quote! {
     0x30..=0x39 |
     0x41..=0x5A |
@@ -203,27 +210,22 @@ pub fn token(_input: TokenStream) -> TokenStream {
   })
 }
 
+/// Matches a token according to RFC 9112 section 4.
+///
+/// HTAB / SP / VCHAR / obs-text
 #[proc_macro]
 pub fn token_value(_input: TokenStream) -> TokenStream {
   // RFC 9112 section 4
-  // HTAB / SP / VCHAR / obs-text
+  //
   TokenStream::from(quote! { b'\t' | b' ' | 0x21..=0x7e | 0x80..=0xff })
 }
 
-#[proc_macro]
-pub fn otherwise(input: TokenStream) -> TokenStream {
-  let definition = parse_macro_input!(input as LitInt);
-  let tokens = definition.base10_parse::<isize>().unwrap();
-  let quotes: Vec<_> = (0..tokens).map(|x| format_ident!("_u{}", format!("{}", x))).collect();
-
-  TokenStream::from(quote! { [ #(#quotes),*, .. ] })
-}
-
+/// Matches a method according to HTTP and RTSP standards.
+///
+/// HTTP = https://www.iana.org/assignments/http-methods (RFC 9110 section 16.1.1)
+/// RTSP = RFC 7826 section 7.1
 #[proc_macro]
 pub fn method(input: TokenStream) -> TokenStream {
-  // HTTP: https://www.iana.org/assignments/http-methods as stated in RFC 9110 section 16.1.1
-  // RTSP: RFC 7826 section 7.1
-
   let methods = METHODS.lock().unwrap();
 
   let output: Vec<_> = if input.is_empty() {
@@ -236,15 +238,16 @@ pub fn method(input: TokenStream) -> TokenStream {
   TokenStream::from(quote! { #(#output)|* })
 }
 
+/// Matches a method according to RFC 3986 appendix A and RFC 5234 appendix B.1.
+///
+/// DIGIT | ALPHA | OTHER_UNRESERVED_AND_RESERVED
+/// DIGIT = 0x30 - 0x39
+/// ALPHA = 0x41-0x5A, 0x61 - 0x7A
+/// OTHER_UNRESERVED_AND_RESERVED = '-' | '.' | '_' | '~' | ':' | '/' | '?' |
+/// '#' | '[' | ']' | '@' | '!' | '$' | '&' | ''' | '(' | ')' | '*' | '+' | ','
+/// | ';' | '=' | '%'
 #[proc_macro]
 pub fn url(_input: TokenStream) -> TokenStream {
-  // RFC 3986 appendix A and RFC 5234 appendix B.1
-  // DIGIT = 0x30 - 0x39
-  // ALPHA = 0x41-0x5A, 0x61 - 0x7A
-  // OTHER_UNRESERVED_AND_RESERVED = '-' | '.' | '_' | '~' | ':' | '/' | '?' | '#'
-  // | '[' | ']' | '@' | '!' | '$' | '&' | ''' | '(' | ')' | '*' | '+' | ',' | ';'
-  // | '=' | '%'
-
   TokenStream::from(quote! {
     0x30..=0x39 |
     0x41..=0x5A |
@@ -252,9 +255,21 @@ pub fn url(_input: TokenStream) -> TokenStream {
     b'-' | b'.' | b'_' | b'~' | b':' | b'/' | b'?' | b'#' | b'[' | b']' | b'@' | b'!' | b'$' | b'&' | b'\'' | b'(' | b')' | b'*' | b'+' | b',' | b';' | b'=' | b'%'
   })
 }
+
+/// Matches any sequence of N characters. This is used as failure state when at
+/// least N characters are available.
+#[proc_macro]
+pub fn otherwise(input: TokenStream) -> TokenStream {
+  let definition = parse_macro_input!(input as LitInt);
+  let tokens = definition.base10_parse::<isize>().unwrap();
+  let quotes: Vec<_> = (0..tokens).map(|x| format_ident!("_u{}", format!("{}", x))).collect();
+
+  TokenStream::from(quote! { [ #(#quotes),*, .. ] })
+}
 // #endregion matchers
 
 // #region actions
+/// Returns the length of an input string.
 #[proc_macro]
 pub fn string_length(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as StringLength);
@@ -265,6 +280,8 @@ pub fn string_length(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
+/// Moves the parsers to a new state and marks a certain number of characters as
+/// used.
 pub fn move_to(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as IdentifiersWithExpr);
   let state = format_state(&definition.identifier);
@@ -298,6 +315,7 @@ pub fn move_to(input: TokenStream) -> TokenStream {
   }
 }
 
+/// Marks the parsing a failed, setting a error code and and error message.
 #[proc_macro]
 pub fn fail(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as Failure);
@@ -310,6 +328,14 @@ pub fn fail(input: TokenStream) -> TokenStream {
     TokenStream::from(quote! { parser.fail(Error::#error, #message) })
   }
 }
+
+/// Tries to detect the longest prefix of the data matching the provided
+/// selector.
+///
+/// The `consumed` variable will contain the length of the prefix.
+///
+/// If all input data matched the selector, the parser will pause to allow eager
+/// parsing, in this case the parser must be resumed.
 
 #[proc_macro]
 pub fn consume(input: TokenStream) -> TokenStream {
@@ -333,10 +359,13 @@ pub fn consume(input: TokenStream) -> TokenStream {
   })
 }
 
+/// Invokes one of the user defined callbacks, eventually attaching some view of
+/// the data (via pointer and length).
 #[proc_macro]
 pub fn callback(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as IdentifiersWithExpr);
   let callback = definition.identifier;
+  let callback_name = callback.to_string();
 
   let invocation = if let Some(length) = definition.expr {
     quote! {
@@ -349,15 +378,23 @@ pub fn callback(input: TokenStream) -> TokenStream {
   };
 
   TokenStream::from(quote! {
-    if #invocation != 0 {
-      return parser.fail_str(Error::CALLBACK_ERROR, "Callback returned an error.");
+    let invocation_result = #invocation;
+
+    if invocation_result != 0 {
+      return parser.fail(
+        Error::CALLBACK_ERROR,
+        format!("Callback {} failed with return value {}.", #callback_name, invocation_result),
+      );
     }
   })
 }
 
+/// Marks the parser as suspended, waiting for more data.
 #[proc_macro]
 pub fn suspend(_input: TokenStream) -> TokenStream { TokenStream::from(quote! { SUSPEND }) }
 
+/// Maps a string method to its integer value (which is the enum definition
+/// index).
 #[proc_macro]
 pub fn find_method(input: TokenStream) -> TokenStream {
   let identifier = parse_macro_input!(input as Expr);
@@ -398,6 +435,7 @@ pub fn find_method(input: TokenStream) -> TokenStream {
 // #endregion actions
 
 // #region generators
+/// Returns the initial state of the parser, which is the first defined state.
 #[proc_macro]
 pub fn initial_state(_input: TokenStream) -> TokenStream {
   let initial_state = format_ident!("{}", STATES.lock().unwrap()[0]);
@@ -405,6 +443,8 @@ pub fn initial_state(_input: TokenStream) -> TokenStream {
   TokenStream::from(quote! { State::#initial_state })
 }
 
+/// Returns a match statement which executes the block of the parser's current
+/// state.
 #[proc_macro]
 pub fn apply_state(_input: TokenStream) -> TokenStream {
   // Generate all the branches
@@ -431,6 +471,7 @@ pub fn apply_state(_input: TokenStream) -> TokenStream {
   })
 }
 
+/// Translates a state enum variant to a string.
 #[proc_macro]
 pub fn c_match_state_string(_input: TokenStream) -> TokenStream {
   let states_to_string_arms: Vec<_> = STATES
@@ -449,6 +490,7 @@ pub fn c_match_state_string(_input: TokenStream) -> TokenStream {
   })
 }
 
+/// Translates a error code enum variant to a string.
 #[proc_macro]
 pub fn c_match_error_code_string(_input: TokenStream) -> TokenStream {
   let error_to_string_arms: Vec<_> = ERRORS
@@ -459,7 +501,7 @@ pub fn c_match_error_code_string(_input: TokenStream) -> TokenStream {
     .collect();
 
   TokenStream::from(quote! {
-    match self.error_code {
+    match &self.error_code {
       Error::NONE => "NONE",
       Error::UNEXPECTED_DATA => "UNEXPECTED_DATA",
       Error::UNEXPECTED_EOF => "UNEXPECTED_EOF",
@@ -471,6 +513,8 @@ pub fn c_match_error_code_string(_input: TokenStream) -> TokenStream {
 
 // #endregion generators
 
+/// The first core function, generates all parser enum and structs out of state,
+/// values, errors and callbacks definitions.
 #[proc_macro]
 pub fn generate_parser(_input: TokenStream) -> TokenStream {
   let methods_ref = METHODS.lock().unwrap();
@@ -479,7 +523,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
 
   let methods: Vec<_> = methods_ref
     .iter()
-    .map(|x| format_ident!("{}", x.replace("-", "_")))
+    .map(|x| format_ident!("{}", x.replace('-', "_")))
     .collect();
 
   let states: Vec<_> = states_ref.iter().map(|x| format_ident!("{}", x)).collect();
@@ -491,7 +535,7 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
   let methods_consts: Vec<_> = methods_ref
     .iter()
     .enumerate()
-    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const METHOD_{}: isize = {};", x.replace("-", "_"), i)).unwrap())
+    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const METHOD_{}: isize = {};", x.replace('-', "_"), i)).unwrap())
     .collect();
 
   let states_consts: Vec<_> = states_ref
@@ -583,6 +627,8 @@ pub fn generate_parser(_input: TokenStream) -> TokenStream {
   TokenStream::from(output)
 }
 
+/// The second core function, generates the parser new, reset and clean
+/// functions out of values definitions.
 #[proc_macro]
 pub fn generate_parser_initializers(_input: TokenStream) -> TokenStream {
   let values_ref = VALUES.lock().unwrap();
@@ -591,7 +637,7 @@ pub fn generate_parser_initializers(_input: TokenStream) -> TokenStream {
   let persistent_values_ref = PERSISTENT_VALUES.lock().unwrap();
   let clearable_values: Vec<_> = values_ref
     .iter()
-    .filter(|x| !persistent_values_ref.contains(x.clone()))
+    .filter(|x| !persistent_values_ref.contains(*x))
     .map(|x| format_ident!("{}", x))
     .collect();
 
@@ -637,6 +683,14 @@ pub fn generate_parser_initializers(_input: TokenStream) -> TokenStream {
       }
 
       self.clear();
+
+      let on_reset_result = (self.callbacks.on_reset)(self, ptr::null(), 0);
+      if on_reset_result != 0 {
+        self.fail(
+          Error::CALLBACK_ERROR,
+          format!("Callback on_reset failed with return value {}.", on_reset_result),
+        );
+      }
     }
 
     pub fn clear(&mut self) {

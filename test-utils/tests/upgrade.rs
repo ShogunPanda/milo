@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod test {
-  use milo::test_utils::{create_parser, http};
-  use milo::State;
+  use milo::STATE_TUNNEL;
+  use milo_test_utils::{create_parser, http, parse};
 
   #[test]
   fn upgrade_connect_request() {
-    let mut parser = create_parser();
+    let parser = create_parser();
 
     let message1 = http(
       r#"
@@ -23,25 +23,25 @@ mod test {
       "#,
     );
 
-    let consumed1 = unsafe { parser.parse(message1.as_ptr(), message1.len()) };
+    let consumed1 = parse(&parser, &message1);
     assert!(consumed1 == 70);
-    assert!(matches!(parser.state, State::TUNNEL));
+    assert!(matches!(parser.state.get(), STATE_TUNNEL));
 
-    let consumed2 = unsafe { parser.parse(message2.as_ptr(), message2.len()) };
+    let consumed2 = parse(&parser, &message2);
     assert!(consumed2 == 0);
-    assert!(matches!(parser.state, State::TUNNEL));
+    assert!(matches!(parser.state.get(), STATE_TUNNEL));
   }
 
   #[test]
   fn upgrade_connection_upgrade() {
-    let mut parser = create_parser();
+    let parser = create_parser();
 
     let message1 = http(
       r#"
         GET / HTTP/1.1\r\n
         Host: example.com\r\n
         Connection: upgrade\r\n
-        Upgrade: websocket
+        Upgrade: websocket\r\n
         Content-Length: 3\r\n
         \r\n
         abc\r\n\r\n
@@ -54,12 +54,12 @@ mod test {
       "#,
     );
 
-    let consumed1 = unsafe { parser.parse(message1.as_ptr(), message1.len()) };
-    assert!(consumed1 == 95);
-    assert!(matches!(parser.state, State::TUNNEL));
+    let consumed1 = parse(&parser, &message1);
+    assert!(consumed1 == 97);
+    assert!(matches!(parser.state.get(), STATE_TUNNEL));
 
-    let consumed2 = unsafe { parser.parse(message2.as_ptr(), message2.len()) };
+    let consumed2 = parse(&parser, &message2);
     assert!(consumed2 == 0);
-    assert!(matches!(parser.state, State::TUNNEL));
+    assert!(matches!(parser.state.get(), STATE_TUNNEL));
   }
 }

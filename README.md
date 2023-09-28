@@ -34,6 +34,113 @@ In all other all cases, no data is copied and the memory footprint is very small
 
 The performances are stunning, on a 2023 Apple M2 Max MacBook Pro it takes 500 nanosecond to parse a 1KB message.
 
+## How to use it (WebAssembly)
+
+Add the `dist/wasm` folder somewhere in your project. For instance, let's use: `deps/milo`.
+
+Then create a sample source file:
+
+```javascript
+const { Parser } = require("./wasm");
+
+// Create the parser
+const parser = new Parser();
+const message = Buffer.from("HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc");
+
+// Milo works using callbacks.
+// All callbacks have either no argument or a Uint8Array and its length.
+// The callback MUST return 0 in case of success and non-zero in case of errors.
+parser.setOnData((data, len) => {
+  // Do something with the informations.
+  console.log(
+    `Pos=${parser.position} Body: ${Buffer.from(data).slice(0, len).toString()}`
+  );
+
+  // All good, let's return.
+  return 0;
+});
+
+// This is the main method you invoke.
+// It takes a Buffer and how many bytes to parse at most.
+//
+// It returns the number of consumed characters.
+// Note that if not all characters are consumed, milo will automatically copies
+// and prepends them in the next run of the function so there is no need to
+// pass it again.
+parser.parse(message, message.length);
+```
+
+Finally build and execute it using `node`:
+
+```shell
+$ node index.js
+# Pos=38 Body: abc
+```
+
+## How to use it (Rust)
+
+Add `milo` to your `Cargo.toml`:
+
+```toml
+[package]
+name = "milo-example"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+milo = { path = "../parser" }
+```
+
+Create a sample source file:
+
+```rust
+use std::ffi::c_uchar;
+use std::slice;
+use std::str;
+
+use milo::Parser;
+
+fn main() {
+  // Create the parser
+  let parser = Parser::new();
+  let message = "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc";
+
+  // Milo works using callbacks.
+  // All callbacks have the same signature, but data can be eventually NULL (and
+  // therefore size is 0). The callback should return 0 in case of success and
+  // non-zero in case of errors.
+  parser.callbacks.on_data = |p: &mut Parser, data: *const c_uchar, size: usize| -> isize {
+    // Do something with the informations.
+    println!("Pos={} Body: {}", p.position, unsafe {
+      str::from_utf8_unchecked(slice::from_raw_parts(data, size))
+    });
+
+    // All good, let's return.
+    0
+  };
+
+  // This is the main method you invoke.
+  // It takes a data pointer and how many bytes to parse at most.
+  //
+  // It returns the number of consumed characters.
+  // Note that if not all characters are consumed, milo will automatically copies
+  // and prepends them in the next run of the function so there is no need to
+  // pass it again.
+  unsafe {
+    parser.parse(message.as_ptr(), message.len());
+  }
+}
+```
+
+Finally build and execute it using `cargo`:
+
+```shell
+$ cargo run
+# ... cargo build output ...
+# Pos=38 Body: abc
+```
+
 ## How to use it (C++)
 
 First, let's download Milo release from GitHub.
@@ -118,71 +225,13 @@ $ make
 The command above will produce the release file.
 If you want the debug file (which also enables the `before_state_change` and `after_state_change` callbacks), run `make debug`.
 
-## How to use it (Rust)
-
-Add `milo` to your `Cargo.toml`:
-
-```toml
-[package]
-name = "milo-example"
-version = "0.1.0"
-edition = "2021"
-publish = false
-
-[dependencies]
-milo = { path = "../parser" }
-```
-
-Create a sample source file:
-
-```rust
-use std::ffi::c_uchar;
-use std::slice;
-use std::str;
-
-use milo::Parser;
-
-fn main() {
-  // Create the parser
-  let mut parser = Parser::new();
-  let message = "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc";
-
-  // Milo works using callbacks.
-  // All callbacks have the same signature, but data can be eventually NULL (and
-  // therefore size is 0). The callback should return 0 in case of success and
-  // non-zero in case of errors.
-  parser.callbacks.on_data = |p: &mut Parser, data: *const c_uchar, size: usize| -> isize {
-    // Do something with the informations.
-    println!("Pos={} Body: {}", p.position, unsafe {
-      str::from_utf8_unchecked(slice::from_raw_parts(data, size))
-    });
-
-    // All good, let's return.
-    0
-  };
-
-  // This is the main method you invoke.
-  // It takes a data pointer and how many bytes to parse at most.
-  //
-  // It returns the number of consumed characters.
-  // Note that if not all characters are consumed, milo will automatically copies
-  // and prepends them in the next run of the function so there is no need to
-  // pass it again.
-  unsafe {
-    parser.parse(message.as_ptr(), message.len());
-  }
-}
-```
-
-```shell
-$ cargo run
-# ... cargo build output ...
-# Pos=38 Body: abc
-```
-
 ## API
 
-See the file [API.md](./docs/API.md)
+See the following files, according to the language you are using:
+
+- [WebAssembly API](./docs/wasm.md)
+- [Rust API](./docs/rust.md)
+- [C++ API](./docs/cpp.md)
 
 ## Contributing to milo
 

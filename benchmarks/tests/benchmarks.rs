@@ -4,8 +4,9 @@
 mod tests {
   extern crate test;
 
-  use milo::test_utils::http;
-  use milo::Parser;
+  use milo::{milo_create, milo_destroy, milo_parse};
+  #[allow(unused_imports)]
+  use milo_test_utils::{create_parser, http};
   use test::Bencher;
 
   #[bench]
@@ -25,9 +26,11 @@ mod tests {
       "#,
     );
 
-    let mut parser = Parser::new();
+    let parser = milo_create();
 
-    b.iter(|| unsafe { parser.parse(message.as_ptr(), message.len()) });
+    b.iter(|| milo_parse(parser, message.as_ptr(), message.len()));
+
+    milo_destroy(parser);
   }
 
   #[bench]
@@ -51,8 +54,40 @@ mod tests {
       "#,
     );
 
-    let mut parser = Parser::new();
+    let parser = milo_create();
 
-    b.iter(|| unsafe { parser.parse(message.as_ptr(), message.len()) });
+    b.iter(|| milo_parse(parser, message.as_ptr(), message.len()));
+
+    milo_destroy(parser);
+  }
+
+  #[bench]
+  fn undici(b: &mut Bencher) {
+    let message = http(
+      r#"
+        HTTP/1.1 200 OK\r\n
+        Connection: keep-alive\r\n
+        Content-Length: 65535\r\n
+        Date: Sun, 05 Nov 2023 14:26:18 GMT\r\n
+        Keep-Alive: timeout=600\r\n\r\n
+        @
+      "#,
+    )
+    .replace("@", &format!("{:-<65535}", "-"));
+
+    // let message = http(
+    //   r#"
+    //     HTTP/1.1 200 OK\r\n
+    //     @
+    //   "#,
+    // )
+    // .replace("@", &format!("{:-<65535}", "-"));
+
+    // let parser = create_parser();
+    // milo_parse(&parser, message.as_ptr(), message.len());
+
+    let parser = milo_create();
+    b.iter(|| milo_parse(parser, message.as_ptr(), message.len()));
+    milo_destroy(parser);
   }
 }

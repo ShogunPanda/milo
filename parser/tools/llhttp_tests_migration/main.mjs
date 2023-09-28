@@ -139,7 +139,7 @@ fn ${prefix ? prefix + '_' : ''}${test.title
       .toLowerCase()
       .replaceAll(/[^A-Za-z0-9_]/g, '_')
       .replaceAll('__', '_')}() {
-  let mut parser = create_parser();
+  let parser = create_parser();
 
   let input = http(r###"
 ${test.input.trim()}

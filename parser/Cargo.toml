@@ -5,16 +5,18 @@ edition = "2021"
 publish = false
 
 [lib]
-crate_type = ["staticlib", "lib"]
+crate_type = ["cdylib", "staticlib", "lib"]
 
 [dependencies]
-lazy_static = "1.4.0"
-milo-parser-macros = { path = "../macros" }
-regex = "1.9.1"
+console_error_panic_hook = { version = "0.1.7", optional = true }
+js-sys = "0.3.64"
+milo-macros = { path = "../macros" }
+wasm-bindgen = "0.2.84"
 
 [features]
-milo_debug_loop = []
-milo_debug_test = []
+default = ["console_error_panic_hook"]
+debug = []
+all-callbacks = []
 
 [profile.bench]
 opt-level = 3
@@ -38,3 +40,6 @@ incremental = false
 codegen-units = 16
 rpath = false
 strip = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ['-all']

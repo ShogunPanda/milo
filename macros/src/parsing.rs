@@ -1,6 +1,13 @@
 use syn::parse::{Parse, ParseStream};
 use syn::{Block, Expr, Ident, LitInt, LitStr, Result, Stmt, Token};
 
+/// An identifier associated to a message, typically a string - An example of
+/// this is used in `fail!`.
+pub struct Failure {
+  pub error: Ident,
+  pub message: Expr,
+}
+
 /// A plain list of idenitifiers.
 pub struct Identifiers {
   pub identifiers: Vec<Ident>,
@@ -13,24 +20,23 @@ pub struct IdentifiersWithExpr {
   pub expr: Option<Expr>,
 }
 
-/// An identifier associated to a message, typically a string - An example of
-/// this is used in `fail!`.
-pub struct Failure {
-  pub error: Ident,
-  pub message: Expr,
-}
-
-/// A parser state. It is made of a name identifier and a list of statements.
-pub struct State {
+/// An identifier associated to a list of statements.
+pub struct IdentifiersWithStatements {
   pub name: Ident,
   pub statements: Vec<Stmt>,
+}
+
+/// A identifier associated with a string. It is used by `declare_string!`.
+pub struct StringDeclaration {
+  pub name: Ident,
+  pub value: LitStr,
 }
 
 /// A string length associated with a numeric modifier. It is used by
 /// `string_length!`.
 pub struct StringLength {
   pub string: LitStr,
-  pub modifier: isize,
+  pub modifier: usize,
 }
 
 impl Identifiers {
@@ -98,7 +104,7 @@ impl Parse for IdentifiersWithExpr {
   }
 }
 
-impl Parse for State {
+impl Parse for IdentifiersWithStatements {
   // Parses a state definition
   fn parse(input: ParseStream) -> Result<Self> {
     // Get the state name
@@ -110,10 +116,21 @@ impl Parse for State {
     // Get the body
     let body = input.parse::<Block>()?;
 
-    Ok(State {
+    Ok(IdentifiersWithStatements {
       name,
       statements: body.stmts,
     })
+  }
+}
+
+impl Parse for StringDeclaration {
+  // Parses a string length
+  fn parse(input: ParseStream) -> Result<Self> {
+    let name = input.parse()?;
+    input.parse::<Token![,]>()?;
+    let value = input.parse()?;
+
+    Ok(StringDeclaration { name, value })
   }
 }
 
@@ -129,7 +146,7 @@ impl Parse for StringLength {
       input.parse::<Token![,]>()?;
 
       // Parse the modifier
-      modifier = input.parse::<LitInt>()?.base10_parse::<isize>()?;
+      modifier = input.parse::<LitInt>()?.base10_parse::<usize>()?;
     }
 
     Ok(StringLength { string, modifier })

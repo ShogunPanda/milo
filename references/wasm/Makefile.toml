@@ -1,0 +1,33 @@
+[config]
+skip_core_tasks = true
+
+[tasks.default]
+dependencies = ["all"]
+
+[tasks.all]
+dependencies = ["lib"]
+script = [
+  "mkdir -p dist",
+  "rm -rf dist/*",
+  "echo '#!/bin/sh\nnode $(dirname $0)/../index.mjs release-default' > dist/reference-release-default",
+  "echo '#!/bin/sh\nnode $(dirname $0)/../index.mjs release-all-callbacks' > dist/reference-release-all-callbacks",
+  "echo '#!/bin/sh\nnode $(dirname $0)/../index.mjs debug-default' > dist/reference-debug-default",
+  "echo '#!/bin/sh\nnode $(dirname $0)/../index.mjs debug-all-callbacks' > dist/reference-debug-all-callbacks",
+  "chmod a+x dist/*",
+]
+
+[tasks.clean]
+script = "rm -rf dist lib"
+
+[tasks.test]
+dependencies = ["all"]
+command = "node"
+args = ["--test", "../reference.test.mjs"]
+
+[tasks.lib]
+script = [
+  "rm -rf lib",
+  "cd ../../parser",
+  "makers wasm",
+  "cp -a dist/wasm ../references/wasm/lib",
+]

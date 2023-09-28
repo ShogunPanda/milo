@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 milo = { path = "../parser" }
+milo-test-utils = { path = "../test-utils" }
 
 [profile.bench]
 opt-level = 3

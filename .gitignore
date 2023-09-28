@@ -1,5 +1,5 @@
 **/target
 **/dist
-reference-cpp/build
-reference-cpp/lib
-reference-rust/build
+references/**/dist
+references/**/build
+references/**/lib

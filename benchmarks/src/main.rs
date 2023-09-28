@@ -3,10 +3,8 @@
 
 use std::time::Instant;
 
-use milo::test_utils::http;
 use milo::Parser;
-
-static KBYTES: usize = 8 << 30;
+use milo_test_utils::http;
 
 #[path = "../tests/benchmarks.rs"]
 mod benchmark;
@@ -43,8 +41,8 @@ fn main() {
           DNT: 1\r\n
           Accept-Encoding: gzip, deflate, sdch\r\n
           Accept-Language: ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4\r\n
-          User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) 
-          AppleWebKit/537.36 (KHTML, like Gecko) 
+          User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1)
+          AppleWebKit/537.36 (KHTML, like Gecko)
           Chrome/39.0.2171.65 Safari/537.36\r\n
           Accept: text/html,application/xhtml+xml,application/xml;q=0.9,
           image/webp,*/*;q=0.8\r\n
@@ -56,27 +54,43 @@ fn main() {
     ),
   ));
 
+  samples.push((
+    "undici",
+    http(
+      r#"
+        HTTP/1.1 200 OK
+        Connection: keep-alive
+        Content-Length: 65536
+        Date: Sun, 05 Nov 2023 14:26:18 GMT
+        Keep-Alive: timeout=600
+        @
+      "#,
+    )
+    .replace("@", &format!("{:-<65535}", "-")),
+  ));
+
   for (name, payload) in samples {
-    let len = payload.len() as f64;
-    let iterations = KBYTES as f64 / len;
+    let len = payload.len();
+    let iterations = (8 << 30) / len;
     let total = iterations * len;
-    let mut parser = Parser::new();
+    let parser = Parser::new();
 
     let start = Instant::now();
 
     for _i in 0..(iterations as usize) {
-      unsafe { parser.parse(payload.as_ptr(), payload.len()) };
+      parser.parse(payload.as_ptr(), payload.len());
     }
 
     let time = Instant::now().duration_since(start).as_secs_f64();
-    let bw = total / time;
+    let bw = (total as f64) / time;
 
     println!(
-      "{:25} | {:.2} mb | {:.2} mb/s | {:.2} ops/sec | {:.2} s",
+      "{:25} | {} samples | {:.2} mb | {:.2} mb/s | {:.2} ops/sec | {:.2} s",
       name,
-      total / ((1024 * 1024) as f64),
-      bw / ((1024 * 1024) as f64),
-      iterations / time,
+      iterations,
+      total / (1024 * 1024),
+      bw / (1024 * 1024) as f64,
+      (iterations as f64) / time,
       time
     );
   }

@@ -287,7 +287,7 @@ fn main() {
   parser.callbacks.on_header_name = on_header_name;
   parser.callbacks.on_header_value = on_header_value;
   parser.callbacks.on_headers = on_headers;
-  parser.callbacks.on_body = on_upgrade;
+  parser.callbacks.on_upgrade = on_upgrade;
   parser.callbacks.on_chunk_length = on_chunk_length;
   parser.callbacks.on_chunk_extension_name = on_chunk_extension_name;
   parser.callbacks.on_chunk_extension_value = on_chunk_extension_value;

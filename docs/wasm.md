@@ -40,9 +40,9 @@ The module exports several constants (`*` is used to denote a family prefix):
 A struct representing a parser. It has the following fields:
 
 - `state` (`readonly u8`): The current parser state.
-- `position` (`readonly uint64_t`): The current parser position.
+- `position` (`readonly bigint`): The current parser position.
 - `paused` (`readonly bool`): If the parser is paused.
-- `errorCode` (`readonly u8`): The parser error. By default is `ERROR_NONE`.
+- `errorCode` (`readonly number`): The parser error. By default is `ERROR_NONE`.
 - `errorString` (`readonly string`): The parser error as string. By default is `NONE`.
 - `errorDescription` (`readonly string`): The parser error description.
 - `id` (`number`): The current parser ID. Use is reserved to the developer.
@@ -59,10 +59,10 @@ A struct representing a parser. It has the following fields:
 - `hasChunkedTransferEncoding` (`readonly bool`): If the current request has a `Transfer-Encoding` header.
 - `hasUpgrade` (`readonly bool`): If the current request has a `Connection: upgrade` header.
 - `hasTrailers` (`readonly bool`): If the current request has a `Trailers` header.
-- `contentLength` (`readonly number`): The value of the `Content-Length` header.
-- `chunkSize` (`readonly number`): The expected length of the next chunk.
-- `remainingContentLength` (`readonly number`): The missing data length of the body according to the `content_length` field.
-- `remainingChunkSize` (`readonly number`): The missing data length of the next chunk according to the `chunk_size` field.
+- `contentLength` (`readonly bigint`): The value of the `Content-Length` header.
+- `chunkSize` (`readonly bigint`): The expected length of the next chunk.
+- `remainingContentLength` (`readonly bigint`): The missing data length of the body according to the `content_length` field.
+- `remainingChunkSize` (`readonly bigint`): The missing data length of the next chunk according to the `chunk_size` field.
 - `skipBody` (`bool`): If the parser should skip the body.
 
 The parser supports the following callbacks setter:
@@ -90,6 +90,7 @@ The parser supports the following callbacks setter:
 - `setOnChunkLength`: Invoked after a new chunk length has been parsed.
 - `setOnChunkExtensionName`: Invoked after a new chunk extension name has been parsed.
 - `setOnChunkExtensionValue`: Invoked after a new chunk extension value has been parsed.
+- `setOnChunk`: Invoked after new chunk data is received.
 - `setOnData`: Invoked after new body data is received (either chunked or not).
 - `setOnBody`: Invoked after the body has been parsed. Note that this has no data attached so `on_data` must be used to setSave the body.
 - `setOnTrailerName`: Invoked after a new trailer name has been parsed.

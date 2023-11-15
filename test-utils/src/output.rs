@@ -5,10 +5,9 @@ use crate::Parser;
 #[path = "./context.rs"]
 mod context;
 
-fn extract_payload(parser: &Parser, from: usize, size: usize) -> (*const c_uchar, impl Fn() -> ()) {
+pub fn extract_payload(parser: &Parser, from: usize, size: usize) -> (*const c_uchar, impl Fn() -> ()) {
   let context = unsafe { Box::from_raw(parser.owner.get() as *mut context::Context) };
   let (ptr, len, cap) = Vec::into_raw_parts(context.input.as_bytes().into());
-
   Box::into_raw(context);
 
   return (
@@ -53,10 +52,10 @@ pub fn append_output(parser: &Parser, message: String, from: usize, size: usize)
 }
 
 #[allow(dead_code)]
-pub fn event(parser: &Parser, name: &str, from: usize, size: usize) -> isize {
+pub fn event(parser: &Parser, name: &str, position: usize, from: usize, size: usize) -> isize {
   append_output(
     parser,
-    format!("\"pos\": {}, \"event\": \"{}\"", parser.position.get(), name),
+    format!("\"pos\": {}, \"event\": \"{}\"", position, name),
     from,
     size,
   )
@@ -89,5 +88,5 @@ pub fn show_span(parser: &Parser, name: &str, from: usize, size: usize) -> isize
     Box::into_raw(context);
   }
 
-  event(parser, name, from, size)
+  event(parser, name, parser.position.get(), from, size)
 }

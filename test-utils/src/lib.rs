@@ -41,6 +41,7 @@ pub fn create_parser() -> Parser {
     .callbacks
     .on_chunk_extension_value
     .set(callbacks::on_chunk_extension_value);
+  parser.callbacks.on_chunk.set(callbacks::on_chunk);
   parser.callbacks.on_body.set(callbacks::on_body);
   parser.callbacks.on_data.set(callbacks::on_data);
   parser.callbacks.on_trailer_name.set(callbacks::on_trailer_name);

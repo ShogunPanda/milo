@@ -9,10 +9,10 @@ dependencies = ["lib"]
 script = [
   "mkdir -p dist",
   "rm -rf dist/*",
-  "echo '#!/bin/sh\nnode $(dirname $0)/../index.mjs release-default' > dist/reference-release-default",
-  "echo '#!/bin/sh\nnode $(dirname $0)/../index.mjs release-all-callbacks' > dist/reference-release-all-callbacks",
-  "echo '#!/bin/sh\nnode $(dirname $0)/../index.mjs debug-default' > dist/reference-debug-default",
-  "echo '#!/bin/sh\nnode $(dirname $0)/../index.mjs debug-all-callbacks' > dist/reference-debug-all-callbacks",
+  "echo '#!/bin/sh\nnode $(dirname $0)/../src/index.mjs release-default' > dist/reference-release-default",
+  "echo '#!/bin/sh\nnode $(dirname $0)/../src/index.mjs release-all-callbacks' > dist/reference-release-all-callbacks",
+  "echo '#!/bin/sh\nnode $(dirname $0)/../src/index.mjs debug-default' > dist/reference-debug-default",
+  "echo '#!/bin/sh\nnode $(dirname $0)/../src/index.mjs debug-all-callbacks' > dist/reference-debug-all-callbacks",
   "chmod a+x dist/*",
 ]
 

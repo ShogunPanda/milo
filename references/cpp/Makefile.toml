@@ -25,27 +25,31 @@ args = ["--test", "../reference.test.mjs"]
 
 [tasks.release-default]
 env = { CONFIGURATION = "release-default" }
-run_task = "executable"
+run_task = [{ name = ["lib", "executable"] }]
 
 [tasks.release-all-callbacks]
 env = { CONFIGURATION = "release-all-callbacks" }
-run_task = "executable"
+run_task = [{ name = ["lib", "executable"] }]
 
 [tasks.debug-default]
 env = { CONFIGURATION = "debug-default" }
-run_task = "executable"
+run_task = [{ name = ["lib", "executable"] }]
 
 [tasks.debug-all-callbacks]
 env = { CONFIGURATION = "debug-all-callbacks" }
-run_task = "executable"
+run_task = [{ name = ["lib", "executable"] }]
+
 
 [tasks.executable]
+script = [
+  "mkdir -p dist",
+  "clang++ -std=c++11 -I lib/${CONFIGURATION} -o dist/reference-${CONFIGURATION} lib/${CONFIGURATION}/libmilo.a ${COMMON_CC} src/main.cc",
+]
+
+[tasks.lib]
 script = [
   "mkdir -p lib/${CONFIGURATION}",
   "cd ../../parser",
   "makers cpp-${CONFIGURATION}",
   "cp -a dist/cpp/${CONFIGURATION}/libmilo.a dist/cpp/${CONFIGURATION}/milo.h ../references/cpp/lib/${CONFIGURATION}",
-  "cd ../references/cpp",
-  "mkdir -p dist",
-  "clang++ -std=c++11 -I lib/${CONFIGURATION} -o dist/reference-${CONFIGURATION} lib/${CONFIGURATION}/libmilo.a ${COMMON_CC} src/main.cc",
 ]

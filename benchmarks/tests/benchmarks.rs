@@ -6,6 +6,8 @@ mod tests {
 
   use milo::{milo_create, milo_destroy, milo_parse};
   #[allow(unused_imports)]
+  use milo_test_utils::parse;
+  #[allow(unused_imports)]
   use milo_test_utils::{create_parser, http};
   use test::Bencher;
 
@@ -75,16 +77,8 @@ mod tests {
     )
     .replace("@", &format!("{:-<65535}", "-"));
 
-    // let message = http(
-    //   r#"
-    //     HTTP/1.1 200 OK\r\n
-    //     @
-    //   "#,
-    // )
-    // .replace("@", &format!("{:-<65535}", "-"));
-
     // let parser = create_parser();
-    // milo_parse(&parser, message.as_ptr(), message.len());
+    // parse(&parser, &message);
 
     let parser = milo_create();
     b.iter(|| milo_parse(parser, message.as_ptr(), message.len()));

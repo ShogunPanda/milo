@@ -3,10 +3,7 @@ mod test {
   #[allow(unused_imports)]
   use std::ffi::c_uchar;
 
-  use milo::{
-    Parser, REQUEST, RESPONSE, STATE_ERROR, STATE_FINISH, STATE_HEADER_NAME, STATE_MESSAGE, STATE_REQUEST,
-    STATE_RESPONSE, STATE_START,
-  };
+  use milo::{Parser, REQUEST, RESPONSE, STATE_ERROR, STATE_FINISH, STATE_HEADER_NAME, STATE_START};
   use milo_test_utils::{create_parser, http, parse};
 
   #[test]
@@ -321,7 +318,7 @@ mod test {
     );
 
     parse(&parser, &keep_alive_connection);
-    assert!(matches!(parser.state.get(), STATE_MESSAGE));
+    assert!(matches!(parser.state.get(), STATE_START));
   }
 
   #[test]
@@ -341,7 +338,6 @@ mod test {
       .callbacks
       .on_headers
       .set(|p: &Parser, _at: usize, _size: usize| -> isize {
-        println!("CALLED\n\n");
         p.pause();
         0
       });
@@ -394,7 +390,7 @@ mod test {
         Header2: Value2\r\n
         Content-Length: 3\r\n
         \r\n
-        abc\r\n\r\n
+        abc
       "#,
     );
 
@@ -409,13 +405,13 @@ mod test {
     );
 
     parse(&parser, &response);
-    assert!(matches!(parser.state.get(), STATE_RESPONSE));
+    assert!(matches!(parser.state.get(), STATE_START));
 
     parser.mode.set(REQUEST);
     parser.reset(false);
 
     parse(&parser, &request);
-    assert!(matches!(parser.state.get(), STATE_REQUEST));
+    assert!(matches!(parser.state.get(), STATE_START));
   }
 
   #[test]
@@ -455,7 +451,7 @@ mod test {
     );
 
     parse(&parser, &keep_alive_connection);
-    assert!(matches!(parser.state.get(), STATE_MESSAGE));
+    assert!(matches!(parser.state.get(), STATE_START));
     parser.finish();
     assert!(matches!(parser.state.get(), STATE_FINISH));
 

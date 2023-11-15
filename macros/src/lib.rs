@@ -626,6 +626,51 @@ fn callback_wasm(definition: &IdentifiersWithExpr, return_on_error: bool, use_se
 /// Invokes one of the user defined callbacks, eventually attaching some view of
 /// the data (via pointer and length). If the callback errors, the operation is
 /// NOT interrupted.
+///
+/// If the feature all-callback is not enabled, this call will just append the
+/// location information to the offsets.
+#[proc_macro]
+pub fn optional_callback(input: TokenStream) -> TokenStream {
+  let definition = parse_macro_input!(input as IdentifiersWithExpr);
+  let regular = callback_regular(&definition, true, false);
+  let wasm = callback_wasm(&definition, true, false);
+
+  let offset = format_ident!("OFFSET_{}", definition.identifier.to_string().to_uppercase()[3..]);
+  let length = definition.expr.unwrap();
+
+  TokenStream::from(quote! {
+    #[cfg(not(feature = "all-callbacks"))]
+    unsafe {
+      let offsets = parser.offsets.get();
+
+      // Get the current offset (and add 1 as the first three are reserved)
+      let current = (*offsets.offset(2) + 1) as isize * 3;
+
+      // Update the counter
+      // TODO@PI: Handle overflow
+      *(offsets.offset(2)) += 1;
+
+      // Set the offset type, the start and the length
+      *(offsets.offset(current)) = #offset;
+      *(offsets.offset(current + 1)) = parser.position.get();
+      *(offsets.offset(current + 2)) = #length;
+    }
+
+    #[cfg(all(feature = "all-callbacks", not(target_family = "wasm")))]
+    {
+      #regular
+    }
+
+    #[cfg(all(feature = "all-callbacks", target_family = "wasm"))]
+    {
+      #wasm
+    }
+  })
+}
+
+/// Invokes one of the user defined callbacks, eventually attaching some view of
+/// the data (via pointer and length). If the callback errors, the operation is
+/// NOT interrupted.
 #[proc_macro]
 pub fn callback(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as IdentifiersWithExpr);
@@ -809,6 +854,7 @@ pub fn generate_constants(_input: TokenStream) -> TokenStream {
     #[no_mangle]
     pub type Callback = fn (&Parser, usize, usize) -> isize;
 
+    pub const MAX_OFFSETS_COUNT: usize = 2049 * 3; // 2048 + 1 for the initial three status one
     pub const SUSPEND: isize = isize::MIN;
 
     pub const DEBUG: bool = cfg!(debug_assertions);
@@ -821,6 +867,20 @@ pub fn generate_constants(_input: TokenStream) -> TokenStream {
     pub const CONNECTION_KEEPALIVE: u8 = 0;
     pub const CONNECTION_CLOSE: u8 = 1;
     pub const CONNECTION_UPGRADE: u8 = 2;
+
+    pub const OFFSET_METHOD: usize = 0;
+    pub const OFFSET_URL: usize = 1;
+    pub const OFFSET_PROTOCOL: usize = 2;
+    pub const OFFSET_VERSION: usize = 3;
+    pub const OFFSET_STATUS: usize = 4;
+    pub const OFFSET_REASON: usize = 5;
+    pub const OFFSET_HEADER_NAME: usize = 6;
+    pub const OFFSET_HEADER_VALUE: usize = 7;
+    pub const OFFSET_CHUNK_LENGTH: usize = 8;
+    pub const OFFSET_CHUNK_EXTENSION_NAME: usize = 9;
+    pub const OFFSET_CHUNK_EXTENSION_VALUE: usize = 10;
+    pub const OFFSET_TRAILER_NAME: usize = 11;
+    pub const OFFSET_TRAILER_VALUE: usize = 12;
 
     #(#errors_consts)*
 
@@ -927,6 +987,25 @@ pub fn generate_enums(_input: TokenStream) -> TokenStream {
     #[wasm_bindgen]
     #[repr(u8)]
     #[derive(Copy, Clone, Debug)]
+    pub enum Offsets {
+      METHOD,
+      URL,
+      PROTOCOL,
+      VERSION,
+      STATUS,
+      REASON,
+      HEADER_NAME,
+      HEADER_VALUE,
+      CHUNK_LENGTH,
+      CHUNK_EXTENSION_NAME,
+      CHUNK_EXTENSION_VALUE,
+      TRAILER_NAME,
+      TRAILER_VALUE,
+    }
+
+    #[wasm_bindgen]
+    #[repr(u8)]
+    #[derive(Copy, Clone, Debug)]
     pub enum Methods {
       #(#methods),*
     }
@@ -966,6 +1045,28 @@ pub fn generate_enums(_input: TokenStream) -> TokenStream {
           0 => Ok(Connections::KEEPALIVE),
           1 => Ok(Connections::CLOSE),
           2 => Ok(Connections::UPGRADE),
+          _ => Err(())
+        }
+      }
+    }
+    impl TryFrom<usize> for Offsets {
+      type Error = ();
+
+      fn try_from(value: usize) -> Result<Self, ()> {
+        match value {
+          0 => Ok(Offsets::METHOD),
+          1 => Ok(Offsets::URL),
+          2 => Ok(Offsets::PROTOCOL),
+          3 => Ok(Offsets::VERSION),
+          4 => Ok(Offsets::STATUS),
+          5 => Ok(Offsets::REASON),
+          6 => Ok(Offsets::HEADER_NAME),
+          7 => Ok(Offsets::HEADER_VALUE),
+          8 => Ok(Offsets::CHUNK_LENGTH),
+          9 =>  Ok(Offsets::CHUNK_EXTENSION_NAME),
+          10 => Ok(Offsets::CHUNK_EXTENSION_VALUE),
+          11 => Ok(Offsets::TRAILER_NAME),
+          12 => Ok(Offsets::TRAILER_VALUE),
           _ => Err(())
         }
       }
@@ -1024,6 +1125,28 @@ pub fn generate_enums(_input: TokenStream) -> TokenStream {
       }
     }
 
+    impl Into<&str> for Offsets {
+      fn into(self) -> &'static str {
+        match self {
+          Offsets::METHOD => "METHOD",
+          Offsets::URL => "URL",
+          Offsets::PROTOCOL => "PROTOCOL",
+          Offsets::VERSION => "VERSION",
+          Offsets::STATUS => "STATUS",
+          Offsets::REASON => "REASON",
+          Offsets::HEADER_NAME => "HEADER_NAME",
+          Offsets::HEADER_VALUE => "HEADER_VALUE",
+          Offsets::CHUNK_LENGTH => "CHUNK_LENGTH",
+          Offsets::CHUNK_EXTENSION_NAME => "CHUNK_EXTENSION_NAME",
+          Offsets::CHUNK_EXTENSION_VALUE => "CHUNK_EXTENSION_VALUE",
+          Offsets::TRAILER_NAME => "TRAILER_NAME",
+          Offsets::TRAILER_VALUE => "TRAILER_VALUE",
+        }
+      }
+    }
+
+
+
     impl Into<&str> for Methods {
       fn into(self) -> &'static str {
         match self {
@@ -1055,6 +1178,12 @@ pub fn generate_enums(_input: TokenStream) -> TokenStream {
     }
 
     impl Connections {
+      pub fn as_str(self) -> &'static str {
+        self.into()
+      }
+    }
+
+    impl Offsets {
       pub fn as_str(self) -> &'static str {
         self.into()
       }
@@ -1229,6 +1358,9 @@ pub fn parse(_input: TokenStream) -> TokenStream {
     // Since states might advance position manually, the parser have to explicitly track it
     let mut initial_position = self.position.update(|_| 0);
 
+    let offsets = self.offsets.get();
+    unsafe { *(offsets.offset(2)) = 0 };
+
     // Until there is data or there is a request to continue
     while !current.is_empty() || self.continue_without_data.get() {
       // Reset the continue_without_data bit
@@ -1269,7 +1401,7 @@ pub fn parse(_input: TokenStream) -> TokenStream {
       }
 
       // Update the position of the parser
-      let new_position = self.position.update(|x| x + (result as u64));
+      let new_position = self.position.update(|x| x + (result as usize));
 
       // Compute how many bytes were actually consumed and then advance the data
       let difference = (new_position - initial_position) as usize;
@@ -1332,6 +1464,11 @@ pub fn parse(_input: TokenStream) -> TokenStream {
           "[milo::debug] parse ({:?}, consumed {} of {}) completed in {} ns", self.state.get(), consumed, limit, duration
         );
       }
+    }
+
+    unsafe {
+      *(offsets.offset(0)) = self.state.get() as usize;
+      *(offsets.offset(1)) = consumed;
     }
   })
 }

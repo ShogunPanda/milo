@@ -84,6 +84,7 @@ Here's the list of supported callbacks:
 - `on_chunk_length`: Invoked after a new chunk length has been parsed.
 - `on_chunk_extension_name`: Invoked after a new chunk extension name has been parsed.
 - `on_chunk_extension_value`: Invoked after a new chunk extension value has been parsed.
+- `on_chunk`: Invoked after new chunk data is received.
 - `on_data`: Invoked after new body data is received (either chunked or not).
 - `on_body`: Invoked after the body has been parsed. Note that this has no data attached so `on_data` must be used to save the body.
 - `on_trailer_name`: Invoked after a new trailer name has been parsed.
@@ -98,7 +99,7 @@ A struct representing a parser. It has the following fields:
 
 - `owner` (`Cell<*mut c_void>`): The owner of this parser. Use is reserved to the developer.
 - `state` (`Cell<u8>`): The current parser state.
-- `position` (`Cell<u64>`): The current parser position in the slice in the current execution of `milo_parse`.
+- `position` (`Cell<usize>`): The current parser position in the slice in the current execution of `milo_parse`.
 - `parsed` (`Cell<u64>`): The total bytes consumed from this parser.
 - `paused` (`Cell<bool>`): If the parser is paused.
 - `error_code` (`Cell<u8>`): The parser error. By default is `ERROR_NONE`.
@@ -112,7 +113,7 @@ A struct representing a parser. It has the following fields:
 - `message_type` (`Cell<u8>`): The current message type. Can be `REQUEST` or `RESPONSE`.
 - `is_connect` (`Cell<bool>`): If the current request used `CONNECT` method.
 - `method` (`Cell<u8>`): The current request method as integer.
-- `status` (`Cell<u32>`): The current response status.
+- `status` (`Cell<usize>`): The current response status.
 - `version_major` (`Cell<u8>`): The current message HTTP version major version.
 - `version_minor` (`Cell<u8>`): The current message HTTP version minor version.
 - `connection` (`Cell<u8>`): The value for the connection header. Can be `CONNECTION_CLOSE`, `CONNECTION_UPGRADE` or `CONNECTION_KEEPALIVE` (which is the default when no header is set).
@@ -120,10 +121,10 @@ A struct representing a parser. It has the following fields:
 - `has_chunked_transfer_encoding` (`Cell<bool>`): If the current request has a `Transfer-Encoding` header.
 - `has_upgrade` (`Cell<bool>`): If the current request has a `Connection: upgrade` header.
 - `has_trailers` (`Cell<bool>`): If the current request has a `Trailers` header.
-- `content_length` (`Cell<u8>`): The value of the `Content-Length` header.
-- `chunk_size` (`Cell<u8>`): The expected length of the next chunk.
-- `remaining_content_length` (`Cell<u8>`): The missing data length of the body according to the `content_length` field.
-- `remaining_chunk_size` (`Cell<u8>`): The missing data length of the next chunk according to the `chunk_size` field.
+- `content_length` (`Cell<u64>`): The value of the `Content-Length` header.
+- `chunk_size` (`Cell<u64>`): The expected length of the next chunk.
+- `remaining_content_length` (`Cell<u64>`): The missing data length of the body according to the `content_length` field.
+- `remaining_chunk_size` (`Cell<u64>`): The missing data length of the next chunk according to the `chunk_size` field.
 - `skip_body` (`Cell<bool>`): If the parser should skip the body.
 - `callbacks` (`Callbacks`): The callbacks for the current parser.
 

@@ -103,6 +103,7 @@ A struct representing the callbacks for a parser. Here's the list of supported c
 - `on_chunk_length`: Invoked after a new chunk length has been parsed.
 - `on_chunk_extension_name`: Invoked after a new chunk extension name has been parsed.
 - `on_chunk_extension_value`: Invoked after a new chunk extension value has been parsed.
+- `on_chunk`: Invoked after new chunk data is received.
 - `on_data`: Invoked after new body data is received (either chunked or not).
 - `on_body`: Invoked after the body has been parsed. Note that this has no data attached so `on_data` must be used to save the body.
 - `on_trailer_name`: Invoked after a new trailer name has been parsed.
@@ -117,8 +118,8 @@ A struct representing a parser. It has the following fields:
 
 - `owner` (`void*`): The owner of this parser. Use is reserved to the developer.
 - `state` (`u8`): The current parser state.
-- `position` (`uint64_t`): The current parser position in the slice in the current execution of `milo::milo_parse`.
-- `parsed` (`Cell<u64>`): The total bytes consumed from this parser.
+- `position` (`uint32_t`): The current parser position in the slice in the current execution of `milo::milo_parse`.
+- `parsed` (`u64`): The total bytes consumed from this parser.
 - `paused` (`bool`): If the parser is paused.
 - `error_code` (`u8`): The parser error. By default is `ERROR_NONE`.
 - `error_description` (`const unsigned char*`): The parser error description.

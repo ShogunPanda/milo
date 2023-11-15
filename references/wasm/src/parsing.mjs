@@ -7,7 +7,7 @@ function panic() {
 }
 
 function extractPayload(parser, from, size) {
-  return Buffer.from(parser.context.input.buffer, parser.context.input.byteOffset + from, size)
+  return parser.context.input.subarray(from, from + size)
 }
 
 function sprintf(format, ...args) {
@@ -182,7 +182,7 @@ function onHeaders(parser, from, size) {
   let version = parser.context.version
 
   if (!this.FLAGS_ALL_CALLBACKS) {
-    const offsets = parser.offsets
+    const offsets = parser.context.offsetsBuffer
     const total = offsets[2]
 
     for (let i = 1; i <= total; i++) {
@@ -472,19 +472,31 @@ async function load() {
   const request2 = Buffer.from(
     'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: x-trailer\r\n\r\nc;need=love\r\nhello world!\r\n0\r\nX-Trailer: value\r\n\r\n'
   )
+  const request3 = Buffer.from(
+    'HTTP/1.1 200 OK\r\nDate: Wed, 15 Nov 2023 21:06:00 GMT\r\nConnection: keep-alive\r\nKeep-Alive: timeout=600\r\nContent-Length: 65536\r\n\r\n' +
+      Buffer.alloc(64 * 1024, '_').toString()
+  )
 
-  testData = [milo, parser, request1, request2]
+  testData = [milo, parser, request1, request2, request3]
   return testData
 }
 
+// export async function main() {
+//   const [milo, parser, request1, request2, request3] = await load()
+
+//   let consumed = parser.parse(request3, request3.length)
+//   info(`{ "pos": ${parser.position}, "consumed": ${consumed}, "state": "${milo.States[parser.state]}" }`)
+
+//   info('\n------------------------------------------------------------------------------------------\n')
+
+//   consumed = parser.parse(request2, request2.length)
+//   info(`{ "pos": ${parser.position}, "consumed": ${consumed}, "state": "${milo.States[parser.state]}" }`)
+// }
+
 export async function main() {
-  const [milo, parser, request1, request2] = await load()
+  const [milo, parser, request1, request2, request3] = await load()
 
-  let consumed = parser.parse(request1, request1.length)
-  info(`{ "pos": ${parser.position}, "consumed": ${consumed}, "state": "${milo.States[parser.state]}" }`)
-
-  info('\n------------------------------------------------------------------------------------------\n')
-
-  consumed = parser.parse(request2, request2.length)
+  let consumed = parser.parse(request3.subarray(0, 65535), 65535)
+  consumed = parser.parse(request3.subarray(65535), request3.length - 65535)
   info(`{ "pos": ${parser.position}, "consumed": ${consumed}, "state": "${milo.States[parser.state]}" }`)
 }

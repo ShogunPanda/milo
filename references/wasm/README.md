@@ -6,8 +6,8 @@ In order to build it you need [make].
 
 To build it simply execute:
 
-```shell
-$ make
+```bash
+make
 ```
 
 This will compile milo as WebAssembly in `dist/debug` and `dist/release`.
@@ -16,7 +16,7 @@ The debug version will also show the parser state changes.
 
 To execute the sample executable you can run:
 
-```
+```bash
 node index.mjs [--debug|--release]
 ```
 

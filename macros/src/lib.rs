@@ -653,7 +653,7 @@ pub fn optional_callback(input: TokenStream) -> TokenStream {
       // Set the offset type, the start and the length
       *(offsets.offset(current)) = #offset;
       *(offsets.offset(current + 1)) = parser.position.get();
-      *(offsets.offset(current + 2)) = #length;
+      *(offsets.offset(current + 2)) = (#length) as usize;
     }
 
     #[cfg(all(feature = "all-callbacks", not(target_family = "wasm")))]
@@ -855,6 +855,7 @@ pub fn generate_constants(_input: TokenStream) -> TokenStream {
     pub type Callback = fn (&Parser, usize, usize) -> isize;
 
     pub const MAX_OFFSETS_COUNT: usize = 2049 * 3; // 2048 + 1 for the initial three status one
+    pub const MAX_INPUT_SIZE: usize = 1024 * 64;
     pub const SUSPEND: isize = isize::MIN;
 
     pub const DEBUG: bool = cfg!(debug_assertions);

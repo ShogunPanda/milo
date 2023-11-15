@@ -4,7 +4,7 @@ Milo release is composed by a header file `milo.h` and static library `libmilo.a
 
 The exact command to build milo is dependent on your compiler. For instance, for `clang` the command is the following:
 
-```
+```bash
 clang++ -std=c++11 -I $MILO_DIR -o output $MILO_DIR/libmilo.a main.cc
 ```
 

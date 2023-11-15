@@ -29,21 +29,21 @@ for (const flag of flags) {
   ts += `export declare const FLAGS_${flag}: boolean = ${configuration[flag]}\n`
 }
 
+/*
+  TODO@PI: Use old undici buffer technique to grow both buffers for inputs and offsets.
+  Pass them as arguments to internal parse
+*/
 js = js.replace(
   'class Parser {',
   `
-  const OFFSETS_SIZE = 2049 * 3 * 4;
-    const OFFSETS_PADDING = 32768;
-    const INITIAL_INPUT_SIZE = 1024 * 64;
-
     class Parser {
       static create(id = 0) {
-        const sharedBuffer = module.exports.malloc(OFFSETS_PADDING + INITIAL_INPUT_SIZE, 1) >>> 0
-        const parser = new Parser(id, sharedBuffer + OFFSETS_PADDING, sharedBuffer)
+        const parser = new Parser(id)
 
-        parser.context = {}
-        parser.offsets = new Uint32Array(wasm.memory.buffer, sharedBuffer, OFFSETS_SIZE)
-        parser.input = new Uint8Array(wasm.memory.buffer, sharedBuffer + OFFSETS_PADDING, INITIAL_INPUT_SIZE)
+        parser.context = {
+          inputBuffer: parser.inputBuffer,
+          offsetsBuffer: parser.offsetsBuffer
+        }
 
         return parser
       }
@@ -54,16 +54,11 @@ js = js.replace(
   'parse(limit) {',
   `
     parse(data, limit) {
-      if (this.offsets.byteLength === 0 || limit > this.input.length) {
-        const sharedBuffer = module.exports.malloc(OFFSETS_PADDING + limit, 1) >>> 0
-
-        this.offsets = new Uint32Array(wasm.memory.buffer, sharedBuffer, OFFSETS_SIZE / 4)
-        this.input = new Uint8Array(wasm.memory.buffer, sharedBuffer + OFFSETS_PADDING, limit)
-        this.offsetsBuffer = sharedBuffer
-        this.inputBuffer = sharedBuffer + OFFSETS_PADDING
+      if(this.context.inputBuffer.buffer !== milo.__wasm.memory.buffer) {
+        console.log("RECREATE")
       }
 
-      this.input.set(data)
+      this.context.inputBuffer.set(data)
       this.context.input = data
   `
 )

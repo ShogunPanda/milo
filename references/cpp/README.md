@@ -6,8 +6,8 @@ In order to build it you need [Clang] and [make].
 
 To build it simply execute:
 
-```shell
-$ make
+```bash
+make
 ```
 
 This will generate two executables in the `dist` directory `reference-debug` and `reference-release`.

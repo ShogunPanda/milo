@@ -643,17 +643,18 @@ state!(tunnel, { suspend!() });
 // RFC 9112 section 6.2
 state!(body_via_content_length, {
   let expected = parser.remaining_content_length.get();
-  let available = data.len() as u64;
+  let available = data.len();
+  let available_64 = available as u64;
 
   // Less data than what it is expected
-  if available < expected {
-    parser.remaining_content_length.update(|x| x - available);
+  if available_64 < expected {
+    parser.remaining_content_length.update(|x| x - available_64);
     callback!(on_data, available);
 
     return advance!(available);
   }
 
-  callback!(on_data, expected);
+  callback!(on_data, expected as usize);
   parser.remaining_content_length.set(0);
   callback!(on_body);
   complete_message(parser, expected as isize)
@@ -813,14 +814,15 @@ state!(chunk_data, {
   }
 
   let expected = parser.remaining_chunk_size.get();
-  let available = data.len() as u64;
+  let available = data.len();
+  let available_64 = available as u64;
 
   // Less data than what it is expected for this chunk
-  if available < expected {
-    parser.remaining_chunk_size.update(|x| x - available);
+  if available_64 < expected {
+    parser.remaining_chunk_size.update(|x| x - available_64);
 
     callback!(on_chunk);
-    callback!(on_data, available as usize);
+    callback!(on_data, available);
 
     return advance!(available);
   }
@@ -1021,8 +1023,11 @@ pub struct Parser {
 #[wasm_bindgen]
 impl Parser {
   pub fn new() -> Parser {
+    let input = [0; MAX_INPUT_SIZE].to_vec();
+    let (input_ptr, _, _) = { input.into_raw_parts() };
+
     let offsets = [0; MAX_OFFSETS_COUNT].to_vec();
-    let (ptr, _, _) = { offsets.into_raw_parts() };
+    let (offset_ptr, _, _) = { offsets.into_raw_parts() };
 
     Parser {
       owner: Cell::new(ptr::null_mut()),
@@ -1056,8 +1061,8 @@ impl Parser {
       remaining_chunk_size: Cell::new(0),
       skip_body: Cell::new(false),
       callbacks: Callbacks::new(),
-      input: Cell::new(ptr::null_mut()),
-      offsets: Cell::new(ptr),
+      input: Cell::new(input_ptr),
+      offsets: Cell::new(offset_ptr),
     }
   }
 
@@ -1240,15 +1245,21 @@ impl Parser {
 impl Parser {
   /// Creates a new parser.
   #[wasm_bindgen(constructor)]
-  pub fn new_wasm(id: Option<u8>, input: *mut u8, offsets: *mut usize) -> Parser {
+  pub fn new_wasm(id: Option<u8>) -> Parser {
     #[cfg(debug_assertions)]
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
     let parser = Parser::new();
     parser.id.set(id.unwrap_or(0));
-    parser.input.set(input);
-    parser.offsets.set(offsets);
     parser
+  }
+
+  #[wasm_bindgen]
+  pub fn destroy(&self) {
+    unsafe {
+      let _ = Vec::from_raw_parts(self.input.get(), MAX_INPUT_SIZE, MAX_INPUT_SIZE);
+      let _ = Vec::from_raw_parts(self.offsets.get(), MAX_OFFSETS_COUNT, MAX_OFFSETS_COUNT);
+    }
   }
 
   #[wasm_bindgen]
@@ -1373,11 +1384,15 @@ impl Parser {
   #[wasm_bindgen(setter = skipBody)]
   pub fn set_skip_body(&self, value: bool) { self.skip_body.set(value); }
 
-  #[wasm_bindgen(setter = inputBuffer)]
-  pub fn set_input(&self, value: *mut u8) { self.input.set(value); }
+  #[wasm_bindgen(getter = inputBuffer)]
+  pub fn get_input(&self) -> js_sys::Uint8Array {
+    unsafe { js_sys::Uint8Array::view_mut_raw(self.input.get(), MAX_INPUT_SIZE) }
+  }
 
-  #[wasm_bindgen(setter = offsetsBuffer)]
-  pub fn set_offsets(&self, value: *mut usize) { self.offsets.set(value); }
+  #[wasm_bindgen(getter = offsetsBuffer)]
+  pub fn get_offsets(&self) -> js_sys::Uint32Array {
+    unsafe { js_sys::Uint32Array::view_mut_raw(self.offsets.get() as *mut _, MAX_OFFSETS_COUNT) }
+  }
 }
 
 #[cfg(target_family = "wasm")]

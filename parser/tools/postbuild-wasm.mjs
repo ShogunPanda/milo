@@ -29,6 +29,10 @@ for (const flag of flags) {
   ts += `export declare const FLAGS_${flag}: boolean = ${configuration[flag]}\n`
 }
 
+/*
+  TODO@PI: Use old undici buffer technique to grow both buffers for inputs and offsets.
+  Pass them as arguments to internal parse
+*/
 js = js.replace(
   'class Parser {',
   `

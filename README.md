@@ -2,10 +2,6 @@
 
 Milo is a fast and embeddable HTTP/1.1 parser written in [Rust][rust].
 
-## Sponsored by
-
-[![NearForm](./docs/assets/nearform.svg)][nearform]
-
 ## Why?
 
 The scope of Milo is to replace [llhttp] as [Node.js] main HTTP parser.

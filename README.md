@@ -68,8 +68,8 @@ parser.parse(message, message.length);
 
 Finally build and execute it using `node`:
 
-```shell
-$ node index.js
+```bash
+node index.js
 # Pos=38 Body: abc
 ```
 
@@ -131,8 +131,8 @@ fn main() {
 
 Finally build and execute it using `cargo`:
 
-```shell
-$ cargo run
+```bash
+cargo run
 # ... cargo build output ...
 # Pos=38 Body: abc
 ```
@@ -192,9 +192,9 @@ int main()
 
 And then you can compile using your preferred build system. For instance, let's try with [Clang]:
 
-```shell
-$ clang++ -std=c++11 -o example libmilo.a main.cc
-$ ./example
+```bash
+clang++ -std=c++11 -o example libmilo.a main.cc
+./example
 # Pos=38 Body: abc
 ```
 
@@ -207,15 +207,15 @@ If you want to build it locally, you need the following tools:
 
 Make sure you have the `nightly` toolchain installed locally:
 
-```shell
-$ rustup toolchain install nightly
+```bash
+rustup toolchain install nightly
 ```
 
 After all the requirements are met, you can then run:
 
-```shell
-$ cd parser
-$ make
+```bash
+cd parser
+make
 ```
 
 The command above will produce the release file.

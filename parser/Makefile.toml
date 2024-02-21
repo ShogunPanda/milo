@@ -1,102 +1,112 @@
 [env]
-TARGET = { script = ["rustc -vV | sed -n 's|host: ||p'"] }
-COMMON_OPTIONS = "-Z unstable-options --target ${TARGET}"
-RELEASE_OPTIONS = "-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort"
+  TARGET          = { script = ["rustc -vV | sed -n 's|host: ||p'"] }
+  COMMON_OPTIONS  = "-Z unstable-options --target ${TARGET}"
+  RELEASE_OPTIONS = "-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort"
 
 [config]
-skip_core_tasks = true
+  skip_core_tasks = true
 
 [tasks.default]
-dependencies = ["all"]
+  dependencies = ["all"]
 
 [tasks.all]
-dependencies = ["cpp", "wasm"]
+  dependencies = ["cpp", "wasm"]
 
 [tasks.clean]
-run_task = { name = ["cargo-clean", "dist-clean"] }
+  run_task = { name = ["cargo-clean", "dist-clean"] }
 
 [tasks.test]
-script = ["cd ../test-utils", "cargo test"]
+  script = ["cd ../test-utils", "cargo test"]
 
 [tasks.format-tools]
-script = ["cd tools", "prettier -w *.mjs **/*.mjs"]
+  script = ["cd tools", "prettier -w *.mjs **/*.mjs"]
 
 [tasks.cargo-clean]
-command = "cargo"
-args = ["clean"]
+  command = "cargo"
+  args    = ["clean"]
 
 [tasks.dist-clean]
-script = "rm -rf dist"
+  script = "rm -rf dist"
 
 [tasks.cpp]
-dependencies = ["cpp-headers", "cpp-libs"]
+  dependencies = ["cpp-headers", "cpp-libs"]
 
 [tasks.cpp-libs]
-dependencies = [
-  "cpp-release-default",
-  "cpp-release-all-callbacks",
-  "cpp-debug-default",
-  "cpp-debug-all-callbacks",
-]
+  dependencies = [
+    "cpp-release-default",
+    "cpp-release-all-callbacks",
+    "cpp-debug-default",
+    "cpp-debug-all-callbacks",
+  ]
 
 [tasks.cpp-release-default]
-env = { CONFIGURATION = "release-default", "CARGO_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false,ALL_CALLBACKS:false" }
-run_task = "cpp-lib"
+  env      = { CONFIGURATION = "release-default", "CARGO_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false,ALL_CALLBACKS:false" }
+  run_task = "cpp-lib"
 
 [tasks.cpp-release-all-callbacks]
-env = { CONFIGURATION = "release-all-callbacks", "CARGO_OPTIONS" = "--release --features all-callbacks", POSTBUILD_OPTIONS = "DEBUG:false,ALL_CALLBACKS:true" }
-run_task = "cpp-lib"
+  env      = { CONFIGURATION = "release-all-callbacks", "CARGO_OPTIONS" = "--release --features all-callbacks", POSTBUILD_OPTIONS = "DEBUG:false,ALL_CALLBACKS:true" }
+  run_task = "cpp-lib"
 
 [tasks.cpp-debug-default]
-env = { CONFIGURATION = "debug-default", "CARGO_OPTIONS" = "", POSTBUILD_OPTIONS = "DEBUG:true,ALL_CALLBACKS:false" }
-run_task = "cpp-lib"
+  env      = { CONFIGURATION = "debug-default", "CARGO_OPTIONS" = "", POSTBUILD_OPTIONS = "DEBUG:true,ALL_CALLBACKS:false" }
+  run_task = "cpp-lib"
 
 [tasks.cpp-debug-all-callbacks]
-env = { CONFIGURATION = "debug-all-callbacks", "CARGO_OPTIONS" = "--features all-callbacks", POSTBUILD_OPTIONS = "DEBUG:true,ALL_CALLBACKS:true" }
-run_task = "cpp-lib"
+  env      = { CONFIGURATION = "debug-all-callbacks", "CARGO_OPTIONS" = "--features all-callbacks", POSTBUILD_OPTIONS = "DEBUG:true,ALL_CALLBACKS:true" }
+  run_task = "cpp-lib"
 
 [tasks.cpp-lib]
-script = [
-  "mkdir -p dist/cpp/${CONFIGURATION}",
-  "rm -rf dist/cpp/${CONFIGURATION}/*",
-  "cargo build ${COMMON_OPTIONS} ${CARGO_OPTIONS} --out-dir target/cpp/${CONFIGURATION}",
-  "cp target/cpp/${CONFIGURATION}/libmilo.a target/headers/milo.h dist/cpp/${CONFIGURATION}",
-  "node ./tools/postbuild-cpp.mjs	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
-]
+  script = [
+    "mkdir -p dist/cpp/${CONFIGURATION}",
+    "rm -rf dist/cpp/${CONFIGURATION}/*",
+    "cargo build ${COMMON_OPTIONS} ${CARGO_OPTIONS} --out-dir target/cpp/${CONFIGURATION}",
+    "cp target/cpp/${CONFIGURATION}/libmilo.a target/headers/milo.h dist/cpp/${CONFIGURATION}",
+    "node ./tools/postbuild-cpp.mjs	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
+  ]
 
 [tasks.cpp-headers]
-script = ["cbindgen --quiet --output target/headers/milo.h"]
+  script = ["cbindgen --quiet --output target/headers/milo.h"]
 
 [tasks.wasm]
-dependencies = [
-  "wasm-release-default",
-  "wasm-release-all-callbacks",
-  "wasm-debug-default",
-  "wasm-debug-all-callbacks",
-]
+  dependencies = [
+    "wasm-release-default",
+    "wasm-release-all-callbacks",
+    "wasm-debug-default",
+    "wasm-debug-all-callbacks",
+  ]
 
 [tasks.wasm-release-default]
-env = { CONFIGURATION = "release-default", "WASMPACK_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false,ALL_CALLBACKS:false" }
-run_task = "wasm-module"
+  env      = { CONFIGURATION = "release-default", "WASMPACK_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false,ALL_CALLBACKS:false" }
+  run_task = "wasm-module"
 
 [tasks.wasm-release-all-callbacks]
-env = { CONFIGURATION = "release-all-callbacks", "WASMPACK_OPTIONS" = "--release -- --features all-callbacks", POSTBUILD_OPTIONS = "DEBUG:false,ALL_CALLBACKS:true" }
-run_task = "wasm-module"
+  env      = { CONFIGURATION = "release-all-callbacks", "WASMPACK_OPTIONS" = "--release -- --features all-callbacks", POSTBUILD_OPTIONS = "DEBUG:false,ALL_CALLBACKS:true" }
+  run_task = "wasm-module"
 
 [tasks.wasm-debug-default]
-env = { CONFIGURATION = "debug-default", "WASMPACK_OPTIONS" = "--debug", POSTBUILD_OPTIONS = "DEBUG:true,ALL_CALLBACKS:false" }
-run_task = "wasm-module"
+  env      = { CONFIGURATION = "debug-default", "WASMPACK_OPTIONS" = "--debug", POSTBUILD_OPTIONS = "DEBUG:true,ALL_CALLBACKS:false" }
+  run_task = "wasm-module"
 
 [tasks.wasm-debug-all-callbacks]
-env = { CONFIGURATION = "debug-all-callbacks", "WASMPACK_OPTIONS" = "--debug -- --features all-callbacks", POSTBUILD_OPTIONS = "DEBUG:true,ALL_CALLBACKS:true" }
-run_task = "wasm-module"
+  env      = { CONFIGURATION = "debug-all-callbacks", "WASMPACK_OPTIONS" = "--debug -- --features all-callbacks", POSTBUILD_OPTIONS = "DEBUG:true,ALL_CALLBACKS:true" }
+  run_task = "wasm-module"
 
 [tasks.wasm-module]
-script = [
-  "mkdir -p dist/wasm",
-  "rm -rf dist/wasm/${CONFIGURATION}",
-  "wasm-pack build -d target/wasm/${CONFIGURATION} -t nodejs ${WASMPACK_OPTIONS}",
-  "cp -a target/wasm/${CONFIGURATION} dist/wasm/${CONFIGURATION}",
-  "rm -rf dist/wasm/${CONFIGURATION}/.gitignore dist/wasm/${CONFIGURATION}/README.md",
-  "node ./tools/postbuild-wasm.mjs	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
-]
+  script = [
+    "mkdir -p dist/wasm",
+    "rm -rf dist/wasm/${CONFIGURATION}",
+    "wasm-pack build -d target/wasm/${CONFIGURATION} -t nodejs ${WASMPACK_OPTIONS}",
+    "cp -a target/wasm/${CONFIGURATION} dist/wasm/${CONFIGURATION}",
+    "rm -rf dist/wasm/${CONFIGURATION}/.gitignore dist/wasm/${CONFIGURATION}/README.md",
+    "node ./tools/postbuild-wasm.mjs	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
+  ]
+
+[tasks.wasm-npm]
+  dependencies = ["wasm-release-default"]
+  script = [
+    "cd dist/wasm/release-default",
+    "yq -eMP -i -o json '.name=\"@ShogunPanda/milo\"' package.json",
+    "yq -eMP -i -o json '.repository=\"https://github.com/ShogunPanda/milo.git\"' package.json",
+    "cp ../../../../.npmrc .",
+    "npm publish",
+  ]

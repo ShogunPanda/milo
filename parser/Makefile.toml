@@ -102,9 +102,9 @@
   ]
 
 [tasks.wasm-npm]
-  dependencies = ["wasm-release-default"]
+  dependencies = ["wasm-release-all-callbacks"]
   script = [
-    "cd dist/wasm/release-default",
+    "cd dist/wasm/release-all-callbacks",
     "yq -eMP -i -o json '.name=\"@ShogunPanda/milo\"' package.json",
     "yq -eMP -i -o json '.repository=\"https://github.com/ShogunPanda/milo.git\"' package.json",
     "cp ../../../../.npmrc .",

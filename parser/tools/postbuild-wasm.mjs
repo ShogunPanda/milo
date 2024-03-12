@@ -54,10 +54,6 @@ js = js.replace(
   'parse(limit) {',
   `
     parse(data, limit) {
-      if(this.context.inputBuffer.buffer !== milo.__wasm.memory.buffer) {
-        console.log("RECREATE")
-      }
-
       this.context.inputBuffer.set(data)
       this.context.input = data
   `

@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 
-const flags = ['DEBUG', 'ALL_CALLBACKS']
+const flags = ['DEBUG']
 const configuration = Object.fromEntries(process.argv[3].split(',').map(p => p.split(':')))
 
 async function prependVersionAndMethodMap() {
@@ -25,7 +25,6 @@ async function prependVersionAndMethodMap() {
 #define MILO_VERSION_PATCH ${patch}
 
 #define MILO_FLAGS_DEBUG ${configuration['DEBUG'] === 'true' ? 1 : 0}
-#define MILO_FLAGS_ALL_CALLBACKS ${configuration['ALL_CALLBACKS'] === 'true' ? 1 : 0}
 
 #define MILO_METHODS_MAP(EACH) \\
 ${methods.map(([v, i]) => `  EACH(${i}, ${v}, ${v}) \\`).join('\n')}

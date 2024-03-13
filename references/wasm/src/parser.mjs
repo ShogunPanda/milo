@@ -1,10 +1,6 @@
 import { isMainThread } from 'node:worker_threads'
 
-const info = isMainThread ? console.log : () => {}
-
-function panic() {
-  throw new Error('This should not be invoked in default mode.')
-}
+export const info = isMainThread ? console.log : () => {}
 
 function extractPayload(parser, from, size) {
   return parser.context.input.subarray(from, from + size)
@@ -64,12 +60,7 @@ function afterStateChange(parser, from, size) {
 
 function onMessageStart(parser, from, size) {
   return appendOutput(
-    sprintf(
-      '"pos": {}, "event": "begin", "configuration": { "debug": {}, "all-callbacks": {} }',
-      parser.position,
-      this.FLAGS_DEBUG,
-      this.FLAGS_ALL_CALLBACKS
-    ),
+    sprintf('"pos": {}, "event": "begin", "configuration": { "debug": {} }', parser.position, this.FLAGS_DEBUG),
     parser,
     from,
     size
@@ -109,66 +100,34 @@ function onResponse(parser, from, size) {
 }
 
 function onMethod(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    panic()
-  }
-
   return showSpan(parser, 'method', from, size)
 }
 
 function onUrl(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    panic()
-  }
-
   return showSpan(parser, 'url', from, size)
 }
 
 function onProtocol(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    panic()
-  }
-
   return showSpan(parser, 'protocol', from, size)
 }
 
 function onVersion(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    panic()
-  }
-
   return showSpan(parser, 'version', from, size)
 }
 
 function onStatus(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    panic()
-  }
-
   return showSpan(parser, 'status', from, size)
 }
 
 function onReason(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    panic()
-  }
-
   return showSpan(parser, 'reason', from, size)
 }
 
 function onHeaderName(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    panic()
-  }
-
   return showSpan(parser, 'header_name', from, size)
 }
 
 function onHeaderValue(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    panic()
-  }
-
   return showSpan(parser, 'header_value', from, size)
 }
 
@@ -181,58 +140,56 @@ function onHeaders(parser, from, size) {
   let protocol = parser.context.protocol
   let version = parser.context.version
 
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    const offsets = parser.context.offsetsBuffer
-    const total = offsets[2]
+  const offsets = parser.offsets
+  const total = offsets[2]
 
-    for (let i = 1; i <= total; i++) {
-      const [offsetType, offsetFrom, offsetSize] = offsets.slice(i * 3, i * 3 + 3)
+  for (let i = 1; i <= total; i++) {
+    const [offsetType, offsetFrom, offsetSize] = offsets.slice(i * 3, i * 3 + 3)
 
-      switch (offsetType) {
-        case this.Offsets.METHOD:
-          event(parser, 'method', offsetFrom, offsetFrom, offsetSize)
-          method = extractPayload(parser, offsetFrom, offsetSize)
-          break
-        case this.Offsets.URL:
-          event(parser, 'url', offsetFrom, offsetFrom, offsetSize)
-          url = extractPayload(parser, offsetFrom, offsetSize)
-          break
-        case this.Offsets.PROTOCOL:
-          event(parser, 'protocol', offsetFrom, offsetFrom, offsetSize)
-          protocol = extractPayload(parser, offsetFrom, offsetSize)
-          break
-        case this.Offsets.VERSION:
-          event(parser, 'version', offsetFrom, offsetFrom, offsetSize)
-          version = extractPayload(parser, offsetFrom, offsetSize)
-          break
-        case this.Offsets.STATUS:
-          event(parser, 'status', offsetFrom, offsetFrom, offsetSize)
-          break
-        case this.Offsets.REASON:
-          event(parser, 'reason', offsetFrom, offsetFrom, offsetSize)
-          break
-        case this.Offsets.HEADER_NAME:
-          event(parser, 'header_name', offsetFrom, offsetFrom, offsetSize)
-          break
-        case this.Offsets.HEADER_VALUE:
-          event(parser, 'header_value', offsetFrom, offsetFrom, offsetSize)
-          break
-        case this.Offsets.CHUNK_LENGTH:
-          event(parser, 'chunk_length', offsetFrom, offsetFrom, offsetSize)
-          break
-        case this.Offsets.CHUNK_EXTENSION_NAME:
-          event(parser, 'chunk_extensions_name', offsetFrom, offsetFrom, offsetSize)
-          break
-        case this.Offsets.CHUNK_EXTENSION_VALUE:
-          event(parser, 'chunk_extension_value', offsetFrom, offsetFrom, offsetSize)
-          break
-        default:
-          throw new Error('Unexpected offset with type ', +offsets[i * 3])
-      }
+    switch (offsetType) {
+      case this.Offsets.METHOD:
+        event(parser, 'offset.method', offsetFrom, offsetFrom, offsetSize)
+        method = extractPayload(parser, offsetFrom, offsetSize)
+        break
+      case this.Offsets.URL:
+        event(parser, 'offset.url', offsetFrom, offsetFrom, offsetSize)
+        url = extractPayload(parser, offsetFrom, offsetSize)
+        break
+      case this.Offsets.PROTOCOL:
+        event(parser, 'offset.protocol', offsetFrom, offsetFrom, offsetSize)
+        protocol = extractPayload(parser, offsetFrom, offsetSize)
+        break
+      case this.Offsets.VERSION:
+        event(parser, 'offset.version', offsetFrom, offsetFrom, offsetSize)
+        version = extractPayload(parser, offsetFrom, offsetSize)
+        break
+      case this.Offsets.STATUS:
+        event(parser, 'offset.status', offsetFrom, offsetFrom, offsetSize)
+        break
+      case this.Offsets.REASON:
+        event(parser, 'offset.reason', offsetFrom, offsetFrom, offsetSize)
+        break
+      case this.Offsets.HEADER_NAME:
+        event(parser, 'offset.header_name', offsetFrom, offsetFrom, offsetSize)
+        break
+      case this.Offsets.HEADER_VALUE:
+        event(parser, 'offset.header_value', offsetFrom, offsetFrom, offsetSize)
+        break
+      case this.Offsets.CHUNK_LENGTH:
+        event(parser, 'offset.chunk_length', offsetFrom, offsetFrom, offsetSize)
+        break
+      case this.Offsets.CHUNK_EXTENSION_NAME:
+        event(parser, 'offset.chunk_extensions_name', offsetFrom, offsetFrom, offsetSize)
+        break
+      case this.Offsets.CHUNK_EXTENSION_VALUE:
+        event(parser, 'offset.chunk_extension_value', offsetFrom, offsetFrom, offsetSize)
+        break
+      default:
+        throw new Error('Unexpected offset with type ', +offsets[i * 3])
     }
-
-    offsets[2] = 0
   }
+
+  offsets[2] = 0
 
   if (parser.messageType == this.RESPONSE) {
     const heading = sprintf('"pos": {}, "event": {}, "type": "response", ', position, formatEvent('headers'))
@@ -333,52 +290,38 @@ function onUpgrade(parser, from, size) {
 }
 
 function onChunkLength(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    panic()
-  }
-
   return showSpan(parser, 'chunk_length', from, size)
 }
 
 function onChunkExtensionName(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    panic()
-  }
-
   return showSpan(parser, 'chunk_extensions_name', from, size)
 }
 
 function onChunkExtensionValue(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    panic()
-  }
-
   return showSpan(parser, 'chunk_extension_value', from, size)
 }
 
 function onChunk(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    const offsets = parser.offsets
-    const total = offsets[2]
+  const offsets = parser.offsets
+  const total = offsets[2]
 
-    for (let i = 1; i <= total; i++) {
-      const [offsetType, offsetFrom, offsetSize] = offsets.slice(i * 3, i * 3 + 3)
+  for (let i = 1; i <= total; i++) {
+    const [offsetType, offsetFrom, offsetSize] = offsets.slice(i * 3, i * 3 + 3)
 
-      switch (offsetType) {
-        case this.Offsets.CHUNK_LENGTH:
-          event(parser, 'chunk_length', offsetFrom, offsetFrom, offsetSize)
-          break
-        case this.Offsets.CHUNK_EXTENSION_NAME:
-          event(parser, 'chunk_extensions_name', offsetFrom, offsetFrom, offsetSize)
-          break
-        case this.Offsets.CHUNK_EXTENSION_VALUE:
-          event(parser, 'chunk_extension_value', offsetFrom, offsetFrom, offsetSize)
-          break
-      }
+    switch (offsetType) {
+      case this.Offsets.CHUNK_LENGTH:
+        event(parser, 'offset.chunk_length', offsetFrom, offsetFrom, offsetSize)
+        break
+      case this.Offsets.CHUNK_EXTENSION_NAME:
+        event(parser, 'offset.chunk_extensions_name', offsetFrom, offsetFrom, offsetSize)
+        break
+      case this.Offsets.CHUNK_EXTENSION_VALUE:
+        event(parser, 'offset.chunk_extension_value', offsetFrom, offsetFrom, offsetSize)
+        break
     }
-
-    offsets[2] = 0
   }
+
+  offsets[2] = 0
 
   return event(parser, 'chunk', parser.position, from, size)
 }
@@ -392,47 +335,37 @@ function onData(parser, from, size) {
 }
 
 function onTrailerName(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    panic()
-  }
-
   return showSpan(parser, 'trailer_name', from, size)
 }
 
 function onTrailerValue(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    panic()
-  }
-
   return showSpan(parser, 'trailer_value', from, size)
 }
 
 function onTrailers(parser, from, size) {
-  if (!this.FLAGS_ALL_CALLBACKS) {
-    const offsets = parser.offsets
-    const total = offsets[2]
+  const offsets = parser.offsets
+  const total = offsets[2]
 
-    for (let i = 1; i <= total; i++) {
-      const [offsetType, offsetFrom, offsetSize] = offsets.slice(i * 3, i * 3 + 3)
+  for (let i = 1; i <= total; i++) {
+    const [offsetType, offsetFrom, offsetSize] = offsets.slice(i * 3, i * 3 + 3)
 
-      switch (offsets[i * 3]) {
-        case this.Offsets.TRAILER_NAME:
-          event(parser, 'trailer_name', offsetFrom, offsetFrom, offsetSize)
-          break
-        case this.Offsets.TRAILER_VALUE:
-          event(parser, 'trailer_value', offsetFrom, offsetFrom, offsetSize)
-          break
-      }
+    switch (offsets[i * 3]) {
+      case this.Offsets.TRAILER_NAME:
+        event(parser, 'offset.trailer_name', offsetFrom, offsetFrom, offsetSize)
+        break
+      case this.Offsets.TRAILER_VALUE:
+        event(parser, 'offset.trailer_value', offsetFrom, offsetFrom, offsetSize)
+        break
     }
-
-    offsets[2] = 0
   }
+
+  offsets[2] = 0
 
   return event(parser, 'trailers', parser.position, from, size)
 }
 
 let testData = undefined
-async function load() {
+export async function load() {
   if (testData) {
     return testData
   }
@@ -479,24 +412,4 @@ async function load() {
 
   testData = [milo, parser, request1, request2, request3]
   return testData
-}
-
-// export async function main() {
-//   const [milo, parser, request1, request2, request3] = await load()
-
-//   let consumed = parser.parse(request3, request3.length)
-//   info(`{ "pos": ${parser.position}, "consumed": ${consumed}, "state": "${milo.States[parser.state]}" }`)
-
-//   info('\n------------------------------------------------------------------------------------------\n')
-
-//   consumed = parser.parse(request2, request2.length)
-//   info(`{ "pos": ${parser.position}, "consumed": ${consumed}, "state": "${milo.States[parser.state]}" }`)
-// }
-
-export async function main() {
-  const [milo, parser, request1, request2, request3] = await load()
-
-  let consumed = parser.parse(request3.subarray(0, 65535), 65535)
-  consumed = parser.parse(request3.subarray(65535), request3.length - 65535)
-  info(`{ "pos": ${parser.position}, "consumed": ${consumed}, "state": "${milo.States[parser.state]}" }`)
 }

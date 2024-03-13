@@ -32,28 +32,16 @@
   dependencies = ["cpp-headers", "cpp-libs"]
 
 [tasks.cpp-libs]
-  dependencies = [
-    "cpp-release-default",
-    "cpp-release-all-callbacks",
-    "cpp-debug-default",
-    "cpp-debug-all-callbacks",
-  ]
+  dependencies = ["cpp-release", "cpp-debug"]
 
-[tasks.cpp-release-default]
-  env      = { CONFIGURATION = "release-default", "CARGO_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false,ALL_CALLBACKS:false" }
+[tasks.cpp-release]
+  env      = { CONFIGURATION = "release", "CARGO_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false" }
   run_task = "cpp-lib"
 
-[tasks.cpp-release-all-callbacks]
-  env      = { CONFIGURATION = "release-all-callbacks", "CARGO_OPTIONS" = "--release --features all-callbacks", POSTBUILD_OPTIONS = "DEBUG:false,ALL_CALLBACKS:true" }
+[tasks.cpp-debug]
+  env      = { CONFIGURATION = "debug", "CARGO_OPTIONS" = "", POSTBUILD_OPTIONS = "DEBUG:true" }
   run_task = "cpp-lib"
 
-[tasks.cpp-debug-default]
-  env      = { CONFIGURATION = "debug-default", "CARGO_OPTIONS" = "", POSTBUILD_OPTIONS = "DEBUG:true,ALL_CALLBACKS:false" }
-  run_task = "cpp-lib"
-
-[tasks.cpp-debug-all-callbacks]
-  env      = { CONFIGURATION = "debug-all-callbacks", "CARGO_OPTIONS" = "--features all-callbacks", POSTBUILD_OPTIONS = "DEBUG:true,ALL_CALLBACKS:true" }
-  run_task = "cpp-lib"
 
 [tasks.cpp-lib]
   script = [
@@ -68,27 +56,14 @@
   script = ["cbindgen --quiet --output target/headers/milo.h"]
 
 [tasks.wasm]
-  dependencies = [
-    "wasm-release-default",
-    "wasm-release-all-callbacks",
-    "wasm-debug-default",
-    "wasm-debug-all-callbacks",
-  ]
+  dependencies = ["wasm-release", "wasm-debug"]
 
-[tasks.wasm-release-default]
-  env      = { CONFIGURATION = "release-default", "WASMPACK_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false,ALL_CALLBACKS:false" }
+[tasks.wasm-release]
+  env      = { CONFIGURATION = "release", "WASMPACK_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false" }
   run_task = "wasm-module"
 
-[tasks.wasm-release-all-callbacks]
-  env      = { CONFIGURATION = "release-all-callbacks", "WASMPACK_OPTIONS" = "--release -- --features all-callbacks", POSTBUILD_OPTIONS = "DEBUG:false,ALL_CALLBACKS:true" }
-  run_task = "wasm-module"
-
-[tasks.wasm-debug-default]
-  env      = { CONFIGURATION = "debug-default", "WASMPACK_OPTIONS" = "--debug", POSTBUILD_OPTIONS = "DEBUG:true,ALL_CALLBACKS:false" }
-  run_task = "wasm-module"
-
-[tasks.wasm-debug-all-callbacks]
-  env      = { CONFIGURATION = "debug-all-callbacks", "WASMPACK_OPTIONS" = "--debug -- --features all-callbacks", POSTBUILD_OPTIONS = "DEBUG:true,ALL_CALLBACKS:true" }
+[tasks.wasm-debug]
+  env      = { CONFIGURATION = "debug", "WASMPACK_OPTIONS" = "--debug", POSTBUILD_OPTIONS = "DEBUG:true" }
   run_task = "wasm-module"
 
 [tasks.wasm-module]
@@ -102,9 +77,9 @@
   ]
 
 [tasks.wasm-npm]
-  dependencies = ["wasm-release-all-callbacks"]
+  dependencies = ["wasm-release"]
   script = [
-    "cd dist/wasm/release-all-callbacks",
+    "cd dist/wasm/release",
     "yq -eMP -i -o json '.name=\"@ShogunPanda/milo\"' package.json",
     "yq -eMP -i -o json '.repository=\"https://github.com/ShogunPanda/milo.git\"' package.json",
     "cp ../../../../.npmrc .",

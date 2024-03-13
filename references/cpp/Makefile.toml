@@ -1,55 +1,41 @@
 [env]
-COMMON_CC = "src/output.cc src/utils.cc"
+  COMMON_CC = "src/output.cc src/utils.cc"
 
 [config]
-skip_core_tasks = true
+  skip_core_tasks = true
 
 [tasks.default]
-dependencies = ["all"]
+  dependencies = ["all"]
 
 [tasks.all]
-dependencies = [
-  "release-default",
-  "release-all-callbacks",
-  "debug-default",
-  "debug-all-callbacks",
-]
+  dependencies = ["release", "debug"]
 
 [tasks.clean]
-script = "rm -rf dist lib tmp"
+  script = "rm -rf dist lib tmp"
 
 [tasks.test]
-dependencies = ["all"]
-command = "node"
-args = ["--test", "../reference.test.mjs"]
+  dependencies = ["all"]
+  command      = "node"
+  args         = ["--test", "../reference.test.mjs"]
 
-[tasks.release-default]
-env = { CONFIGURATION = "release-default" }
-run_task = [{ name = ["lib", "executable"] }]
+[tasks.release]
+  env      = { CONFIGURATION = "release" }
+  run_task = [{ name = ["lib", "executable"] }]
 
-[tasks.release-all-callbacks]
-env = { CONFIGURATION = "release-all-callbacks" }
-run_task = [{ name = ["lib", "executable"] }]
-
-[tasks.debug-default]
-env = { CONFIGURATION = "debug-default" }
-run_task = [{ name = ["lib", "executable"] }]
-
-[tasks.debug-all-callbacks]
-env = { CONFIGURATION = "debug-all-callbacks" }
-run_task = [{ name = ["lib", "executable"] }]
-
+[tasks.debug]
+  env      = { CONFIGURATION = "debug" }
+  run_task = [{ name = ["lib", "executable"] }]
 
 [tasks.executable]
-script = [
-  "mkdir -p dist",
-  "clang++ -std=c++11 -I lib/${CONFIGURATION} -o dist/reference-${CONFIGURATION} lib/${CONFIGURATION}/libmilo.a ${COMMON_CC} src/main.cc",
-]
+  script = [
+    "mkdir -p dist",
+    "clang++ -std=c++11 -I lib/${CONFIGURATION} -o dist/reference-${CONFIGURATION} lib/${CONFIGURATION}/libmilo.a ${COMMON_CC} src/main.cc",
+  ]
 
 [tasks.lib]
-script = [
-  "mkdir -p lib/${CONFIGURATION}",
-  "cd ../../parser",
-  "makers cpp-${CONFIGURATION}",
-  "cp -a dist/cpp/${CONFIGURATION}/libmilo.a dist/cpp/${CONFIGURATION}/milo.h ../references/cpp/lib/${CONFIGURATION}",
-]
+  script = [
+    "mkdir -p lib/${CONFIGURATION}",
+    "cd ../../parser",
+    "makers cpp-${CONFIGURATION}",
+    "cp -a dist/cpp/${CONFIGURATION}/libmilo.a dist/cpp/${CONFIGURATION}/milo.h ../references/cpp/lib/${CONFIGURATION}",
+  ]

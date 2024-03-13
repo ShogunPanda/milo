@@ -1,49 +1,37 @@
 [env]
-TARGET = { script = ["rustc -vV | sed -n 's|host: ||p'"] }
-COMMON_OPTIONS = "-Z unstable-options --target ${TARGET}"
-RELEASE_OPTIONS = "-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort"
+  TARGET          = { script = ["rustc -vV | sed -n 's|host: ||p'"] }
+  COMMON_OPTIONS  = "-Z unstable-options --target ${TARGET}"
+  RELEASE_OPTIONS = "-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort"
 
 [config]
-skip_core_tasks = true
+  skip_core_tasks = true
 
 [tasks.default]
-dependencies = ["all"]
+  dependencies = ["all"]
 
 [tasks.all]
-dependencies = [
-  "release-default",
-  "release-all-callbacks",
-  "debug-default",
-  "debug-all-callbacks",
-]
+  dependencies = ["release", "debug"]
 
 [tasks.clean]
-script = "rm -rf dist target"
+  script = "rm -rf dist target"
 
 [tasks.test]
-dependencies = ["all"]
-command = "node"
-args = ["--test", "../reference.test.mjs"]
+  dependencies = ["all"]
+  command      = "node"
+  args         = ["--test", "../reference.test.mjs"]
 
-[tasks.release-default]
-env = { CONFIGURATION = "release-default", "EXTRA_OPTIONS" = "--release" }
-run_task = "executable"
+[tasks.release]
+  env      = { CONFIGURATION = "release", "EXTRA_OPTIONS" = "--release" }
+  run_task = "executable"
 
-[tasks.release-all-callbacks]
-env = { CONFIGURATION = "release-all-callbacks", "EXTRA_OPTIONS" = "--release --features milo/all-callbacks" }
-run_task = "executable"
+[tasks.debug]
+  env      = { CONFIGURATION = "debug", "EXTRA_OPTIONS" = "" }
+  run_task = "executable"
 
-[tasks.debug-default]
-env = { CONFIGURATION = "debug-default", "EXTRA_OPTIONS" = "" }
-run_task = "executable"
-
-[tasks.debug-all-callbacks]
-env = { CONFIGURATION = "debug-all-callbacks", "EXTRA_OPTIONS" = "--features milo/all-callbacks" }
-run_task = "executable"
 
 [tasks.executable]
-script = [
-  "mkdir -p dist",
-  "cargo build ${COMMON_OPTIONS} ${EXTRA_OPTIONS} --out-dir target/${CONFIGURATION}",
-  "cp target/${CONFIGURATION}/milo-reference-rs dist/reference-${CONFIGURATION}",
-]
+  script = [
+    "mkdir -p dist",
+    "cargo build ${COMMON_OPTIONS} ${EXTRA_OPTIONS} --out-dir target/${CONFIGURATION}",
+    "cp target/${CONFIGURATION}/milo-reference-rs dist/reference-${CONFIGURATION}",
+  ]

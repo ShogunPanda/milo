@@ -46,7 +46,6 @@ The file `milo.h` defines several constants (`*` is used to denote a family pref
 A struct representing the current compile flags of Milo:
 
 - `debug`: If the debug informations are enabled or not.
-- `all_callbacks`: If Milo will invoke all headers callbacks.
 
 ## `milo::Callback`
 

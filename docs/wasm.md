@@ -116,7 +116,6 @@ Not returning an number will throw an error.
 Returns an object representing the current compile flags of Milo:
 
 - `debug`: If the debug informations are enabled or not.
-- `all_callbacks`: If Milo will invoke all headers callbacks.
 
 ## `MessageTypes`
 

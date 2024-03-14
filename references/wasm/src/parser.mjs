@@ -6,12 +6,88 @@ function extractPayload(context, from, size) {
   return context.input.subarray(from, from + size)
 }
 
-function getOffsets(context) {
+function processOffsets(context) {
   const start = context.milo.getOffsets(context.parser)
   const flags = new Uint32Array(context.milo.memory.buffer, start, 3)
   const total = flags[2]
   flags[2] = 0
-  return new Uint32Array(context.milo.memory.buffer, start + 12, total * 3)
+
+  const offsets = new Uint32Array(context.milo.memory.buffer, start + 12, total * 3)
+
+  for (let i = 0; i < offsets.length / 3; i++) {
+    const offsetType = offsets[i * 3]
+    const offsetFrom = offsets[i * 3 + 1]
+    const offsetSize = offsets[i * 3 + 2]
+
+    switch (offsetType) {
+      case context.milo.Offsets.MESSAGE_START:
+        event(context, 'offset.message_start', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.MESSAGE_COMPLETE:
+        event(context, 'offset.message_complete', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.METHOD:
+        event(context, 'offset.method', offsetFrom, offsetFrom, offsetSize)
+        context.method = extractPayload(context, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.URL:
+        event(context, 'offset.url', offsetFrom, offsetFrom, offsetSize)
+        context.url = extractPayload(context, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.PROTOCOL:
+        event(context, 'offset.protocol', offsetFrom, offsetFrom, offsetSize)
+        context.protocol = extractPayload(context, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.VERSION:
+        event(context, 'offset.version', offsetFrom, offsetFrom, offsetSize)
+        context.version = extractPayload(context, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.STATUS:
+        event(context, 'offset.status', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.REASON:
+        event(context, 'offset.reason', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.HEADER_NAME:
+        event(context, 'offset.header_name', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.HEADER_VALUE:
+        event(context, 'offset.header_value', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.HEADERS:
+        event(context, 'offset.headers', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.CHUNK_LENGTH:
+        event(context, 'offset.chunk_length', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.CHUNK_EXTENSION_NAME:
+        event(context, 'offset.chunk_extensions_name', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.CHUNK_EXTENSION_VALUE:
+        event(context, 'offset.chunk_extension_value', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.CHUNK:
+        event(context, 'offset.chunk', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.DATA:
+        event(context, 'offset.data', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.BODY:
+        event(context, 'offset.body', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.TRAILER_NAME:
+        event(context, 'offset.trailer_name', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.TRAILER_VALUE:
+        event(context, 'offset.trailer_value', offsetFrom, offsetFrom, offsetSize)
+        break
+      case context.milo.Offsets.TRAILERS:
+        event(context, 'offset.trailers', offsetFrom, offsetFrom, offsetSize)
+        break
+      default:
+        throw new Error('Unexpected offset with type ', offsetType)
+    }
+  }
 }
 
 function sprintf(format, ...args) {
@@ -23,7 +99,10 @@ function formatEvent(name) {
 }
 
 function appendOutput(message, context, from, size) {
-  const payload = typeof from === 'number' ? `"${extractPayload(context, from, size).toString('utf-8')}"` : 'null'
+  const payload =
+    typeof from === 'number' && typeof size === 'number' && size > 0
+      ? `"${extractPayload(context, from, size).toString('utf-8')}"`
+      : 'null'
   info(`{ ${message}, "data": ${payload} }`)
   return 0
 }
@@ -80,6 +159,7 @@ function onMessageStart(context, from, size) {
 }
 
 function onMessageComplete(context, from, size) {
+  processOffsets(context)
   return event(context, 'complete', this.getPosition(context.parser), from, size)
 }
 
@@ -161,6 +241,8 @@ function onHeaderValue(context, from, size) {
 }
 
 function onHeaders(context, from, size) {
+  processOffsets(context)
+
   const position = this.getPosition(context.parser)
   const chunked = this.hasChunkedTransferEncoding(context.parser)
   const content_length = this.getContentLength(context.parser)
@@ -168,56 +250,6 @@ function onHeaders(context, from, size) {
   let url = context.url
   let protocol = context.protocol
   let version = context.version
-
-  const offsets = getOffsets(context)
-
-  for (let i = 0; i < offsets.length / 3; i++) {
-    const offsetType = offsets[i * 3]
-    const offsetFrom = offsets[i * 3 + 1]
-    const offsetSize = offsets[i * 3 + 2]
-
-    switch (offsetType) {
-      case this.Offsets.METHOD:
-        event(context, 'offset.method', offsetFrom, offsetFrom, offsetSize)
-        method = extractPayload(context, offsetFrom, offsetSize)
-        break
-      case this.Offsets.URL:
-        event(context, 'offset.url', offsetFrom, offsetFrom, offsetSize)
-        url = extractPayload(context, offsetFrom, offsetSize)
-        break
-      case this.Offsets.PROTOCOL:
-        event(context, 'offset.protocol', offsetFrom, offsetFrom, offsetSize)
-        protocol = extractPayload(context, offsetFrom, offsetSize)
-        break
-      case this.Offsets.VERSION:
-        event(context, 'offset.version', offsetFrom, offsetFrom, offsetSize)
-        version = extractPayload(context, offsetFrom, offsetSize)
-        break
-      case this.Offsets.STATUS:
-        event(context, 'offset.status', offsetFrom, offsetFrom, offsetSize)
-        break
-      case this.Offsets.REASON:
-        event(context, 'offset.reason', offsetFrom, offsetFrom, offsetSize)
-        break
-      case this.Offsets.HEADER_NAME:
-        event(context, 'offset.header_name', offsetFrom, offsetFrom, offsetSize)
-        break
-      case this.Offsets.HEADER_VALUE:
-        event(context, 'offset.header_value', offsetFrom, offsetFrom, offsetSize)
-        break
-      case this.Offsets.CHUNK_LENGTH:
-        event(context, 'offset.chunk_length', offsetFrom, offsetFrom, offsetSize)
-        break
-      case this.Offsets.CHUNK_EXTENSION_NAME:
-        event(context, 'offset.chunk_extensions_name', offsetFrom, offsetFrom, offsetSize)
-        break
-      case this.Offsets.CHUNK_EXTENSION_VALUE:
-        event(context, 'offset.chunk_extension_value', offsetFrom, offsetFrom, offsetSize)
-        break
-      default:
-        throw new Error('Unexpected offset with type ', offsetType)
-    }
-  }
 
   if (this.getMessageType(context.parser) == this.RESPONSE) {
     const heading = sprintf('"pos": {}, "event": {}, "type": "response", ', position, formatEvent('headers'))
@@ -330,26 +362,7 @@ function onChunkExtensionValue(context, from, size) {
 }
 
 function onChunk(context, from, size) {
-  const offsets = getOffsets(context)
-
-  for (let i = 0; i < offsets.length / 3; i++) {
-    const offsetType = offsets[i * 3]
-    const offsetFrom = offsets[i * 3 + 1]
-    const offsetSize = offsets[i * 3 + 2]
-
-    switch (offsetType) {
-      case this.Offsets.CHUNK_LENGTH:
-        event(context, 'offset.chunk_length', offsetFrom, offsetFrom, offsetSize)
-        break
-      case this.Offsets.CHUNK_EXTENSION_NAME:
-        event(context, 'offset.chunk_extensions_name', offsetFrom, offsetFrom, offsetSize)
-        break
-      case this.Offsets.CHUNK_EXTENSION_VALUE:
-        event(context, 'offset.chunk_extension_value', offsetFrom, offsetFrom, offsetSize)
-        break
-    }
-  }
-
+  processOffsets(context)
   return event(context, 'chunk', this.getPosition(context.parser), from, size)
 }
 
@@ -358,6 +371,7 @@ function onBody(context, from, size) {
 }
 
 function onData(context, from, size) {
+  processOffsets(context)
   return showSpan(context, 'data', from, size)
 }
 
@@ -370,23 +384,7 @@ function onTrailerValue(context, from, size) {
 }
 
 function onTrailers(context, from, size) {
-  const offsets = getOffsets(context)
-
-  for (let i = 0; i < offsets.length / 3; i++) {
-    const offsetType = offsets[i * 3]
-    const offsetFrom = offsets[i * 3 + 1]
-    const offsetSize = offsets[i * 3 + 2]
-
-    switch (offsets[i * 3]) {
-      case this.Offsets.TRAILER_NAME:
-        event(context, 'offset.trailer_name', offsetFrom, offsetFrom, offsetSize)
-        break
-      case this.Offsets.TRAILER_VALUE:
-        event(context, 'offset.trailer_value', offsetFrom, offsetFrom, offsetSize)
-        break
-    }
-  }
-
+  processOffsets(context)
   return event(context, 'trailers', this.getPosition(context.parser), from, size)
 }
 

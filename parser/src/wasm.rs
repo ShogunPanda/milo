@@ -106,6 +106,14 @@ pub fn finish(raw: *mut c_void) {
   Box::into_raw(parser);
 }
 
+/// Marks the parser as failed.
+#[wasm_bindgen]
+pub fn fail(raw: *mut c_void, code: usize, reason: &str) {
+  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
+  crate::fail(&parser, code, reason);
+  Box::into_raw(parser);
+}
+
 // TODO@PI: Document this (Rust & WASM)
 /// Clear the parser offsets.
 #[wasm_bindgen(js_name=clearOffsets)]
@@ -193,23 +201,23 @@ pub fn get_callback_error(raw: *mut c_void) -> JsValue {
   value
 }
 
-// #[wasm_bindgen(getter = errorDescription)]
-// pub fn get_error_description(&self) -> JsValue {
-//   unsafe {
-//     str::from_utf8_unchecked(slice::from_raw(
-//       self.error_description.get(),
-//       self.error_description_len.get(),
-//     ))
-//     .into()
-//   }
-// }
+#[wasm_bindgen(js_name = setId)]
+pub fn set_id(raw: *mut c_void, value: usize) {
+  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
+  parser.id.set(value);
+  Box::into_raw(parser);
+}
 
-// #[wasm_bindgen(setter = id)]
-// pub fn set_id(&self, value: usize) { self.id.set(value); }
+#[wasm_bindgen(js_name = setMode)]
+pub fn set_mod(raw: *mut c_void, value: usize) {
+  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
+  parser.mode.set(value);
+  Box::into_raw(parser);
+}
 
-// #[wasm_bindgen(setter = mode)]
-// pub fn set_mode(&self, value: usize) { self.mode.set(value); }
-
-// #[wasm_bindgen(setter = manageUnconsumed)]
-// pub fn set_manage_unconsumed(&self, value: bool) {
-// self.manage_unconsumed.set(value); }
+#[wasm_bindgen(js_name = setManageUnconsumed)]
+pub fn set_manage_unconsumed(raw: *mut c_void, value: bool) {
+  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
+  parser.manage_unconsumed.set(value);
+  Box::into_raw(parser);
+}

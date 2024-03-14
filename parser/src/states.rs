@@ -543,7 +543,7 @@ state!(headers, {
 
   if parser.has_trailers.get() && !parser.has_chunked_transfer_encoding.get() {
     return fail!(
-      UNTRAILERS,
+      UNEXPECTED_TRAILERS,
       "Trailers are not allowed when not using chunked transfer encoding"
     );
   }
@@ -770,7 +770,6 @@ state!(chunk_data, {
   parser.remaining_chunk_size.set(0);
 
   callback!(on_chunk);
-  callback!(on_body);
   callback!(on_data, expected as usize);
 
   move_to!(chunk_end, expected)

@@ -22,6 +22,94 @@ uchar_t* copy_string(uchar_t* source, usize_t size) {
   return copy_string(reinterpret_cast<const char*>(source), size);
 }
 
+void process_offsets(const milo::Parser* parser) {
+  usize_t position = parser->position;
+  usize_t content_length = parser->content_length;
+  bool chunked = parser->has_chunked_transfer_encoding;
+
+  context_t* context = reinterpret_cast<context_t*>(parser->owner);
+
+  usize_t* offsets = parser->offsets;
+  usize_t total = offsets[2];
+  offsets[2] = 0;
+
+  for (uintptr_t i = 1; i <= total; i++) {
+    usize_t offset_from = offsets[i * 3 + 1];
+    usize_t offset_size = offsets[i * 3 + 2];
+    EXTRACT_PAYLOAD(value, parser, offset_from, offset_size);
+
+    switch (offsets[i * 3]) {
+    case milo::OFFSET_MESSAGE_START:
+      event(parser, "offset.message_start", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_MESSAGE_COMPLETE:
+      event(parser, "offset.message_complete", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_METHOD:
+      event(parser, "offset.method", offset_from, value, offset_size);
+      context->method = copy_string(value, offset_size);
+      break;
+    case milo::OFFSET_URL:
+      event(parser, "offset.url", offset_from, value, offset_size);
+      context->url = copy_string(value, offset_size);
+      break;
+    case milo::OFFSET_PROTOCOL:
+      event(parser, "offset.protocol", offset_from, value, offset_size);
+      context->protocol = copy_string(value, offset_size);
+      break;
+    case milo::OFFSET_VERSION:
+      event(parser, "offset.version", offset_from, value, offset_size);
+      context->version = copy_string(value, offset_size);
+      break;
+    case milo::OFFSET_STATUS:
+      event(parser, "offset.status", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_REASON:
+      event(parser, "offset.reason", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_HEADER_NAME:
+      event(parser, "offset.header_name", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_HEADER_VALUE:
+      event(parser, "offset.header_value", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_HEADERS:
+      event(parser, "offset.headers", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_CHUNK_LENGTH:
+      event(parser, "offset.chunk_length", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_CHUNK_EXTENSION_NAME:
+      event(parser, "offset.chunk_extensions_name", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_CHUNK_EXTENSION_VALUE:
+      event(parser, "offset.chunk_extension_value", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_CHUNK:
+      event(parser, "offset.chunk", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_DATA:
+      event(parser, "offset.data", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_BODY:
+      event(parser, "offset.body", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_TRAILER_NAME:
+      event(parser, "offset.trailer_name", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_TRAILER_VALUE:
+      event(parser, "offset.trailer_value", offset_from, value, offset_size);
+      break;
+    case milo::OFFSET_TRAILERS:
+      event(parser, "offset.trailers", offset_from, value, offset_size);
+      break;
+    default:
+      printf("Unexpected offset with type %lu", offsets[i * 3]);
+      exit(1);
+    }
+  }
+}
+
 isize_t before_state_change(const milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
 
@@ -62,6 +150,8 @@ isize_t on_message_start(const milo::Parser* parser, usize_t from, usize_t size)
 }
 
 isize_t on_message_complete(const milo::Parser* parser, usize_t from, usize_t size) {
+  process_offsets(parser);
+
   EXTRACT_PAYLOAD(data, parser, from, size);
   return event(parser, "complete", parser->position, data, size);
 }
@@ -144,63 +234,14 @@ isize_t on_headers(const milo::Parser* parser, usize_t from, usize_t size) {
   usize_t content_length = parser->content_length;
   bool chunked = parser->has_chunked_transfer_encoding;
 
-  uchar_t* method;
-  uchar_t* url;
-  uchar_t* protocol;
-  uchar_t* version;
-  usize_t* offsets = parser->offsets;
-  usize_t total = offsets[2];
-
-  for (uintptr_t i = 1; i <= total; i++) {
-    usize_t offset_from = offsets[i * 3 + 1];
-    usize_t offset_size = offsets[i * 3 + 2];
-    EXTRACT_PAYLOAD(value, parser, offset_from, offset_size);
-
-    switch (offsets[i * 3]) {
-    case milo::OFFSET_METHOD:
-      event(parser, "offset.method", offset_from, value, offset_size);
-      method = copy_string(value, offset_size);
-      break;
-    case milo::OFFSET_URL:
-      event(parser, "offset.url", offset_from, value, offset_size);
-      url = copy_string(value, offset_size);
-      break;
-    case milo::OFFSET_PROTOCOL:
-      event(parser, "offset.protocol", offset_from, value, offset_size);
-      protocol = copy_string(value, offset_size);
-      break;
-    case milo::OFFSET_VERSION:
-      event(parser, "offset.version", offset_from, value, offset_size);
-      version = copy_string(value, offset_size);
-      break;
-    case milo::OFFSET_STATUS:
-      event(parser, "offset.status", offset_from, value, offset_size);
-      break;
-    case milo::OFFSET_REASON:
-      event(parser, "offset.reason", offset_from, value, offset_size);
-      break;
-    case milo::OFFSET_HEADER_NAME:
-      event(parser, "offset.header_name", offset_from, value, offset_size);
-      break;
-    case milo::OFFSET_HEADER_VALUE:
-      event(parser, "offset.header_value", offset_from, value, offset_size);
-      break;
-    case milo::OFFSET_CHUNK_LENGTH:
-      event(parser, "offset.chunk_length", offset_from, value, offset_size);
-      break;
-    case milo::OFFSET_CHUNK_EXTENSION_NAME:
-      event(parser, "offset.chunk_extensions_name", offset_from, value, offset_size);
-      break;
-    case milo::OFFSET_CHUNK_EXTENSION_VALUE:
-      event(parser, "offset.chunk_extension_value", offset_from, value, offset_size);
-      break;
-    default:
-      printf("Unexpected offset with type %lu", offsets[i * 3]);
-      exit(1);
-    }
-  }
+  context_t* context = reinterpret_cast<context_t*>(parser->owner);
+  uchar_t* method = context->method;
+  uchar_t* url = context->url;
+  uchar_t* protocol = context->protocol;
+  uchar_t* version = context->version;
 
   auto message = create_string();
+  process_offsets(parser);
 
   if (parser->message_type == milo::RESPONSE) {
     if (chunked) {
@@ -262,6 +303,7 @@ isize_t on_chunk_extension_value(const milo::Parser* parser, usize_t from, usize
 }
 
 isize_t on_chunk(const milo::Parser* parser, usize_t from, usize_t size) {
+  process_offsets(parser);
 
   usize_t* offsets = parser->offsets;
   usize_t total = offsets[2];
@@ -296,6 +338,8 @@ isize_t on_body(const milo::Parser* parser, usize_t from, usize_t size) {
 }
 
 isize_t on_data(const milo::Parser* parser, usize_t from, usize_t size) {
+  process_offsets(parser);
+
   EXTRACT_PAYLOAD(data, parser, from, size);
   return show_span(parser, "data", data, size);
 }
@@ -311,23 +355,7 @@ isize_t on_trailer_value(const milo::Parser* parser, usize_t from, usize_t size)
 }
 
 isize_t on_trailers(const milo::Parser* parser, usize_t from, usize_t size) {
-  usize_t* offsets = parser->offsets;
-  usize_t total = offsets[2];
-
-  for (uintptr_t i = 1; i <= total; i++) {
-    usize_t offset_from = offsets[i * 3 + 1];
-    usize_t offset_size = offsets[i * 3 + 2];
-    EXTRACT_PAYLOAD(value, parser, offset_from, offset_size);
-
-    switch (offsets[i * 3]) {
-    case milo::OFFSET_TRAILER_NAME:
-      event(parser, "offset.trailer_name", offset_from, value, offset_size);
-      break;
-    case milo::OFFSET_TRAILER_VALUE:
-      event(parser, "offset.trailer_value", offset_from, value, offset_size);
-      break;
-    }
-  }
+  process_offsets(parser);
 
   EXTRACT_PAYLOAD(data, parser, from, size);
   return event(parser, "trailers", parser->position, data, size);

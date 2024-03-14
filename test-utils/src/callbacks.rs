@@ -4,14 +4,123 @@
 mod context;
 mod output;
 
-use std::{slice, str};
+use std::{os::unix::process, slice, str};
 
 use milo::{
-  clear_offsets, error_code_string, flags, state_string, Offsets, Parser, DEBUG, MAX_OFFSETS_COUNT,
-  OFFSET_CHUNK_EXTENSION_NAME, OFFSET_CHUNK_EXTENSION_VALUE, OFFSET_CHUNK_LENGTH, OFFSET_HEADER_NAME,
-  OFFSET_HEADER_VALUE, OFFSET_METHOD, OFFSET_PROTOCOL, OFFSET_REASON, OFFSET_STATUS, OFFSET_TRAILER_NAME,
+  clear_offsets, error_code_string, flags, state_string, Offsets, Parser, DEBUG, MAX_OFFSETS_COUNT, OFFSET_BODY,
+  OFFSET_CHUNK, OFFSET_CHUNK_EXTENSION_NAME, OFFSET_CHUNK_EXTENSION_VALUE, OFFSET_CHUNK_LENGTH, OFFSET_DATA,
+  OFFSET_HEADERS, OFFSET_HEADER_NAME, OFFSET_HEADER_VALUE, OFFSET_MESSAGE_COMPLETE, OFFSET_MESSAGE_START,
+  OFFSET_METHOD, OFFSET_PROTOCOL, OFFSET_REASON, OFFSET_STATUS, OFFSET_TRAILERS, OFFSET_TRAILER_NAME,
   OFFSET_TRAILER_VALUE, OFFSET_URL, OFFSET_VERSION, RESPONSE,
 };
+
+use self::output::extract_payload;
+
+pub fn process_offsets(parser: &Parser) {
+  let mut context = unsafe { Box::from_raw(parser.owner.get() as *mut context::Context) };
+  let mut offsets = unsafe { Vec::from_raw_parts(parser.offsets.get(), MAX_OFFSETS_COUNT, MAX_OFFSETS_COUNT) };
+
+  let total = offsets[2];
+  offsets[2] = 0;
+
+  for i in 1..=total {
+    let offset_from = offsets[i * 3 + 1];
+    let offset_size = offsets[i * 3 + 2];
+
+    let (data, cleanup) = output::extract_payload(parser, offset_from, offset_size);
+    let value = if offset_size > 0 {
+      Some(unsafe { String::from_utf8_unchecked(slice::from_raw_parts(data, offset_size).into()) })
+    } else {
+      None
+    };
+
+    cleanup();
+
+    match offsets[i * 3] {
+      OFFSET_MESSAGE_START => {
+        output::event(parser, "offset.message_start", offset_from, offset_from, offset_size);
+      }
+      OFFSET_MESSAGE_COMPLETE => {
+        output::event(parser, "offset.message_complete", offset_from, offset_from, offset_size);
+      }
+      OFFSET_METHOD => {
+        output::event(parser, "offset.method", offset_from, offset_from, offset_size);
+        context.method = value.unwrap();
+      }
+      OFFSET_URL => {
+        output::event(parser, "offset.url", offset_from, offset_from, offset_size);
+        context.url = value.unwrap();
+      }
+      OFFSET_PROTOCOL => {
+        output::event(parser, "offset.protocol", offset_from, offset_from, offset_size);
+        context.protocol = value.unwrap();
+      }
+      OFFSET_VERSION => {
+        output::event(parser, "offset.version", offset_from, offset_from, offset_size);
+        context.version = value.unwrap();
+      }
+      OFFSET_STATUS => {
+        output::event(parser, "offset.status", offset_from, offset_from, offset_size);
+      }
+      OFFSET_REASON => {
+        output::event(parser, "offset.reason", offset_from, offset_from, offset_size);
+      }
+      OFFSET_HEADER_NAME => {
+        output::event(parser, "offset.header_name", offset_from, offset_from, offset_size);
+      }
+      OFFSET_HEADER_VALUE => {
+        output::event(parser, "offset.header_value", offset_from, offset_from, offset_size);
+      }
+      OFFSET_HEADERS => {
+        output::event(parser, "offset.headers", offset_from, offset_from, offset_size);
+      }
+      OFFSET_CHUNK_LENGTH => {
+        output::event(parser, "offset.chunk_length", offset_from, offset_from, offset_size);
+      }
+      OFFSET_CHUNK_EXTENSION_NAME => {
+        output::event(
+          parser,
+          "offset.chunk_extensions_name",
+          offset_from,
+          offset_from,
+          offset_size,
+        );
+      }
+      OFFSET_CHUNK_EXTENSION_VALUE => {
+        output::event(
+          parser,
+          "offset.chunk_extension_value",
+          offset_from,
+          offset_from,
+          offset_size,
+        );
+      }
+      OFFSET_CHUNK => {
+        output::event(parser, "offset.chunk", offset_from, offset_from, offset_size);
+      }
+      OFFSET_DATA => {
+        output::event(parser, "offset.data", offset_from, offset_from, offset_size);
+      }
+      OFFSET_BODY => {
+        output::event(parser, "offset.body", offset_from, offset_from, offset_size);
+      }
+      OFFSET_TRAILER_NAME => {
+        output::event(parser, "offset.trailer_name", offset_from, offset_from, offset_size);
+      }
+      OFFSET_TRAILER_VALUE => {
+        output::event(parser, "offset.trailer_value", offset_from, offset_from, offset_size);
+      }
+      OFFSET_TRAILERS => {
+        output::event(parser, "offset.trailers", offset_from, offset_from, offset_size);
+      }
+      _x => panic!("Unexpected offset with type {}", _x),
+    };
+  }
+
+  // Remember to avoid dropping the memory
+  offsets.into_raw_parts();
+  Box::into_raw(context);
+}
 
 pub fn before_state_change(parser: &Parser, from: usize, size: usize) -> isize {
   output::append_output(
@@ -53,6 +162,7 @@ pub fn on_message_start(parser: &Parser, from: usize, size: usize) -> isize {
 }
 
 pub fn on_message_complete(parser: &Parser, from: usize, size: usize) -> isize {
+  process_offsets(parser);
   output::event(parser, "complete", parser.position.get(), from, size)
 }
 
@@ -114,86 +224,18 @@ pub fn on_header_value(parser: &Parser, from: usize, size: usize) -> isize {
 }
 
 pub fn on_headers(parser: &Parser, from: usize, size: usize) -> isize {
+  process_offsets(parser);
+
   let context = unsafe { Box::from_raw(parser.owner.get() as *mut context::Context) };
 
   let position = parser.position.get();
   let chunked = parser.has_chunked_transfer_encoding.get();
   let content_length = parser.content_length.get();
 
-  let mut method: String = "".into();
-  let mut url: String = "".into();
-  let mut protocol: String = "".into();
-  let mut version: String = "".into();
-
-  let offsets = unsafe { Vec::from_raw_parts(parser.offsets.get(), MAX_OFFSETS_COUNT, MAX_OFFSETS_COUNT) };
-
-  let total = offsets[2];
-
-  for i in 1..=total {
-    let offset_from = offsets[i * 3 + 1];
-    let offset_size = offsets[i * 3 + 2];
-
-    let (data, cleanup) = output::extract_payload(parser, offset_from, offset_size);
-    let value = unsafe { String::from_utf8_unchecked(slice::from_raw_parts(data, offset_size).into()) };
-    cleanup();
-
-    match offsets[i * 3] {
-      OFFSET_METHOD => {
-        output::event(parser, "offset.method", offset_from, offset_from, offset_size);
-        method = value;
-      }
-      OFFSET_URL => {
-        output::event(parser, "offset.url", offset_from, offset_from, offset_size);
-        url = value;
-      }
-      OFFSET_PROTOCOL => {
-        output::event(parser, "offset.protocol", offset_from, offset_from, offset_size);
-        protocol = value;
-      }
-      OFFSET_VERSION => {
-        output::event(parser, "offset.version", offset_from, offset_from, offset_size);
-        version = value;
-      }
-      OFFSET_STATUS => {
-        output::event(parser, "offset.status", offset_from, offset_from, offset_size);
-      }
-      OFFSET_REASON => {
-        output::event(parser, "offset.reason", offset_from, offset_from, offset_size);
-      }
-      OFFSET_HEADER_NAME => {
-        output::event(parser, "offset.header_name", offset_from, offset_from, offset_size);
-      }
-      OFFSET_HEADER_VALUE => {
-        output::event(parser, "offset.header_value", offset_from, offset_from, offset_size);
-      }
-      OFFSET_CHUNK_LENGTH => {
-        output::event(parser, "offset.chunk_length", offset_from, offset_from, offset_size);
-      }
-      OFFSET_CHUNK_EXTENSION_NAME => {
-        output::event(
-          parser,
-          "offset.chunk_extensions_name",
-          offset_from,
-          offset_from,
-          offset_size,
-        );
-      }
-      OFFSET_CHUNK_EXTENSION_VALUE => {
-        output::event(
-          parser,
-          "offset.chunk_extension_value",
-          offset_from,
-          offset_from,
-          offset_size,
-        );
-      }
-      _x => panic!("Unexpected offset with type {}", _x),
-    };
-  }
-
-  // Remember to avoid dropping the memory
-  offsets.into_raw_parts();
-
+  let method: String = context.method.clone();
+  let url: String = context.url.clone();
+  let protocol: String = context.protocol.clone();
+  let version: String = context.version.clone();
   Box::into_raw(context);
 
   if parser.message_type.get() == RESPONSE {
@@ -302,47 +344,14 @@ pub fn on_chunk_extension_value(parser: &Parser, from: usize, size: usize) -> is
 }
 
 pub fn on_chunk(parser: &Parser, from: usize, size: usize) -> isize {
-  let offsets = unsafe { Vec::from_raw_parts(parser.offsets.get(), MAX_OFFSETS_COUNT, MAX_OFFSETS_COUNT) };
-  let total = offsets[2];
-
-  for i in 1..=total {
-    let offset_from = offsets[i * 3 + 1];
-    let offset_size = offsets[i * 3 + 2];
-
-    match offsets[i * 3] {
-      OFFSET_CHUNK_LENGTH => {
-        output::event(parser, "offset.chunk_length", offset_from, offset_from, offset_size);
-      }
-      OFFSET_CHUNK_EXTENSION_NAME => {
-        output::event(
-          parser,
-          "offset.chunk_extensions_name",
-          offset_from,
-          offset_from,
-          offset_size,
-        );
-      }
-      OFFSET_CHUNK_EXTENSION_VALUE => {
-        output::event(
-          parser,
-          "offset.chunk_extension_value",
-          offset_from,
-          offset_from,
-          offset_size,
-        );
-      }
-      _x => {}
-    };
-  }
-
-  offsets.into_raw_parts();
-
-  clear_offsets(parser);
-
+  process_offsets(parser);
   output::event(parser, "chunk", parser.position.get(), from, size)
 }
 
-pub fn on_data(parser: &Parser, from: usize, size: usize) -> isize { output::show_span(parser, "data", from, size) }
+pub fn on_data(parser: &Parser, from: usize, size: usize) -> isize {
+  process_offsets(parser);
+  output::show_span(parser, "data", from, size)
+}
 
 pub fn on_body(parser: &Parser, from: usize, size: usize) -> isize {
   output::event(parser, "body", parser.position.get(), from, size)
@@ -357,25 +366,6 @@ pub fn on_trailer_value(parser: &Parser, from: usize, size: usize) -> isize {
 }
 
 pub fn on_trailers(parser: &Parser, from: usize, size: usize) -> isize {
-  let offsets = unsafe { Vec::from_raw_parts(parser.offsets.get(), MAX_OFFSETS_COUNT, MAX_OFFSETS_COUNT) };
-  let total = offsets[2];
-
-  for i in 1..=total {
-    let offset_from = offsets[i * 3 + 1];
-    let offset_size = offsets[i * 3 + 2];
-
-    match offsets[i * 3] {
-      OFFSET_TRAILER_NAME => {
-        output::event(parser, "offset.trailer_name", offset_from, offset_from, offset_size);
-      }
-      OFFSET_TRAILER_VALUE => {
-        output::event(parser, "offset.trailer_value", offset_from, offset_from, offset_size);
-      }
-      _x => {}
-    };
-  }
-
-  offsets.into_raw_parts();
-
+  process_offsets(parser);
   output::event(parser, "trailers", parser.position.get(), from, size)
 }

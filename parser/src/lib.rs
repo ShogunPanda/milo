@@ -273,7 +273,7 @@ fn move_to(parser: &Parser, state: usize, advance: isize) -> isize {
 }
 
 /// Marks the parsing a failed, setting a error code and and error message.
-fn fail(parser: &Parser, code: usize, reason: &str) -> isize {
+pub fn fail(parser: &Parser, code: usize, reason: &str) -> isize {
   // Set the code
   parser.error_code.set(code);
 

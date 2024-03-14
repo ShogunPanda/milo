@@ -9,6 +9,9 @@
 [tasks.default]
   dependencies = ["all"]
 
+[tasks.verify]
+  dependencies = ["clean", "all"]
+
 [tasks.all]
   dependencies = ["cpp", "wasm"]
 

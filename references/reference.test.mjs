@@ -16,7 +16,7 @@ function parseNDJSON(raw) {
 }
 
 async function verifyOutput(executable) {
-  const expected = await readFile(fileURLToPath(new URL(`./fixtures/${executable}.txt`, import.meta.url)), 'utf-8')
+  const expected = await readFile(fileURLToPath(new URL(`./fixtures/${executable}.jsonl`, import.meta.url)), 'utf-8')
   const expectedLines = parseNDJSON(expected)
 
   const actual = spawnSync(resolve(process.cwd(), 'dist', `reference-${executable}`)).stdout.toString('utf-8')
@@ -24,7 +24,13 @@ async function verifyOutput(executable) {
 
   strictEqual(actualLines.length, expectedLines.length, 'Output length differs')
   for (let i = 0; i < expectedLines.length; i++) {
-    deepStrictEqual(actualLines[i], expectedLines[i], `Line ${i + 1} differs`)
+    deepStrictEqual(
+      actualLines[i],
+      expectedLines[i],
+      `Line ${i + 1} differs.\nExpected: ${JSON.stringify(expectedLines[i])}\n     Got: ${JSON.stringify(
+        actualLines[i]
+      )}`
+    )
   }
 }
 

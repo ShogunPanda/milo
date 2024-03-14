@@ -20,11 +20,14 @@
 { "pos": 16, "event": "after_state_change", "current_state": "HEADER_NAME", "data": null }
 { "pos": 16, "event": "before_state_change", "current_state": "HEADER_NAME", "data": null }
 { "pos": 16, "event": "after_state_change", "current_state": "HEADERS", "data": null }
+{ "pos": 0, "event": "offset.message_start", "data": null }
 { "pos": 0, "event": "offset.method", "data": "GET" }
 { "pos": 4, "event": "offset.url", "data": "/" }
 { "pos": 6, "event": "offset.protocol", "data": "HTTP" }
 { "pos": 11, "event": "offset.version", "data": "1.1" }
+{ "pos": 18, "event": "offset.headers", "data": null }
 { "pos": 18, "event": "headers", "type": "request", "method": "GET", "url": "/", "protocol": "HTTP", "version": "1.1", "body": null, "data": null }
+{ "pos": 18, "event": "offset.message_complete", "data": null }
 { "pos": 18, "event": "complete", "data": null }
 { "pos": 18, "event": "before_state_change", "current_state": "HEADERS", "data": null }
 { "pos": 18, "event": "after_state_change", "current_state": "START", "data": null }
@@ -62,6 +65,7 @@
 { "pos": 54, "event": "header_value", "data": "x-trailer" }
 { "pos": 63, "event": "before_state_change", "current_state": "HEADER_VALUE", "data": null }
 { "pos": 63, "event": "after_state_change", "current_state": "HEADERS", "data": null }
+{ "pos": 0, "event": "offset.message_start", "data": null }
 { "pos": 0, "event": "offset.protocol", "data": "HTTP" }
 { "pos": 5, "event": "offset.version", "data": "1.1" }
 { "pos": 9, "event": "offset.status", "data": "200" }
@@ -70,6 +74,7 @@
 { "pos": 36, "event": "offset.header_value", "data": "chunked" }
 { "pos": 45, "event": "offset.header_name", "data": "Trailer" }
 { "pos": 54, "event": "offset.header_value", "data": "x-trailer" }
+{ "pos": 67, "event": "offset.headers", "data": null }
 { "pos": 67, "event": "headers", "type": "response", "status": 200, "protocol": "HTTP", "version": "1.1", "body": "chunked", "data": null }
 { "pos": 67, "event": "before_state_change", "current_state": "HEADERS", "data": null }
 { "pos": 67, "event": "after_state_change", "current_state": "CHUNK_LENGTH", "data": null }
@@ -85,8 +90,9 @@
 { "pos": 67, "event": "offset.chunk_length", "data": "c" }
 { "pos": 69, "event": "offset.chunk_extensions_name", "data": "need" }
 { "pos": 74, "event": "offset.chunk_extension_value", "data": "love" }
+{ "pos": 80, "event": "offset.chunk", "data": null }
 { "pos": 80, "event": "chunk", "data": null }
-{ "pos": 80, "event": "body", "data": null }
+{ "pos": 80, "event": "offset.data", "data": "hello world!" }
 { "pos": 80, "event": "data", "data": "hello world!" }
 { "pos": 80, "event": "before_state_change", "current_state": "CHUNK_DATA", "data": null }
 { "pos": 80, "event": "after_state_change", "current_state": "CHUNK_END", "data": null }
@@ -96,6 +102,7 @@
 { "pos": 94, "event": "before_state_change", "current_state": "CHUNK_LENGTH", "data": null }
 { "pos": 94, "event": "after_state_change", "current_state": "CHUNK_DATA", "data": null }
 { "pos": 94, "event": "offset.chunk_length", "data": "0" }
+{ "pos": 97, "event": "offset.chunk", "data": null }
 { "pos": 97, "event": "chunk", "data": null }
 { "pos": 97, "event": "body", "data": null }
 { "pos": 97, "event": "before_state_change", "current_state": "CHUNK_DATA", "data": null }
@@ -104,9 +111,12 @@
 { "pos": 97, "event": "before_state_change", "current_state": "TRAILER_NAME", "data": null }
 { "pos": 97, "event": "after_state_change", "current_state": "TRAILER_VALUE", "data": null }
 { "pos": 108, "event": "trailer_value", "data": "value" }
+{ "pos": 97, "event": "offset.body", "data": null }
 { "pos": 97, "event": "offset.trailer_name", "data": "X-Trailer" }
 { "pos": 108, "event": "offset.trailer_value", "data": "value" }
+{ "pos": 108, "event": "offset.trailers", "data": null }
 { "pos": 108, "event": "trailers", "data": null }
+{ "pos": 108, "event": "offset.message_complete", "data": null }
 { "pos": 108, "event": "complete", "data": null }
 { "pos": 108, "event": "before_state_change", "current_state": "TRAILER_VALUE", "data": null }
 { "pos": 108, "event": "after_state_change", "current_state": "START", "data": null }

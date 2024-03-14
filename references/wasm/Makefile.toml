@@ -4,6 +4,9 @@
 [tasks.default]
   dependencies = ["all"]
 
+[tasks.verify]
+  dependencies = ["clean", "all", "test"]
+
 [tasks.all]
   dependencies = ["lib"]
   script = [

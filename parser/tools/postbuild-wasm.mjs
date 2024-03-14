@@ -29,30 +29,10 @@ for (const flag of flags) {
 js += `module.exports.memory = wasm.memory`
 ts += `export declare const memory: WebAssembly.Memory`
 
-/*
-  TODO@PI: Can we avoid this?
-  Pass them as arguments to internal parse
-*/
-js = js.replace(
-  'class Parser {',
-  `
-    class Parser {
-      static create(id = 0) {
-        const parser = new Parser(id)
-
-        parser.context = {
-          offsetsBuffer: parser.offsetsBuffer
-        }
-
-        return parser
-      }
-  `
-)
-
 js = await prettier.format(js, { ...prettierConfig, parser: 'babel' })
-// ts = await prettier.format(ts, { ...prettierConfig, parser: 'babel-ts' })
 
 // TODO@PI: TS signature
+// ts = await prettier.format(ts, { ...prettierConfig, parser: 'babel-ts' })
 
 await writeFile(javascriptPath, js, 'utf-8')
 await writeFile(typescriptPath, ts, 'utf-8')

@@ -3,7 +3,9 @@ mod test {
   #[allow(unused_imports)]
   use std::ffi::c_uchar;
 
-  use milo::{Parser, REQUEST, RESPONSE, STATE_ERROR, STATE_FINISH, STATE_HEADER_NAME, STATE_START};
+  use milo::{
+    finish, pause, reset, resume, Parser, REQUEST, RESPONSE, STATE_ERROR, STATE_FINISH, STATE_HEADER_NAME, STATE_START,
+  };
   use milo_test_utils::{create_parser, http, parse};
 
   #[test]
@@ -34,7 +36,7 @@ mod test {
     parse(&parser, &response);
     assert!(matches!(parser.state.get(), STATE_ERROR));
 
-    parser.reset(false);
+    reset(&parser, false);
 
     parser.mode.set(RESPONSE);
     parse(&parser, &request);
@@ -113,7 +115,7 @@ mod test {
     assert!(!matches!(parser.state.get(), STATE_ERROR));
 
     // Verify the field is not reset
-    parser.reset(true);
+    reset(&parser, true);
 
     let consumed1 = parse(&parser, &sample1);
     assert!(consumed1 == sample1.len() - 4);
@@ -306,7 +308,7 @@ mod test {
     parse(&parser, &close_connection);
     assert!(matches!(parser.state.get(), STATE_FINISH));
 
-    parser.reset(false);
+    reset(&parser, false);
 
     let keep_alive_connection = http(
       r#"
@@ -338,7 +340,7 @@ mod test {
       .callbacks
       .on_headers
       .set(|p: &Parser, _at: usize, _size: usize| -> isize {
-        p.pause();
+        pause(&p);
         0
       });
 
@@ -356,7 +358,7 @@ mod test {
     assert!(consumed3 == 0);
 
     assert!(parser.paused.get());
-    parser.resume();
+    resume(&parser);
     assert!(!parser.paused.get());
 
     let consumed4 = parse(&parser, &sample3);
@@ -408,21 +410,21 @@ mod test {
     assert!(matches!(parser.state.get(), STATE_START));
 
     parser.mode.set(REQUEST);
-    parser.reset(false);
+    reset(&parser, false);
 
     parse(&parser, &request);
     assert!(matches!(parser.state.get(), STATE_START));
   }
 
   #[test]
-  fn finish() {
+  fn finish_logic() {
     let parser = create_parser();
 
     assert!(matches!(parser.state.get(), STATE_START));
-    parser.finish();
+    finish(&parser);
     assert!(matches!(parser.state.get(), STATE_FINISH));
 
-    parser.reset(false);
+    reset(&parser, false);
 
     let close_connection = http(
       r#"
@@ -436,10 +438,10 @@ mod test {
 
     parse(&parser, &close_connection);
     assert!(matches!(parser.state.get(), STATE_FINISH));
-    parser.finish();
+    finish(&parser);
     assert!(matches!(parser.state.get(), STATE_FINISH));
 
-    parser.reset(false);
+    reset(&parser, false);
 
     let keep_alive_connection = http(
       r#"
@@ -452,10 +454,10 @@ mod test {
 
     parse(&parser, &keep_alive_connection);
     assert!(matches!(parser.state.get(), STATE_START));
-    parser.finish();
+    finish(&parser);
     assert!(matches!(parser.state.get(), STATE_FINISH));
 
-    parser.reset(false);
+    reset(&parser, false);
 
     let incomplete = http(
       r#"
@@ -466,7 +468,7 @@ mod test {
     parse(&parser, &incomplete);
 
     assert!(matches!(parser.state.get(), STATE_HEADER_NAME));
-    parser.finish();
+    finish(&parser);
     assert!(matches!(parser.state.get(), STATE_ERROR));
   }
 

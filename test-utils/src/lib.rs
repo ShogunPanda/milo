@@ -2,7 +2,7 @@
 
 use std::ffi::c_void;
 
-use milo::Parser;
+use milo::{create, Parser};
 use regex::Regex;
 
 pub mod context;
@@ -12,7 +12,7 @@ mod output;
 pub mod callbacks;
 
 pub fn create_parser() -> Parser {
-  let parser = Parser::new();
+  let parser = create(None);
   let context = Box::new(context::Context::new());
   parser.owner.set(Box::into_raw(context) as *mut c_void);
 
@@ -69,5 +69,5 @@ pub fn parse(parser: &Parser, content: &str) -> usize {
   context.input = String::from(content);
   Box::into_raw(context);
 
-  parser.parse(content.as_ptr(), content.len())
+  milo::parse(parser, content.as_ptr(), content.len())
 }

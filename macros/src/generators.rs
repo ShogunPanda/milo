@@ -17,7 +17,7 @@ pub fn generate_constants() -> TokenStream {
     .unwrap()
     .iter()
     .enumerate()
-    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const METHOD_{}: u8 = {};", x.replace('-', "_"), i)).unwrap())
+    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const METHOD_{}: usize = {};", x.replace('-', "_"), i)).unwrap())
     .collect();
 
   let errors_consts: Vec<_> = unsafe {
@@ -26,7 +26,7 @@ pub fn generate_constants() -> TokenStream {
       .unwrap()
       .iter()
       .enumerate()
-      .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const ERROR_{}: u8 = {};", x, i)).unwrap())
+      .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const ERROR_{}: usize = {};", x, i)).unwrap())
       .collect()
   };
 
@@ -47,7 +47,7 @@ pub fn generate_constants() -> TokenStream {
   let states_consts: Vec<_> = states_ref
     .iter()
     .enumerate()
-    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const STATE_{}: u8 = {};", x, i)).unwrap())
+    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const STATE_{}: usize = {};", x, i)).unwrap())
     .collect();
 
   let states_len = states_ref.len();
@@ -123,13 +123,13 @@ pub fn generate_constants() -> TokenStream {
 
     pub const DEBUG: bool = cfg!(debug_assertions);
 
-    pub const AUTODETECT: u8 = 0;
-    pub const REQUEST: u8 = 1;
-    pub const RESPONSE: u8 = 2;
+    pub const AUTODETECT: usize = 0;
+    pub const REQUEST: usize = 1;
+    pub const RESPONSE: usize = 2;
 
-    pub const CONNECTION_KEEPALIVE: u8 = 0;
-    pub const CONNECTION_CLOSE: u8 = 1;
-    pub const CONNECTION_UPGRADE: u8 = 2;
+    pub const CONNECTION_KEEPALIVE: usize = 0;
+    pub const CONNECTION_CLOSE: usize = 1;
+    pub const CONNECTION_UPGRADE: usize = 2;
 
     #(#errors_consts)*
 
@@ -231,7 +231,7 @@ pub fn generate_enums() -> TokenStream {
     // MessageType and Connection reflects the constants in generate_constants
     // to allow easier interoperability, especially in WASM.
     #[wasm_bindgen]
-    #[repr(u8)]
+    #[repr(usize)]
     #[derive(Copy, Clone, Debug)]
     pub enum MessageTypes {
       AUTODETECT,
@@ -240,7 +240,7 @@ pub fn generate_enums() -> TokenStream {
     }
 
     #[wasm_bindgen]
-    #[repr(u8)]
+    #[repr(usize)]
     #[derive(Copy, Clone, Debug)]
     pub enum Connections {
       KEEPALIVE,
@@ -256,30 +256,30 @@ pub fn generate_enums() -> TokenStream {
     }
 
     #[wasm_bindgen]
-    #[repr(u8)]
+    #[repr(usize)]
     #[derive(Copy, Clone, Debug)]
     pub enum Methods {
       #(#methods),*
     }
 
     #[wasm_bindgen]
-    #[repr(u8)]
+    #[repr(usize)]
     #[derive(Copy, Clone, Debug)]
     pub enum States {
       #(#states),*
     }
 
     #[wasm_bindgen]
-    #[repr(u8)]
+    #[repr(usize)]
     #[derive(Copy, Clone, Debug)]
     pub enum Errors {
       #(#errors),*
     }
 
-    impl TryFrom<u8> for MessageTypes {
+    impl TryFrom<usize> for MessageTypes {
       type Error = ();
 
-      fn try_from(value: u8) -> Result<Self, ()> {
+      fn try_from(value: usize) -> Result<Self, ()> {
         match value {
           0 => Ok(MessageTypes::AUTODETECT),
           1 => Ok(MessageTypes::REQUEST),
@@ -289,10 +289,10 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl TryFrom<u8> for Connections {
+    impl TryFrom<usize> for Connections {
       type Error = ();
 
-      fn try_from(value: u8) -> Result<Self, ()> {
+      fn try_from(value: usize) -> Result<Self, ()> {
         match value {
           0 => Ok(Connections::KEEPALIVE),
           1 => Ok(Connections::CLOSE),
@@ -313,10 +313,10 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl TryFrom<u8> for Methods {
+    impl TryFrom<usize> for Methods {
       type Error = ();
 
-      fn try_from(value: u8) -> Result<Self, ()> {
+      fn try_from(value: usize) -> Result<Self, ()> {
         match value {
           #(#methods_from),*,
           _ => Err(())
@@ -324,10 +324,10 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl TryFrom<u8> for States {
+    impl TryFrom<usize> for States {
       type Error = ();
 
-      fn try_from(value: u8) -> Result<Self, ()> {
+      fn try_from(value: usize) -> Result<Self, ()> {
         match value {
           #(#states_from),*,
           _ => Err(())
@@ -335,10 +335,10 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl TryFrom<u8> for Errors {
+    impl TryFrom<usize> for Errors {
       type Error = ();
 
-      fn try_from(value: u8) -> Result<Self, ()> {
+      fn try_from(value: usize) -> Result<Self, ()> {
         match value {
           #(#errors_from),*,
           _ => Err(())

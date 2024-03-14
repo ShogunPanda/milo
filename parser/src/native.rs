@@ -1,11 +1,25 @@
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 use core::ptr;
 use core::str;
 use core::{slice, slice::from_raw_parts};
 use std::ffi::{c_char, c_uchar, CString};
 
-use milo_macros::{callback_no_return, parse};
+use milo_macros::callback_no_return;
 
-use crate::*;
+use crate::clear_offsets;
+use crate::create;
+use crate::error_code_string;
+use crate::error_description_string;
+use crate::finish;
+use crate::flags;
+use crate::parse;
+use crate::pause;
+use crate::reset;
+use crate::resume;
+use crate::state_string;
+use crate::Flags;
+use crate::Parser;
 
 #[repr(C)]
 pub struct CStringWithLength {
@@ -20,45 +34,6 @@ impl CStringWithLength {
     CStringWithLength {
       ptr: cstring.into_raw() as *const c_uchar,
       len: value.len(),
-    }
-  }
-}
-
-// This impl only contains the parse method which cannot be exported to WASM
-impl Parser {
-  /// # Safety
-  ///
-  /// Parses a slice of characters. It returns the number of consumed
-  /// characters.
-  #[cfg(not(target_family = "wasm"))]
-  pub fn parse(&self, data: *const c_uchar, limit: usize) -> usize {
-    // If the parser is paused, this is a no-op
-
-    if self.paused.get() {
-      return 0;
-    }
-
-    let data = unsafe { from_raw_parts(data, limit) };
-
-    parse!();
-
-    // Return the number of consumed bytes
-    consumed
-  }
-
-  /// Returns the current parser's state as string.
-  pub fn state_string(&self) -> &str { States::try_from(self.state.get()).unwrap().as_str() }
-
-  /// Returns the current parser's error state as string.
-  pub fn error_code_string(&self) -> &str { Errors::try_from(self.error_code.get()).unwrap().as_str() }
-
-  /// Returns the current parser's error descrition.
-  pub fn error_description_string(&self) -> &str {
-    unsafe {
-      str::from_utf8_unchecked(from_raw_parts(
-        self.error_description.get(),
-        self.error_description_len.get(),
-      ))
     }
   }
 }
@@ -85,10 +60,8 @@ pub extern "C" fn milo_free_string(s: CStringWithLength) {
 
 /// Creates a new parser.
 #[no_mangle]
-pub extern "C" fn milo_create() -> *mut Parser { Box::into_raw(Box::new(Parser::new())) }
+pub extern "C" fn milo_create() -> *mut Parser { Box::into_raw(Box::new(create(None))) }
 
-/// # Safety
-///
 /// Destroys a parser.
 #[no_mangle]
 pub extern "C" fn milo_destroy(ptr: *mut Parser) {
@@ -101,71 +74,54 @@ pub extern "C" fn milo_destroy(ptr: *mut Parser) {
   }
 }
 
-/// # Safety
-///
 /// Resets a parser to its initial state.
 #[no_mangle]
-pub extern "C" fn milo_reset(parser: *const Parser, keep_parsed: bool) { unsafe { (*parser).reset(keep_parsed) } }
+pub extern "C" fn milo_reset(parser: *const Parser, keep_parsed: bool) { unsafe { reset(&*parser, keep_parsed) } }
 
-/// # Safety
-///
 /// Parses a slice of characters. It returns the number of consumed characters.
 #[no_mangle]
 pub extern "C" fn milo_parse(parser: *const Parser, data: *const c_uchar, limit: usize) -> usize {
-  unsafe { (*parser).parse(data, limit) }
+  unsafe { parse(&*parser, data, limit) }
 }
 
-/// # Safety
-///
 /// Pauses the parser. It will have to be resumed via `milo_resume`.
 #[no_mangle]
-pub extern "C" fn milo_pause(parser: *const Parser) { unsafe { (*parser).pause() } }
+pub extern "C" fn milo_pause(parser: *const Parser) { unsafe { pause(&*parser) } }
 
-/// # Safety
-///
 /// Resumes the parser.
 #[no_mangle]
-pub extern "C" fn milo_resume(parser: *const Parser) { unsafe { (*parser).resume() } }
+pub extern "C" fn milo_resume(parser: *const Parser) { unsafe { resume(&*parser) } }
 
-/// # Safety
-///
 /// Marks the parser as finished. Any new data received via `milo_parse` will
 /// put the parser in the error state.
 #[no_mangle]
-pub extern "C" fn milo_finish(parser: *const Parser) { unsafe { (*parser).finish() } }
+pub extern "C" fn milo_finish(parser: *const Parser) { unsafe { finish(&*parser) } }
 
 // TODO@PI: Document this (ALL)
-/// # Safety
-// Clear the offsets
+/// Clear the parser offsets.
 #[no_mangle]
-pub extern "C" fn clear_offsets(parser: *const Parser) { unsafe { (*parser).clear_offsets() } }
+pub extern "C" fn milo_clear_offsets(parser: *const Parser) { unsafe { clear_offsets(&*parser) } }
 
-/// # Safety
-///
 /// Returns the current parser's state as string.
 ///
 /// The returned value must be freed using `free_string`.
 #[no_mangle]
 pub extern "C" fn milo_state_string(parser: *const Parser) -> CStringWithLength {
-  unsafe { CStringWithLength::new((*parser).state_string()) }
+  unsafe { CStringWithLength::new(state_string(&*parser)) }
 }
 
-/// # Safety
-///
 /// Returns the current parser's error state as string.
 ///
 /// The returned value must be freed using `free_string`.
 #[no_mangle]
 pub extern "C" fn milo_error_code_string(parser: *const Parser) -> CStringWithLength {
-  unsafe { CStringWithLength::new((*parser).error_code_string()) }
+  unsafe { CStringWithLength::new(error_code_string(&*parser)) }
 }
 
-/// # Safety
-///
 /// Returns the current parser's error descrition.
 ///
 /// The returned value must be freed using `free_string`.
 #[no_mangle]
 pub extern "C" fn milo_error_description_string(parser: *const Parser) -> CStringWithLength {
-  unsafe { CStringWithLength::new((*parser).error_description_string()) }
+  unsafe { CStringWithLength::new(error_description_string(&*parser)) }
 }

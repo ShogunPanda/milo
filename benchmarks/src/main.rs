@@ -3,7 +3,7 @@
 
 use std::time::Instant;
 
-use milo::Parser;
+use milo::{create, parse};
 use milo_test_utils::http;
 
 #[path = "../tests/benchmarks.rs"]
@@ -73,12 +73,12 @@ fn main() {
     let len = payload.len();
     let iterations = (8 << 30) / len;
     let total = iterations * len;
-    let parser = Parser::new();
+    let parser = create(None);
 
     let start = Instant::now();
 
     for _i in 0..(iterations as usize) {
-      parser.parse(payload.as_ptr(), payload.len());
+      parse(&parser, payload.as_ptr(), payload.len());
     }
 
     let time = Instant::now().duration_since(start).as_secs_f64();

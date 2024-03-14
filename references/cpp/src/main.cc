@@ -284,7 +284,7 @@ isize_t on_chunk(const milo::Parser* parser, usize_t from, usize_t size) {
     }
   }
 
-  milo::clear_offsets(parser);
+  milo::milo_clear_offsets(parser);
 
   EXTRACT_PAYLOAD(data, parser, from, size);
   return event(parser, "chunk", parser->position, data, size);
@@ -332,6 +332,8 @@ isize_t on_trailers(const milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
   return event(parser, "trailers", parser->position, data, size);
 }
+
+// TODO@PI: Try memory direct access
 
 int main() {
   milo::Parser* parser = milo::milo_create();

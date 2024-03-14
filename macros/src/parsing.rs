@@ -1,5 +1,5 @@
 use syn::parse::{Parse, ParseStream};
-use syn::{Block, Expr, Ident, LitInt, LitStr, Result, Stmt, Token};
+use syn::{Block, Expr, Ident, LitInt, LitStr, Result, Stmt, Token, Type};
 
 /// An identifier associated to a message, typically a string - An example of
 /// this is used in `fail!`.
@@ -32,6 +32,13 @@ pub struct StringDeclaration {
 pub struct StringLength {
   pub string: LitStr,
   pub modifier: usize,
+}
+
+/// A property specification. It is used by `wasm_getter!`.
+pub struct Property {
+  pub property: Ident,
+  pub getter: Ident,
+  pub r#type: Type,
 }
 
 impl Parse for Failure {
@@ -115,5 +122,31 @@ impl Parse for StringLength {
     }
 
     Ok(StringLength { string, modifier })
+  }
+}
+
+impl Parse for Property {
+  // Parses a property definition
+  fn parse(input: ParseStream) -> Result<Self> {
+    // Get the name
+    let property = input.parse()?;
+
+    // Discard the comma
+    input.parse::<Token![,]>()?;
+
+    // Get the getter
+    let getter = input.parse()?;
+
+    // Discard the comma
+    input.parse::<Token![,]>()?;
+
+    // Get the type
+    let r#type = input.parse()?;
+
+    Ok(Property {
+      property,
+      getter,
+      r#type,
+    })
   }
 }

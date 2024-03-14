@@ -4,7 +4,6 @@ use quote::quote;
 mod actions;
 mod definitions;
 mod generators;
-mod implementation;
 mod matchers;
 mod native;
 mod parsing;
@@ -73,10 +72,10 @@ pub fn fail(input: TokenStream) -> TokenStream { actions::fail(input) }
 pub fn consume(input: TokenStream) -> TokenStream { actions::consume(input) }
 
 #[proc_macro]
-pub fn callback(input: TokenStream) -> TokenStream { actions::callback(input, true, false) }
+pub fn callback(input: TokenStream) -> TokenStream { actions::callback(input, true) }
 
 #[proc_macro]
-pub fn callback_no_return(input: TokenStream) -> TokenStream { actions::callback(input, false, true) }
+pub fn callback_no_return(input: TokenStream) -> TokenStream { actions::callback(input, false) }
 
 #[proc_macro]
 pub fn suspend(_: TokenStream) -> TokenStream { actions::suspend() }
@@ -84,11 +83,6 @@ pub fn suspend(_: TokenStream) -> TokenStream { actions::suspend() }
 #[proc_macro]
 pub fn find_method(input: TokenStream) -> TokenStream { actions::find_method(input) }
 // #endregion actions
-
-// #region parse
-#[proc_macro]
-pub fn parse(_: TokenStream) -> TokenStream { implementation::parse() }
-// #endregion parse
 
 // #region generators
 #[proc_macro]
@@ -106,4 +100,8 @@ pub fn generate_enums(_: TokenStream) -> TokenStream { generators::generate_enum
 
 #[proc_macro]
 pub fn generate_callbacks(_: TokenStream) -> TokenStream { generators::generate_callbacks() }
+
+#[proc_macro]
+pub fn wasm_getter(input: TokenStream) -> TokenStream { wasm::wasm_getter(input) }
+
 // #endregion generators

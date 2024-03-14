@@ -10,9 +10,11 @@ use core::str;
 use core::time::Instant;
 use core::{slice, slice::from_raw_parts};
 
-use milo_macros::*;
+use milo_macros::{
+  advance, callback, case_insensitive_string, char, consume, crlf, digit, double_crlf, fail, find_method, method,
+  move_to, otherwise, state, string, string_length, suspend, token,
+};
 
-use super::Parser;
 use crate::*;
 
 // #region general
@@ -558,7 +560,7 @@ fn complete_message(parser: &Parser, advance: isize) -> isize {
 
   let connection = parser.connection.get();
 
-  parser.clear();
+  clear(parser);
   parser.connection.set(connection);
 
   callback!(on_reset);

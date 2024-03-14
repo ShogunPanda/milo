@@ -7,9 +7,10 @@ mod output;
 use std::{slice, str};
 
 use milo::{
-  flags, Offsets, Parser, DEBUG, MAX_OFFSETS_COUNT, OFFSET_CHUNK_EXTENSION_NAME, OFFSET_CHUNK_EXTENSION_VALUE,
-  OFFSET_CHUNK_LENGTH, OFFSET_HEADER_NAME, OFFSET_HEADER_VALUE, OFFSET_METHOD, OFFSET_PROTOCOL, OFFSET_REASON,
-  OFFSET_STATUS, OFFSET_TRAILER_NAME, OFFSET_TRAILER_VALUE, OFFSET_URL, OFFSET_VERSION, RESPONSE,
+  clear_offsets, error_code_string, flags, state_string, Offsets, Parser, DEBUG, MAX_OFFSETS_COUNT,
+  OFFSET_CHUNK_EXTENSION_NAME, OFFSET_CHUNK_EXTENSION_VALUE, OFFSET_CHUNK_LENGTH, OFFSET_HEADER_NAME,
+  OFFSET_HEADER_VALUE, OFFSET_METHOD, OFFSET_PROTOCOL, OFFSET_REASON, OFFSET_STATUS, OFFSET_TRAILER_NAME,
+  OFFSET_TRAILER_VALUE, OFFSET_URL, OFFSET_VERSION, RESPONSE,
 };
 
 pub fn before_state_change(parser: &Parser, from: usize, size: usize) -> isize {
@@ -18,7 +19,7 @@ pub fn before_state_change(parser: &Parser, from: usize, size: usize) -> isize {
     format!(
       "\"pos\": {}, \"event\": \"before_state_change\", \"current_state\": \"{}\"",
       parser.position.get(),
-      parser.state_string()
+      state_string(parser)
     ),
     from,
     size,
@@ -31,7 +32,7 @@ pub fn after_state_change(parser: &Parser, from: usize, size: usize) -> isize {
     format!(
       "\"pos\": {}, \"event\": \"after_state_change\", \"current_state\": \"{}\"",
       parser.position.get(),
-      parser.state_string()
+      state_string(parser)
     ),
     from,
     size,
@@ -63,8 +64,8 @@ pub fn on_error(parser: &Parser, from: usize, size: usize) -> isize {
         "\"pos\": {}, \"event\": {}, \"error_code={}, \"error_code_string\": \"{}\", reason=\"{}\"",
         parser.position.get(),
         "error",
-        parser.error_code.get() as usize,
-        parser.error_code_string(),
+        parser.error_code.get(),
+        error_code_string(parser),
         str::from_utf8_unchecked(slice::from_raw_parts(
           parser.error_description.get(),
           parser.error_description_len.get()
@@ -336,7 +337,7 @@ pub fn on_chunk(parser: &Parser, from: usize, size: usize) -> isize {
 
   offsets.into_raw_parts();
 
-  parser.clear_offsets();
+  clear_offsets(parser);
 
   output::event(parser, "chunk", parser.position.get(), from, size)
 }

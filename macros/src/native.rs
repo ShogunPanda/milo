@@ -2,34 +2,24 @@ use quote::{format_ident, quote};
 
 use crate::{definitions::CALLBACKS, parsing::IdentifiersWithExpr};
 
-pub fn callback_native(
-  definition: &IdentifiersWithExpr,
-  return_on_error: bool,
-  use_self: bool,
-) -> proc_macro2::TokenStream {
+pub fn callback_native(definition: &IdentifiersWithExpr, return_on_error: bool) -> proc_macro2::TokenStream {
   let callback = &definition.identifier;
   let callback_name = callback.to_string();
 
-  let parser = if use_self {
-    format_ident!("self")
-  } else {
-    format_ident!("parser")
-  };
-
   let invocation = if let Some(length) = &definition.expr {
-    quote! { (#parser.callbacks.#callback.get())(#parser, #parser.position.get() as usize, (#length) as usize) }
+    quote! { (parser.callbacks.#callback.get())(parser, parser.position.get(), #length) }
   } else {
-    quote! { (#parser.callbacks.#callback.get())(#parser, 0, 0) }
+    quote! { (parser.callbacks.#callback.get())(parser, 0, 0) }
   };
 
   let error_message = format!("Callback {} failed with non zero return value.", callback_name);
   let error_handling = if return_on_error {
     quote! {
-      return #parser.fail(ERROR_CALLBACK_ERROR, #error_message);
+      return fail(parser, ERROR_CALLBACK_ERROR, #error_message);
     }
   } else {
     quote! {
-      let _ = #parser.fail(ERROR_CALLBACK_ERROR, #error_message);
+      let _ = fail(parser, ERROR_CALLBACK_ERROR, #error_message);
     }
   };
 

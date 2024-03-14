@@ -17,7 +17,7 @@ fn format_state(ident: &Ident) -> Ident { format_ident!("STATE_{}", ident.to_str
 pub fn string_length(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as StringLength);
 
-  let len = definition.string.value().len() as usize + definition.modifier;
+  let len = definition.string.value().len() + definition.modifier;
 
   TokenStream::from(quote! { #len })
 }
@@ -38,9 +38,9 @@ pub fn move_to(input: TokenStream) -> TokenStream {
   #[cfg(debug_assertions)]
   {
     if let Some(expr) = definition.expr {
-      TokenStream::from(quote! { parser.move_to(#state, (#expr) as isize) })
+      TokenStream::from(quote! { move_to(parser, #state, (#expr) as isize) })
     } else {
-      TokenStream::from(quote! { parser.move_to(#state, 1) })
+      TokenStream::from(quote! { move_to(parser, #state, 1) })
     }
   }
 
@@ -71,7 +71,7 @@ pub fn fail(input: TokenStream) -> TokenStream {
   let message = definition.message;
 
   if let Expr::Lit(_) = message {
-    TokenStream::from(quote! { parser.fail(#error, #message) })
+    TokenStream::from(quote! { fail(parser, #error, #message) })
   } else {
     TokenStream::from(quote! { parser.fail_with_string(#error, #message) })
   }
@@ -127,17 +127,11 @@ pub fn consume(input: TokenStream) -> TokenStream {
 /// the data (via pointer and length). If the callback errors, the operation is
 /// NOT interrupted. This call will also append the location information to
 /// the offsets.
-pub fn callback(input: TokenStream, return_on_error: bool, use_self: bool) -> TokenStream {
+pub fn callback(input: TokenStream, return_on_error: bool) -> TokenStream {
   let definition = parse_macro_input!(input as IdentifiersWithExpr);
-  let native = callback_native(&definition, return_on_error, use_self);
-  let wasm = callback_wasm(&definition, return_on_error, use_self);
+  let native = callback_native(&definition, return_on_error);
+  let wasm = callback_wasm(&definition, return_on_error);
   let name = definition.identifier.to_string().to_uppercase();
-
-  let parser = if use_self {
-    format_ident!("self")
-  } else {
-    format_ident!("parser")
-  };
 
   // Check if the offset named after the callbacks (except the "on_" prefix)
   // exists
@@ -147,10 +141,10 @@ pub fn callback(input: TokenStream, return_on_error: bool, use_self: bool) -> To
 
     quote! {
       unsafe {
-        let offsets = #parser.offsets.get();
+        let offsets = parser.offsets.get();
 
         // Get the current offset (and add 1 as the first three are reserved)
-        let current = (*offsets.offset(2) + 1) as isize * 3;
+        let current = ((*offsets.offset(2) + 1) * 3) as isize;
 
         // Update the counter
         // TODO@PI: Handle overflow
@@ -158,8 +152,8 @@ pub fn callback(input: TokenStream, return_on_error: bool, use_self: bool) -> To
 
         // Set the offset type, the start and the length
         *(offsets.offset(current)) = #offset_name;
-        *(offsets.offset(current + 1)) = #parser.position.get();
-        *(offsets.offset(current + 2)) = (#length) as usize;
+        *(offsets.offset(current + 1)) = parser.position.get();
+        *(offsets.offset(current + 2)) = (#length);
       }
     }
   } else {

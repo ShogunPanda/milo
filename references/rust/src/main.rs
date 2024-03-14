@@ -1,10 +1,10 @@
 use std::os::raw::c_void;
 
-use milo::Parser;
+use milo::{create, state_string};
 use milo_test_utils::{callbacks, context::Context, parse};
 
 fn main() {
-  let parser = Parser::new();
+  let parser = create(None);
   let context = Box::new(Context::new());
   parser.owner.set(Box::into_raw(context) as *mut c_void);
 
@@ -52,7 +52,7 @@ fn main() {
     "{{ \"pos\": {}, \"consumed\": {}, \"state\": \"{}\" }}",
     parser.position.get(),
     consumed,
-    parser.state_string()
+    state_string(&parser)
   );
 
   println!("\n------------------------------------------------------------------------------------------\n");
@@ -62,6 +62,6 @@ fn main() {
     "{{ \"pos\": {}, \"consumed\": {}, \"state\": \"{}\" }}",
     parser.position.get(),
     consumed,
-    parser.state_string()
+    state_string(&parser)
   );
 }

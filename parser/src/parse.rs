@@ -2,7 +2,6 @@
 
 extern crate alloc;
 
-use alloc::ffi::CString;
 use alloc::vec::Vec;
 use alloc::{boxed::Box, format};
 use core::cell::{Cell, RefCell};
@@ -15,8 +14,10 @@ use core::{slice, slice::from_raw_parts};
 use js_sys::{Function, Uint8Array};
 use milo_macros::callback_no_return;
 #[cfg(target_family = "wasm")]
-use wasm_bindgen::prelude::JsValue;
+use wasm_bindgen::prelude::{wasm_bindgen, JsValue};
 
+#[cfg(target_family = "wasm")]
+use crate::run_callback;
 use crate::{
   fail, states_handlers, Parser, ERROR_CALLBACK_ERROR, ERROR_UNEXPECTED_DATA, STATE_ERROR, STATE_FINISH, SUSPEND,
 };

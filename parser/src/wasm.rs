@@ -1,4 +1,5 @@
 use core::ffi::{c_uchar, c_void};
+use std::slice;
 
 use milo_macros::wasm_getter;
 use wasm_bindgen::prelude::{wasm_bindgen, JsValue};
@@ -6,21 +7,12 @@ use wasm_bindgen::prelude::{wasm_bindgen, JsValue};
 use crate::{Parser, MAX_OFFSETS_COUNT};
 
 #[cfg(debug_assertions)]
-#[wasm_bindgen]
-extern "C" {
-  // Use `js_namespace` here to bind `console.log(..)` instead of just
-  // `log(..)`
-  #[wasm_bindgen(js_namespace = console)]
-  fn log(s: &str);
-}
-
-#[cfg(debug_assertions)]
 #[wasm_bindgen(start)]
 fn init_error_handler() { std::panic::set_hook(Box::new(console_error_panic_hook::hook)); }
 
 #[wasm_bindgen(js_name = alloc)]
 pub fn alloc(len: usize) -> *mut c_void {
-  let buffer = vec![0; len];
+  let buffer = Vec::with_capacity(len);
   let (ptr, _, _) = { buffer.into_raw_parts() };
   ptr as *mut c_void
 }
@@ -40,7 +32,15 @@ pub fn free(ptr: *mut c_void, len: usize) {
 #[wasm_bindgen]
 pub fn create(id: Option<usize>) -> *mut c_void {
   let parser = crate::create(id);
-  Box::into_raw(Box::new(parser)) as *mut c_void
+  let ptr = Box::into_raw(Box::new(parser)) as *mut c_void;
+
+  // Temporarily recreate the parser from the box to assign the reference to
+  // itself
+  let parser = unsafe { Box::from_raw(ptr as *mut Parser) };
+  parser.wasm_ptr.set(ptr);
+  Box::into_raw(parser);
+
+  ptr
 }
 
 /// Destroys a parser.
@@ -209,7 +209,7 @@ pub fn set_id(raw: *mut c_void, value: usize) {
 }
 
 #[wasm_bindgen(js_name = setMode)]
-pub fn set_mod(raw: *mut c_void, value: usize) {
+pub fn set_mode(raw: *mut c_void, value: usize) {
   let parser = unsafe { Box::from_raw(raw as *mut Parser) };
   parser.mode.set(value);
   Box::into_raw(parser);
@@ -219,5 +219,19 @@ pub fn set_mod(raw: *mut c_void, value: usize) {
 pub fn set_manage_unconsumed(raw: *mut c_void, value: bool) {
   let parser = unsafe { Box::from_raw(raw as *mut Parser) };
   parser.manage_unconsumed.set(value);
+  Box::into_raw(parser);
+}
+
+#[wasm_bindgen(js_name = setSkipBody)]
+pub fn set_skip_body(raw: *mut c_void, value: bool) {
+  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
+  parser.skip_body.set(value);
+  Box::into_raw(parser);
+}
+
+#[wasm_bindgen(js_name = setIsConnect)]
+pub fn set_is_connect(raw: *mut c_void, value: bool) {
+  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
+  parser.is_connect.set(value);
   Box::into_raw(parser);
 }

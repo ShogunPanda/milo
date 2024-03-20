@@ -1,5 +1,5 @@
 function onMethod1(parser, from, size) {
-  return 1
+  return 'NO'
 }
 
 function onMethod2(parser, from, size) {
@@ -12,20 +12,39 @@ function onMethod3(parser, from, size) {
 
 export async function main() {
   const milo = await import(`../lib/${process.env.CONFIGURATION ?? process.argv[2]}/milo.js`)
-  const parser = milo.Parser.create()
+  const parser = milo.create()
 
-  // parser.setOnError(onError.bind(milo, parser))
-  parser.setOnMethod(onMethod3.bind(milo, parser))
+  const ptr = milo.alloc(100)
+  const buffer = Buffer.from(milo.memory.buffer, ptr, 100)
 
-  const request = Buffer.from('GET / HTTP/1.1\r\n\r\n')
+  // milo.setOnError(parser, onError.bind(milo, parser))
+  milo.setOnMethod(parser, onMethod1.bind(milo, parser))
+  milo.setOnHeaders(parser, onMethod1.bind(milo, parser))
 
-  let consumed = parser.parse(request.subarray(0, 65535), 65535)
-  consumed = parser.parse(request.subarray(65535), request.length - 65535)
-  const state = milo.States[parser.state]
+  const message = 'GET / HTTP/1.1\r\n\r\n'
+  buffer.set(Buffer.from(message), 0)
+
+  const consumed = milo.parse(parser, ptr, message.length)
+
+  const state = milo.States[milo.getState(parser)]
+  console.log(parser)
   console.log(
-    `{ "pos": ${parser.position}, "consumed": ${consumed}, "state": "${state}", "description": "${parser.errorDescription}" }`
+    JSON.stringify(
+      {
+        pos: milo.getPosition(parser),
+        consumed,
+        state,
+        errorCode: milo.getErrorCodeString(parser),
+        errorDescription: milo.getErrorDescriptionString(parser)
+      },
+      null,
+      2
+    ),
+    milo.getCallbackError(parser)
   )
-  console.log(parser.callbackError)
+
+  milo.free(ptr, 100)
+  milo.destroy(parser)
 }
 
 await main()

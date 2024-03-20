@@ -1,4 +1,3 @@
-use alloc::ffi::CString;
 use alloc::vec::Vec;
 use alloc::{boxed::Box, format};
 use core::cell::{Cell, RefCell};
@@ -17,11 +16,10 @@ use milo_macros::{
 
 use crate::*;
 
-// #region general
 // Depending on the mode flag, choose the initial state
 state!(start, {
   match parser.mode.get() {
-    AUTODETECT => move_to!(message, 0),
+    AUTODETECT => move_to!(autodetect, 0),
     REQUEST => {
       parser.message_type.set(REQUEST);
       callback!(on_message_start);
@@ -41,7 +39,7 @@ state!(finish, { 0 });
 state!(error, { 0 });
 
 // Autodetect if there is a HTTP/RTSP method or a response
-state!(message, {
+state!(autodetect, {
   match data {
     crlf!() => 2, // RFC 9112 section 2.2,
     string!("HTTP/") | string!("RTSP/") => {
@@ -65,7 +63,10 @@ state!(message, {
 state!(request, {
   match data {
     crlf!() => 2, // RFC 9112 section 2.2 - Repeated
-    [token!(), ..] => move_to!(request_method, 0),
+    [token!(), ..] => {
+      clear(parser);
+      move_to!(request_method, 0)
+    }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Expected method"),
     _ => suspend!(),
   }
@@ -155,6 +156,7 @@ state!(response, {
   match data {
     crlf!() => 2, // RFC 9112 section 2.2 - Repeated
     string!("HTTP/") | string!("RTSP/") => {
+      clear(parser);
       callback!(on_protocol, 4);
       move_to!(response_version, 5)
     }
@@ -556,22 +558,16 @@ state!(headers, {
 // RFC 9110 section 6.4.1 - Message completed
 #[inline(always)]
 fn complete_message(parser: &Parser, advance: isize) -> isize {
+  parser.position.update(|x| (x as isize + advance) as usize);
   callback!(on_message_complete);
-
-  let connection = parser.connection.get();
-
-  clear(parser);
-  parser.connection.set(connection);
-
   callback!(on_reset);
 
   let must_close = parser.connection.get() == CONNECTION_CLOSE;
-  parser.connection.set(0);
 
   if must_close {
-    move_to!(finish, advance)
+    move_to!(finish, 0)
   } else {
-    move_to!(start, advance)
+    move_to!(start, 0)
   }
 }
 

@@ -1,7 +1,7 @@
 { "pos": 0, "event": "before_state_change", "current_state": "START", "data": null }
-{ "pos": 0, "event": "after_state_change", "current_state": "MESSAGE", "data": null }
+{ "pos": 0, "event": "after_state_change", "current_state": "AUTODETECT", "data": null }
 { "pos": 0, "event": "begin", "configuration": { "debug": true }, "data": null }
-{ "pos": 0, "event": "before_state_change", "current_state": "MESSAGE", "data": null }
+{ "pos": 0, "event": "before_state_change", "current_state": "AUTODETECT", "data": null }
 { "pos": 0, "event": "after_state_change", "current_state": "REQUEST", "data": null }
 { "pos": 0, "event": "before_state_change", "current_state": "REQUEST", "data": null }
 { "pos": 0, "event": "after_state_change", "current_state": "REQUEST_METHOD", "data": null }
@@ -36,9 +36,9 @@
 ------------------------------------------------------------------------------------------
 
 { "pos": 0, "event": "before_state_change", "current_state": "START", "data": null }
-{ "pos": 0, "event": "after_state_change", "current_state": "MESSAGE", "data": null }
+{ "pos": 0, "event": "after_state_change", "current_state": "AUTODETECT", "data": null }
 { "pos": 0, "event": "begin", "configuration": { "debug": true }, "data": null }
-{ "pos": 0, "event": "before_state_change", "current_state": "MESSAGE", "data": null }
+{ "pos": 0, "event": "before_state_change", "current_state": "AUTODETECT", "data": null }
 { "pos": 0, "event": "after_state_change", "current_state": "RESPONSE", "data": null }
 { "pos": 0, "event": "protocol", "data": "HTTP" }
 { "pos": 0, "event": "before_state_change", "current_state": "RESPONSE", "data": null }
@@ -116,8 +116,8 @@
 { "pos": 108, "event": "offset.trailer_value", "data": "value" }
 { "pos": 108, "event": "offset.trailers", "data": null }
 { "pos": 108, "event": "trailers", "data": null }
-{ "pos": 108, "event": "offset.message_complete", "data": null }
-{ "pos": 108, "event": "complete", "data": null }
-{ "pos": 108, "event": "before_state_change", "current_state": "TRAILER_VALUE", "data": null }
-{ "pos": 108, "event": "after_state_change", "current_state": "START", "data": null }
+{ "pos": 117, "event": "offset.message_complete", "data": null }
+{ "pos": 117, "event": "complete", "data": null }
+{ "pos": 117, "event": "before_state_change", "current_state": "TRAILER_VALUE", "data": null }
+{ "pos": 117, "event": "after_state_change", "current_state": "START", "data": null }
 { "pos": 117, "consumed": 117, "state": "START" }

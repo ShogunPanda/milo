@@ -99,12 +99,16 @@ pub fn save_constants() {
     consts.insert(format!("METHOD_{}", x.replace('-', "_")), i);
   }
 
-  for (i, x) in unsafe { OFFSETS.get().unwrap() }.iter().enumerate() {
-    consts.insert(format!("OFFSET_{}", x.replace('-', "_")), i);
+  for (i, x) in unsafe { CALLBACKS.get().unwrap() }.iter().enumerate() {
+    consts.insert(format!("CALLBACKS_{}", x.to_uppercase()), i);
   }
 
   for (i, x) in unsafe { ERRORS.get().unwrap() }.iter().enumerate() {
     consts.insert(format!("ERROR_{}", x), i);
+  }
+
+  for (i, x) in unsafe { OFFSETS.get().unwrap() }.iter().enumerate() {
+    consts.insert(format!("OFFSET_{}", x.replace('-', "_")), i);
   }
 
   for (i, x) in unsafe { STATES.get().unwrap() }.iter().enumerate() {

@@ -60,6 +60,6 @@
 { "pos": 108, "event": "offset.trailer_value", "data": "value" }
 { "pos": 108, "event": "offset.trailers", "data": null }
 { "pos": 108, "event": "trailers", "data": null }
-{ "pos": 108, "event": "offset.message_complete", "data": null }
-{ "pos": 108, "event": "complete", "data": null }
+{ "pos": 117, "event": "offset.message_complete", "data": null }
+{ "pos": 117, "event": "complete", "data": null }
 { "pos": 117, "consumed": 117, "state": "START" }

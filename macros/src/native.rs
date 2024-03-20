@@ -1,7 +1,9 @@
+use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 
 use crate::{definitions::CALLBACKS, parsing::IdentifiersWithExpr};
 
+// Handles a callback.
 pub fn callback_native(definition: &IdentifiersWithExpr, return_on_error: bool) -> proc_macro2::TokenStream {
   let callback = &definition.identifier;
   let callback_name = callback.to_string();
@@ -33,7 +35,7 @@ pub fn callback_native(definition: &IdentifiersWithExpr, return_on_error: bool) 
 }
 
 /// Generates all parser callbacks.
-pub fn generate_callbacks_native() -> proc_macro2::TokenStream {
+pub fn generate_callbacks_native() -> TokenStream {
   let callbacks: Vec<_> = unsafe {
     CALLBACKS
       .get()
@@ -43,7 +45,7 @@ pub fn generate_callbacks_native() -> proc_macro2::TokenStream {
       .collect()
   };
 
-  quote! {
+  TokenStream::from(quote! {
     #[cfg(not(target_family = "wasm"))]
     fn noop_internal(_parser: &Parser, _data: usize, _len: usize) -> isize {
       0
@@ -52,17 +54,17 @@ pub fn generate_callbacks_native() -> proc_macro2::TokenStream {
     #[cfg(not(target_family = "wasm"))]
     #[repr(C)]
     #[derive(Clone, Debug)]
-    pub struct Callbacks {
+    pub struct CallbacksRegistry {
       #( pub #callbacks: Cell<Callback>),*
     }
 
     #[cfg(not(target_family = "wasm"))]
-    impl Callbacks {
-      fn new() -> Callbacks {
-        Callbacks {
+    impl CallbacksRegistry {
+      fn new() -> CallbacksRegistry {
+        CallbacksRegistry {
           #( #callbacks: Cell::new(noop_internal) ),*
         }
       }
     }
-  }
+  })
 }

@@ -99,7 +99,7 @@ pub fn generate_constants(_: TokenStream) -> TokenStream { generators::generate_
 pub fn generate_enums(_: TokenStream) -> TokenStream { generators::generate_enums() }
 
 #[proc_macro]
-pub fn generate_callbacks(_: TokenStream) -> TokenStream { generators::generate_callbacks() }
+pub fn generate_callbacks(_: TokenStream) -> TokenStream { native::generate_callbacks_native() }
 
 #[proc_macro]
 pub fn wasm_getter(input: TokenStream) -> TokenStream { wasm::wasm_getter(input) }

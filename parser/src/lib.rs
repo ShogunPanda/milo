@@ -18,9 +18,14 @@ use js_sys::{Function, Uint8Array};
 use milo_macros::{
   callback, callback_no_return, generate_callbacks, generate_constants, generate_enums, init_constants,
 };
-use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::prelude::{wasm_bindgen, JsValue};
+
 #[cfg(target_family = "wasm")]
-use wasm_bindgen::prelude::JsValue;
+#[wasm_bindgen]
+extern "C" {
+  #[wasm_bindgen(js_name = runCallback, catch)]
+  fn run_callback(parser: *mut c_void, callback: usize, data: usize, limit: usize) -> Result<isize, JsValue>;
+}
 
 #[repr(C)]
 pub struct Flags {
@@ -45,6 +50,11 @@ use crate::states::*;
 generate_constants!();
 generate_enums!();
 generate_callbacks!();
+
+// TODO@PI: Rather than relying on C struct order, which might affect
+// performance, use a space similar to offsets to shadow the values.
+// If it works fine, you might just keep those. This should also allow you to
+// get rid of Cells.
 
 // Do not change the the order of fields here, they are used to address them as
 // general memory space in WebAssembly.
@@ -89,9 +99,12 @@ pub struct Parser {
   pub unconsumed: Cell<*const c_uchar>,
   pub error_description: Cell<*const c_uchar>,
   pub owner: Cell<*mut c_void>,
+  #[cfg(target_family = "wasm")]
+  pub wasm_ptr: Cell<*mut c_void>,
 
   // Callbacks handling
-  pub callbacks: Callbacks,
+  #[cfg(not(target_family = "wasm"))]
+  pub callbacks: CallbacksRegistry,
   #[cfg(target_family = "wasm")]
   pub callback_error: RefCell<JsValue>,
 }
@@ -140,9 +153,12 @@ pub fn create(id: Option<usize>) -> Parser {
     owner: Cell::new(ptr::null_mut()),
     unconsumed: Cell::new(ptr::null()),
     error_description: Cell::new(ptr::null()),
+    #[cfg(target_family = "wasm")]
+    wasm_ptr: Cell::new(ptr::null_mut()),
 
     // Callbacks handling
-    callbacks: Callbacks::new(),
+    #[cfg(not(target_family = "wasm"))]
+    callbacks: CallbacksRegistry::new(),
     #[cfg(target_family = "wasm")]
     callback_error: RefCell::new(JsValue::NULL),
   }
@@ -150,6 +166,14 @@ pub fn create(id: Option<usize>) -> Parser {
 
 /// Resets a parser. The second parameters specifies if to also reset the
 /// parsed counter.
+///
+/// The following fields are not modified:
+///   * position
+///   * id
+///   * owner
+///   * mode
+///   * manage_unconsumed
+///   * continue_without_data
 pub fn reset(parser: &Parser, keep_parsed: bool) {
   parser.state.set(0);
   parser.paused.set(false);
@@ -172,22 +196,25 @@ pub fn reset(parser: &Parser, keep_parsed: bool) {
     parser.unconsumed_len.set(0);
   }
 
+  parser.message_type.set(0);
+  parser.connection.set(0);
   clear(parser);
 
   callback_no_return!(on_reset);
+
+  #[cfg(target_family = "wasm")]
+  parser.callback_error.replace(JsValue::NULL);
 }
 
-/// Clears all values in the parser.
+/// Clears all values about the message in the parser.
 ///
-/// Persisted fields, unconsumed data and the position are not cleared.
+/// The connection and message type fields are not cleared.  
 pub fn clear(parser: &Parser) {
-  parser.message_type.set(0);
   parser.is_connect.set(false);
   parser.method.set(0);
   parser.status.set(0);
   parser.version_major.set(0);
   parser.version_minor.set(0);
-  parser.connection.set(0);
   parser.has_content_length.set(false);
   parser.has_chunked_transfer_encoding.set(false);
   parser.has_upgrade.set(false);
@@ -210,7 +237,7 @@ pub fn resume(parser: &Parser) { parser.paused.set(false); }
 pub fn finish(parser: &Parser) {
   match parser.state.get() {
     // If the parser is one of the initial states, simply jump to finish
-    STATE_START | STATE_MESSAGE | STATE_REQUEST | STATE_RESPONSE | STATE_FINISH => {
+    STATE_START | STATE_AUTODETECT | STATE_REQUEST | STATE_RESPONSE | STATE_FINISH => {
       parser.state.set(STATE_FINISH);
     }
     STATE_BODY_WITH_NO_LENGTH => {
@@ -244,6 +271,10 @@ pub fn error_code_string(parser: &Parser) -> &str { Errors::try_from(parser.erro
 
 /// Returns the current parser's error descrition.
 pub fn error_description_string(parser: &Parser) -> &str {
+  if parser.error_description_len.get() == 0 {
+    return "";
+  }
+
   unsafe {
     str::from_utf8_unchecked(from_raw_parts(
       parser.error_description.get(),

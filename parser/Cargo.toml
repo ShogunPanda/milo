@@ -1,45 +1,50 @@
 [package]
-name = "milo"
-version = "0.1.0"
-edition = "2021"
-publish = false
+  name    = "milo"
+  version = "0.1.0"
+  edition = "2021"
+  publish = false
 
 [lib]
-crate_type = ["cdylib", "staticlib", "lib"]
+  crate_type = ["cdylib", "staticlib", "lib"]
 
 [dependencies]
-console_error_panic_hook = { version = "0.1.7", optional = true }
-js-sys = "0.3.69"
-milo-macros = { path = "../macros" }
-wasm-bindgen = "0.2.92"
+  console_error_panic_hook = { version = "0.1.7", optional = true }
+  js-sys                   = "0.3.69"
+  milo-macros              = { path = "../macros" }
+  wasm-bindgen             = "0.2.92"
 
 [features]
-default = ["console_error_panic_hook"]
-debug = []
-all-callbacks = []
+  default       = ["console_error_panic_hook"]
+  debug         = []
+  all-callbacks = []
 
 [profile.bench]
-opt-level = 3
-debug = false
-debug-assertions = false
-overflow-checks = false
-lto = false
-incremental = false
-codegen-units = 16
-rpath = false
-strip = true
+  opt-level        = 3
+  debug            = false
+  debug-assertions = false
+  overflow-checks  = false
+  lto              = false
+  incremental      = false
+  codegen-units    = 16
+  rpath            = false
+  strip            = true
 
 [profile.release]
-opt-level = 3
-debug = false
-debug-assertions = false
-overflow-checks = false
-lto = false
-panic = 'abort'
-incremental = false
-codegen-units = 16
-rpath = false
-strip = true
+  debug            = false
+  debug-assertions = false
+  overflow-checks  = false
+  lto              = true
+  panic            = 'abort'
+  incremental      = false
+  codegen-units    = 16
+  rpath            = false
+  strip            = true
 
 [package.metadata.wasm-pack.profile.release]
-wasm-opt = ['-all']
+  wasm-opt = ['-O3']
+
+  [package.metadata.wasm-pack.profile.release.wasm-bindgen]
+    debug-js-glue            = false
+    demangle-name-section    = false
+    dwarf-debug-info         = false
+    omit-default-module-path = false

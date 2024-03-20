@@ -361,8 +361,6 @@ isize_t on_trailers(const milo::Parser* parser, usize_t from, usize_t size) {
   return event(parser, "trailers", parser->position, data, size);
 }
 
-// TODO@PI: Try memory direct access
-
 int main() {
   milo::Parser* parser = milo::milo_create();
 

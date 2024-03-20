@@ -70,11 +70,7 @@ pub fn fail(input: TokenStream) -> TokenStream {
   let error = format_ident!("ERROR_{}", definition.error);
   let message = definition.message;
 
-  if let Expr::Lit(_) = message {
-    TokenStream::from(quote! { fail(parser, #error, #message) })
-  } else {
-    TokenStream::from(quote! { parser.fail_with_string(#error, #message) })
-  }
+  TokenStream::from(quote! { fail(parser, #error, #message) })
 }
 
 /// Tries to detect the longest prefix of the data matching the provided

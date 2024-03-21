@@ -111,7 +111,7 @@ pub struct Parser {
 
 /// Creates a new parser
 pub fn create(id: Option<usize>) -> Parser {
-  let offsets = [0; MAX_OFFSETS_COUNT].to_vec();
+  let offsets = Vec::with_capacity(MAX_OFFSETS_COUNT * 3);
   let (offset_ptr, _, _) = { offsets.into_raw_parts() };
 
   Parser {

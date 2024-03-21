@@ -48,7 +48,7 @@ pub fn create(id: Option<usize>) -> *mut c_void {
 pub fn destroy(raw: *mut c_void) {
   unsafe {
     let parser = Box::from_raw(raw as *mut Parser);
-    let _ = Vec::from_raw_parts(parser.offsets.get(), MAX_OFFSETS_COUNT, MAX_OFFSETS_COUNT);
+    let _ = Vec::from_raw_parts(parser.offsets.get(), MAX_OFFSETS_COUNT * 3, MAX_OFFSETS_COUNT * 3);
     Box::into_raw(parser);
   }
 }

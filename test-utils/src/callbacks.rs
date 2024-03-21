@@ -18,7 +18,7 @@ use self::output::extract_payload;
 
 pub fn process_offsets(parser: &Parser) {
   let mut context = unsafe { Box::from_raw(parser.owner.get() as *mut context::Context) };
-  let mut offsets = unsafe { Vec::from_raw_parts(parser.offsets.get(), MAX_OFFSETS_COUNT, MAX_OFFSETS_COUNT) };
+  let mut offsets = unsafe { Vec::from_raw_parts(parser.offsets.get(), MAX_OFFSETS_COUNT * 3, MAX_OFFSETS_COUNT * 3) };
 
   let total = offsets[2];
   offsets[2] = 0;

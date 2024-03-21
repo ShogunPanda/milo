@@ -143,7 +143,6 @@ pub fn callback(input: TokenStream, return_on_error: bool) -> TokenStream {
         let current = ((*offsets.offset(2) + 1) * 3) as isize;
 
         // Update the counter
-        // TODO@PI: Handle overflow
         *(offsets.offset(2)) += 1;
 
         // Set the offset type, the start and the length

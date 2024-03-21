@@ -131,8 +131,9 @@ pub fn generate_constants() -> TokenStream {
     #[no_mangle]
     pub type Callback = fn (&Parser, usize, usize) -> isize;
 
-    // TODO@PI: Adjust this
-    pub const MAX_OFFSETS_COUNT: usize = 2049 * 3; // 2048 + 1 for the initial three status one
+    // We support 2048 offsets in total. This is usually fine most of the times.
+    // The first offset is reserved for the triplet [state, consumed, offsetCount]
+    pub const MAX_OFFSETS_COUNT: usize = 2049;
     pub const SUSPEND: isize = isize::MIN;
 
     pub const DEBUG: bool = cfg!(debug_assertions);

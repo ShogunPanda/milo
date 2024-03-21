@@ -19,7 +19,8 @@ use wasm_bindgen::prelude::{wasm_bindgen, JsValue};
 #[cfg(target_family = "wasm")]
 use crate::run_callback;
 use crate::{
-  fail, states_handlers, Parser, ERROR_CALLBACK_ERROR, ERROR_UNEXPECTED_DATA, STATE_ERROR, STATE_FINISH, SUSPEND,
+  fail, states_handlers, Parser, ERROR_CALLBACK_ERROR, ERROR_UNEXPECTED_DATA, MAX_OFFSETS_COUNT, STATE_ERROR,
+  STATE_FINISH, SUSPEND,
 };
 
 /// Parses a slice of characters. It returns the number of consumed
@@ -91,6 +92,9 @@ pub fn parse(parser: &Parser, data: *const c_uchar, limit: usize) -> usize {
       callback_no_return!(on_finish);
     } else if new_state == STATE_ERROR {
       callback_no_return!(on_error);
+      break;
+    } else if unsafe { *(offsets.offset(2)) as usize } == MAX_OFFSETS_COUNT {
+      // We can't write a new offset, bail out earlier
       break;
     } else if result == SUSPEND {
       // If the state suspended the parser, then bail out earlier

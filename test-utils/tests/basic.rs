@@ -4,7 +4,8 @@ mod test {
   use std::ffi::c_uchar;
 
   use milo::{
-    finish, pause, reset, resume, Parser, REQUEST, RESPONSE, STATE_ERROR, STATE_FINISH, STATE_HEADER_NAME, STATE_START,
+    create, finish, pause, reset, resume, Parser, REQUEST, RESPONSE, STATE_ERROR, STATE_FINISH, STATE_HEADER_NAME,
+    STATE_START,
   };
   use milo_test_utils::{create_parser, http, parse};
 
@@ -256,7 +257,7 @@ mod test {
   }
 
   #[test]
-  fn incomplete_body() {
+  fn basic_incomplete_body() {
     let parser = create_parser();
 
     let sample1 = http(r#"POST / HTTP/1.1\r\nContent-Length: 10\r\n\r\n12345"#);
@@ -274,7 +275,7 @@ mod test {
   }
 
   #[test]
-  fn incomplete_chunk() {
+  fn basic_incomplete_chunk() {
     let parser = create_parser();
 
     let sample1 = http(r#"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nTrailer: x-foo\r\n\r\na\r\n12345"#);
@@ -292,7 +293,7 @@ mod test {
   }
 
   #[test]
-  fn connection_header() {
+  fn basic_connection_header() {
     let parser = create_parser();
 
     let close_connection = http(
@@ -324,7 +325,7 @@ mod test {
   }
 
   #[test]
-  fn pause_and_resume() {
+  fn basic_pause_and_resume() {
     let parser = create_parser();
 
     let sample1 = http(
@@ -369,7 +370,7 @@ mod test {
   }
 
   #[test]
-  fn restart() {
+  fn basic_restart() {
     let parser = create_parser();
     parser.mode.set(RESPONSE);
 
@@ -417,7 +418,7 @@ mod test {
   }
 
   #[test]
-  fn finish_logic() {
+  fn basic_finish_logic() {
     let parser = create_parser();
 
     assert!(matches!(parser.state.get(), STATE_START));
@@ -473,7 +474,7 @@ mod test {
   }
 
   #[test]
-  fn undici() {
+  fn basic_undici() {
     let message = http(
       r#"
         HTTP/1.1 200 OK\r\n
@@ -489,5 +490,23 @@ mod test {
     let parser = create_parser();
     parse(&parser, &message);
     assert!(!matches!(parser.state.get(), STATE_ERROR));
+  }
+
+  #[test]
+  fn basic_offsets_overflow() {
+    let mut raw_message = String::from("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
+
+    for _ in 0..3000 {
+      raw_message.push_str("5\r\nhello\r\n");
+    }
+
+    let message = raw_message.as_str();
+
+    // Purposely do not use create_parser here to make sure callback don't clean
+    // offsets
+    let parser = create(None);
+    let consumed = milo::parse(&parser, message.as_ptr(), message.len());
+    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(consumed != message.len());
   }
 }

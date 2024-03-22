@@ -1,0 +1,34 @@
+---
+# Values
+id: usize
+mode: usize
+state: usize
+position: usize
+offsets_count: usize
+error_code: usize
+error_description_len: usize
+unconsumed_len: usize
+message_type: usize
+method: usize
+status: usize
+version_major: usize
+version_minor: usize
+connection: usize
+
+# Large values
+parsed: u64
+content_length: u64
+chunk_size: u64
+remaining_content_length: u64
+remaining_chunk_size: u64
+
+# Flags
+paused: bool
+manage_unconsumed: bool
+continue_without_data: bool
+is_connect: bool
+has_content_length: bool
+has_chunked_transfer_encoding: bool
+has_upgrade: bool
+has_trailers: bool
+skip_body: bool

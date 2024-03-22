@@ -1,6 +1,6 @@
 use std::os::raw::c_void;
 
-use milo::{create, state_string};
+use milo::{create, get_position, state_string};
 use milo_test_utils::{callbacks, context::Context, parse};
 
 fn main() {
@@ -50,7 +50,7 @@ fn main() {
 
   println!(
     "{{ \"pos\": {}, \"consumed\": {}, \"state\": \"{}\" }}",
-    parser.position.get(),
+    get_position(&parser),
     consumed,
     state_string(&parser)
   );
@@ -60,7 +60,7 @@ fn main() {
   consumed = parse(&parser, request2);
   println!(
     "{{ \"pos\": {}, \"consumed\": {}, \"state\": \"{}\" }}",
-    parser.position.get(),
+    get_position(&parser),
     consumed,
     state_string(&parser)
   );

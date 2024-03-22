@@ -18,7 +18,12 @@ pub static METHODS: OnceLock<Vec<String>> = OnceLock::new();
 pub static mut ERRORS: OnceLock<IndexSet<String>> = OnceLock::new();
 pub static mut CALLBACKS: OnceLock<IndexSet<String>> = OnceLock::new();
 pub static mut OFFSETS: OnceLock<IndexSet<String>> = OnceLock::new();
+pub static mut VALUES: OnceLock<IndexMap<String, String>> = OnceLock::new();
+pub static mut VALUES_OFFSETS: OnceLock<IndexMap<String, usize>> = OnceLock::new();
+pub static mut VALUES_SIZE: OnceLock<usize> = OnceLock::new();
 pub static mut STATES: OnceLock<IndexSet<String>> = OnceLock::new();
+// We support 2048 offsets in total. This is usually fine most of the times.
+pub static MAX_OFFSETS_COUNT: usize = 2048;
 
 #[derive(Serialize)]
 struct BuildInfo {
@@ -32,39 +37,46 @@ pub fn init_constants() {
   absolute_path = absolute_path.canonicalize().unwrap();
 
   unsafe {
-    METHODS.get_or_init(|| {
-      absolute_path.push("methods.yml");
-      let f = File::open(absolute_path.to_str().unwrap()).unwrap();
-      absolute_path.pop();
+    absolute_path.push("methods.yml");
+    let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+    absolute_path.pop();
+    let methods = serde_yaml::from_reader(f).unwrap();
 
-      serde_yaml::from_reader(f).unwrap()
-    });
+    absolute_path.push("errors.yml");
+    let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+    absolute_path.pop();
+    let errors = serde_yaml::from_reader(f).unwrap();
 
-    ERRORS.get_or_init(|| {
-      absolute_path.push("errors.yml");
-      let f = File::open(absolute_path.to_str().unwrap()).unwrap();
-      absolute_path.pop();
+    absolute_path.push("offsets.yml");
+    let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+    absolute_path.pop();
+    let offsets = serde_yaml::from_reader(f).unwrap();
 
-      serde_yaml::from_reader(f).unwrap()
-    });
+    absolute_path.push("callbacks.yml");
+    let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+    absolute_path.pop();
+    let callbacks = serde_yaml::from_reader(f).unwrap();
 
-    OFFSETS.get_or_init(|| {
-      absolute_path.push("offsets.yml");
-      let f = File::open(absolute_path.to_str().unwrap()).unwrap();
-      absolute_path.pop();
+    absolute_path.push("values.yml");
+    let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+    absolute_path.pop();
+    let values: IndexMap<String, String> = serde_yaml::from_reader(f).unwrap();
 
-      serde_yaml::from_reader(f).unwrap()
-    });
+    let mut values_offsets = IndexMap::new();
+    let mut current_offset: usize = 0;
+    for (k, v) in values.iter() {
+      values_offsets.insert(k.to_string(), current_offset);
+      current_offset += if v == "u64" { 2 } else { 1 };
+    }
 
-    CALLBACKS.get_or_init(|| {
-      absolute_path.push("callbacks.yml");
-      let f = File::open(absolute_path.to_str().unwrap()).unwrap();
-      absolute_path.pop();
-
-      serde_yaml::from_reader(f).unwrap()
-    });
-
-    STATES.get_or_init(|| IndexSet::new());
+    let _ = METHODS.set(methods);
+    let _ = ERRORS.set(errors);
+    let _ = OFFSETS.set(offsets);
+    let _ = CALLBACKS.set(callbacks);
+    let _ = VALUES.set(values);
+    let _ = VALUES_OFFSETS.set(values_offsets);
+    let _ = VALUES_SIZE.set(current_offset);
+    let _ = STATES.set(IndexSet::new());
   }
 }
 
@@ -110,6 +122,19 @@ pub fn save_constants() {
   for (i, x) in unsafe { OFFSETS.get().unwrap() }.iter().enumerate() {
     consts.insert(format!("OFFSET_{}", x.replace('-', "_")), i);
   }
+
+  // The values are multiplied by 4 as usize is 4 bytes in JavaScript
+  unsafe {
+    let value_offsets = VALUES_OFFSETS.get().unwrap();
+    for k in VALUES.get().unwrap().keys() {
+      consts.insert(
+        format!("VALUES_{}", k.to_uppercase()),
+        *value_offsets.get(k).unwrap() * 4,
+      );
+    }
+  }
+  consts.insert(String::from("VALUES_SIZE"), unsafe { *VALUES_SIZE.get().unwrap() * 4 });
+  consts.insert(String::from("MAX_OFFSETS_COUNT"), MAX_OFFSETS_COUNT);
 
   for (i, x) in unsafe { STATES.get().unwrap() }.iter().enumerate() {
     consts.insert(format!("STATE_{}", x), i);

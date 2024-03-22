@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-  use milo::STATE_TUNNEL;
+  use milo::{get_state, STATE_TUNNEL};
   use milo_test_utils::{create_parser, http, parse};
 
   #[test]
@@ -25,11 +25,11 @@ mod test {
 
     let consumed1 = parse(&parser, &message1);
     assert!(consumed1 == 70);
-    assert!(matches!(parser.state.get(), STATE_TUNNEL));
+    assert!(matches!(get_state(&parser), STATE_TUNNEL));
 
     let consumed2 = parse(&parser, &message2);
     assert!(consumed2 == 0);
-    assert!(matches!(parser.state.get(), STATE_TUNNEL));
+    assert!(matches!(get_state(&parser), STATE_TUNNEL));
   }
 
   #[test]
@@ -56,10 +56,10 @@ mod test {
 
     let consumed1 = parse(&parser, &message1);
     assert!(consumed1 == 97);
-    assert!(matches!(parser.state.get(), STATE_TUNNEL));
+    assert!(matches!(get_state(&parser), STATE_TUNNEL));
 
     let consumed2 = parse(&parser, &message2);
     assert!(consumed2 == 0);
-    assert!(matches!(parser.state.get(), STATE_TUNNEL));
+    assert!(matches!(get_state(&parser), STATE_TUNNEL));
   }
 }

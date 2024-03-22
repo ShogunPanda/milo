@@ -3,7 +3,9 @@ use quote::{format_ident, quote};
 use regex::{Captures, Regex};
 use syn::{parse_str, Arm, ItemConst};
 
-use crate::definitions::{save_constants, CALLBACKS, ERRORS, METHODS, OFFSETS, STATES};
+use crate::definitions::{
+  save_constants, CALLBACKS, ERRORS, MAX_OFFSETS_COUNT, METHODS, OFFSETS, STATES, VALUES_OFFSETS, VALUES_SIZE,
+};
 
 /// Generates all parser constants.
 pub fn generate_constants() -> TokenStream {
@@ -56,7 +58,16 @@ pub fn generate_constants() -> TokenStream {
       .collect()
   };
 
+  let values_ref = unsafe { VALUES_OFFSETS.get().unwrap() };
+  let values_size = unsafe { VALUES_SIZE.get().unwrap() };
+  let max_offsets_count = MAX_OFFSETS_COUNT;
+
   let states_ref = unsafe { STATES.get().unwrap() };
+
+  let values_consts: Vec<_> = values_ref
+    .iter()
+    .map(|(k, v)| parse_str::<ItemConst>(&format!("pub const VALUE_{}: usize = {};", k.to_uppercase(), v)).unwrap())
+    .collect();
 
   let states_consts: Vec<_> = states_ref
     .iter()
@@ -132,8 +143,8 @@ pub fn generate_constants() -> TokenStream {
     pub type Callback = fn (&Parser, usize, usize) -> isize;
 
     // We support 2048 offsets in total. This is usually fine most of the times.
-    // The first offset is reserved for the triplet [state, consumed, offsetCount]
-    pub const MAX_OFFSETS_COUNT: usize = 2049;
+    pub const MAX_OFFSETS_COUNT: usize = #max_offsets_count;
+    pub const VALUES_SIZE: usize = #values_size;
     pub const SUSPEND: isize = isize::MIN;
 
     pub const DEBUG: bool = cfg!(debug_assertions);
@@ -154,31 +165,33 @@ pub fn generate_constants() -> TokenStream {
 
     #(#states_consts)*
 
+    #(#values_consts)*
+
     #(#offsets_consts)*
 
     /// cbindgen:ignore
-    static digit_table: [bool; 256] = [#(#digit_table),*];
+    static DIGIT_TABLE: [bool; 256] = [#(#digit_table),*];
 
     /// cbindgen:ignore
-    static hex_digit_table: [bool; 256] = [#(#hex_digit_table),*];
+    static HEX_DIGIT_TABLE: [bool; 256] = [#(#hex_digit_table),*];
 
     /// cbindgen:ignore
-    static token_table: [bool; 256] = [#(#token_table),*];
+    static TOKEN_TABLE: [bool; 256] = [#(#token_table),*];
 
     /// cbindgen:ignore
-    static token_value_table: [bool; 256] = [#(#token_value_table),*];
+    static TOKEN_VALUE_TABLE: [bool; 256] = [#(#token_value_table),*];
 
     /// cbindgen:ignore
-    static token_value_quoted_table: [bool; 256] = [#(#token_value_quoted_table),*];
+    static TOKEN_VALUE_QUOTED_TABLE: [bool; 256] = [#(#token_value_quoted_table),*];
 
     /// cbindgen:ignore
-    static url_table: [bool; 256] = [#(#url_table),*];
+    static URL_TABLE: [bool; 256] = [#(#url_table),*];
 
     /// cbindgen:ignore
-    static ws_table: [bool; 256] = [#(#ws_table),*];
+    static WS_TABLE: [bool; 256] = [#(#ws_table),*];
 
     /// cbindgen:ignore
-    static states_handlers: [StateHandler; #states_len] = [#(#states_table),*];
+    static STATES_HANDLERS: [StateHandler; #states_len] = [#(#states_table),*];
   })
 }
 

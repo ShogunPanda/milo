@@ -1,6 +1,6 @@
 #![feature(vec_into_raw_parts)]
 
-use std::ffi::c_void;
+use std::{env, ffi::c_void};
 
 use milo::{create, Parser};
 use regex::Regex;
@@ -15,6 +15,11 @@ pub fn create_parser() -> Parser {
   let parser = create(None);
   let context = Box::new(context::Context::new());
   parser.owner.set(Box::into_raw(context) as *mut c_void);
+
+  if env::var_os("DEBUG_TESTS").unwrap_or("false".into()) == "true" {
+    parser.callbacks.before_state_change.set(callbacks::before_state_change);
+    parser.callbacks.after_state_change.set(callbacks::after_state_change);
+  }
 
   parser.callbacks.on_error.set(callbacks::on_error);
   parser.callbacks.on_finish.set(callbacks::on_finish);

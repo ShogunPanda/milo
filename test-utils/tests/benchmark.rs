@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test {
-  use milo::STATE_ERROR;
+  use milo::{get_state, STATE_ERROR};
   use milo_test_utils::{create_parser, http, parse};
 
   #[test]
@@ -23,7 +23,7 @@ mod test {
     let parser = create_parser();
     let consumed = parse(&parser, &message);
     assert!(consumed == message.len());
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
@@ -50,6 +50,6 @@ mod test {
     let parser = create_parser();
     let consumed = parse(&parser, &message);
     assert!(consumed == message.len());
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
   }
 }

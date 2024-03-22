@@ -9,12 +9,12 @@ function extractPayload(context, from, size) {
 function processOffsets(context) {
   const start = context.milo.getOffsets(context.parser)
   const flags = new Uint32Array(context.milo.memory.buffer, start, 3)
-  const total = flags[2]
-  flags[2] = 0
+  const total = context.milo.getOffsetsCount(context.parser)
+  context.milo.clearOffsets(context.parser)
 
-  const offsets = new Uint32Array(context.milo.memory.buffer, start + 12, total * 3)
+  const offsets = new Uint32Array(context.milo.memory.buffer, start, total * 3)
 
-  for (let i = 0; i < offsets.length / 3; i++) {
+  for (let i = 0; i < total; i++) {
     const offsetType = offsets[i * 3]
     const offsetFrom = offsets[i * 3 + 1]
     const offsetSize = offsets[i * 3 + 2]
@@ -116,15 +116,15 @@ function showSpan(context, name, from, size) {
     context[name] = extractPayload(context, from, size).toString('utf-8')
   }
 
-  return event(context, name, context.milo.getPosition(context.parser), from, size)
+  return event(context, name, context.values.readUInt32LE(context.milo.VALUES_POSITION), from, size)
 }
 
 function beforeStateChange(context, from, size) {
   return appendOutput(
     sprintf(
       '"pos": {}, "event": "before_state_change", "current_state": "{}"',
-      this.getPosition(context.parser),
-      this.States[this.getState(context.parser)]
+      context.values.readUInt32LE(context.milo.VALUES_POSITION),
+      context.milo.States[context.values.readUInt32LE(context.milo.VALUES_STATE)]
     ),
     context,
     from,
@@ -136,8 +136,8 @@ function afterStateChange(context, from, size) {
   return appendOutput(
     sprintf(
       '"pos": {}, "event": "after_state_change", "current_state": "{}"',
-      this.getPosition(context.parser),
-      this.States[this.getState(context.parser)]
+      context.values.readUInt32LE(context.milo.VALUES_POSITION),
+      context.milo.States[context.values.readUInt32LE(context.milo.VALUES_STATE)]
     ),
     context,
     from,
@@ -149,7 +149,7 @@ function onMessageStart(context, from, size) {
   return appendOutput(
     sprintf(
       '"pos": {}, "event": "begin", "configuration": { "debug": {} }',
-      this.getPosition(context.parser),
+      context.values.readUInt32LE(context.milo.VALUES_POSITION),
       this.FLAGS_DEBUG
     ),
     context,
@@ -160,14 +160,14 @@ function onMessageStart(context, from, size) {
 
 function onMessageComplete(context, from, size) {
   processOffsets(context)
-  return event(context, 'complete', this.getPosition(context.parser), from, size)
+  return event(context, 'complete', context.values.readUInt32LE(context.milo.VALUES_POSITION), from, size)
 }
 
 function onError(context, from, size) {
   const errorDescription = Buffer.from(
     this.memory.buffer,
     this.getErrorDescription(context.parser),
-    this.getErrorDescriptionLen(context.parser)
+    context.values.readUInt32LE(context.milo.ERROR_DESCRIPTION_LEN)
   )
 
   let callbackError = this.getCallbackError(context.parser)
@@ -180,13 +180,14 @@ function onError(context, from, size) {
     })
   }
 
+  const errorCode = context.values.readUInt32LE(context.milo.VALUES_ERROR_CODE)
   return appendOutput(
     sprintf(
       '"pos": {}, "event": {}, "error_code": {}, "error_code_string": "{}", reason: "{}", callbackError: {}',
-      this.getPosition(context.parser),
+      context.values.readUInt32LE(context.milo.VALUES_POSITION),
       'error',
-      this.getErrorCode(context.parser),
-      this.Errors[this.getErrorCode(context.parser)],
+      errorCode,
+      this.Errors[errorCode],
       errorDescription.toString(),
       callbackError
     ),
@@ -197,15 +198,15 @@ function onError(context, from, size) {
 }
 
 function onFinish(context, from, size) {
-  return event(context, 'finish', this.getPosition(context.parser), from, size)
+  return event(context, 'finish', context.values.readUInt32LE(context.milo.VALUES_POSITION), from, size)
 }
 
 function onRequest(context, from, size) {
-  return event(context, 'request', this.getPosition(context.parser), from, size)
+  return event(context, 'request', context.values.readUInt32LE(context.milo.VALUES_POSITION), from, size)
 }
 
 function onResponse(context, from, size) {
-  return event(context, 'response', this.getPosition(context.parser), from, size)
+  return event(context, 'response', context.values.readUInt32LE(context.milo.VALUES_POSITION), from, size)
 }
 
 function onMethod(context, from, size) {
@@ -243,15 +244,16 @@ function onHeaderValue(context, from, size) {
 function onHeaders(context, from, size) {
   processOffsets(context)
 
-  const position = this.getPosition(context.parser)
-  const chunked = this.hasChunkedTransferEncoding(context.parser)
-  const content_length = this.getContentLength(context.parser)
+  const position = context.values.readUInt32LE(context.milo.VALUES_POSITION)
+  const chunked = context.values.readUInt32LE(context.milo.VALUES_HAS_CHUNKED_TRANSFER_ENCODING)
+  const content_length = context.values.readUInt32LE(context.milo.VALUES_CONTENT_LENGTH)
   let method = context.method
   let url = context.url
   let protocol = context.protocol
   let version = context.version
 
-  if (this.getMessageType(context.parser) == this.RESPONSE) {
+  if (context.values.readUInt32LE(context.milo.VALUES_MESSAGE_TYPE) == context.milo.RESPONSE) {
+    const status = context.values.readUInt32LE(context.milo.VALUES_STATUS)
     const heading = sprintf('"pos": {}, "event": {}, "type": "response", ', position, formatEvent('headers'))
 
     if (chunked) {
@@ -259,7 +261,7 @@ function onHeaders(context, from, size) {
         sprintf(
           '{}"status": {}, "protocol": "{}", "version": "{}", "body": "chunked"',
           heading,
-          this.getStatus(context.parser),
+          status,
           protocol,
           version
         ),
@@ -272,7 +274,7 @@ function onHeaders(context, from, size) {
         sprintf(
           '{}"status": {}, "protocol": "{}", "version": "{}", "body": {}"',
           heading,
-          this.getStatus(context.parser),
+          status,
           protocol,
           version,
           content_length
@@ -283,13 +285,7 @@ function onHeaders(context, from, size) {
       )
     } else {
       return appendOutput(
-        sprintf(
-          '{}"status": {}, "protocol": "{}", "version": "{}", "body": null',
-          heading,
-          this.getStatus(context.parser),
-          protocol,
-          version
-        ),
+        sprintf('{}"status": {}, "protocol": "{}", "version": "{}", "body": null', heading, status, protocol, version),
         context,
         from,
         size
@@ -346,7 +342,7 @@ function onHeaders(context, from, size) {
 }
 
 function onUpgrade(context, from, size) {
-  return event(context, 'upgrade', this.getPosition(context.parser), from, size)
+  return event(context, 'upgrade', context.values.readUInt32LE(context.milo.VALUES_POSITION), from, size)
 }
 
 function onChunkLength(context, from, size) {
@@ -363,11 +359,11 @@ function onChunkExtensionValue(context, from, size) {
 
 function onChunk(context, from, size) {
   processOffsets(context)
-  return event(context, 'chunk', this.getPosition(context.parser), from, size)
+  return event(context, 'chunk', context.values.readUInt32LE(context.milo.VALUES_POSITION), from, size)
 }
 
 function onBody(context, from, size) {
-  return event(context, 'body', this.getPosition(context.parser), from, size)
+  return event(context, 'body', context.values.readUInt32LE(context.milo.VALUES_POSITION), from, size)
 }
 
 function onData(context, from, size) {
@@ -385,7 +381,7 @@ function onTrailerValue(context, from, size) {
 
 function onTrailers(context, from, size) {
   processOffsets(context)
-  return event(context, 'trailers', this.getPosition(context.parser), from, size)
+  return event(context, 'trailers', context.values.readUInt32LE(context.milo.VALUES_POSITION), from, size)
 }
 
 let testData = undefined
@@ -396,7 +392,12 @@ export async function load() {
 
   const milo = await import(`../lib/${process.env.CONFIGURATION ?? process.argv[2]}/milo.js`)
   const parser = milo.create()
-  const context = { milo, parser }
+  const context = {
+    milo,
+    parser,
+    values: Buffer.from(milo.memory.buffer, milo.getValues(parser), milo.VALUES_SIZE),
+    offsets: Buffer.from(milo.memory.buffer, milo.getOffsets(parser), milo.MAX_OFFSETS_COUNT)
+  }
 
   milo.setBeforeStateChange(parser, beforeStateChange.bind(milo, context))
   milo.setAfterStateChange(parser, afterStateChange.bind(milo, context))

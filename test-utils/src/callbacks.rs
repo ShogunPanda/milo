@@ -7,23 +7,24 @@ mod output;
 use std::{os::unix::process, slice, str};
 
 use milo::{
-  clear_offsets, error_code_string, flags, state_string, Offsets, Parser, DEBUG, MAX_OFFSETS_COUNT, OFFSET_BODY,
-  OFFSET_CHUNK, OFFSET_CHUNK_EXTENSION_NAME, OFFSET_CHUNK_EXTENSION_VALUE, OFFSET_CHUNK_LENGTH, OFFSET_DATA,
-  OFFSET_HEADERS, OFFSET_HEADER_NAME, OFFSET_HEADER_VALUE, OFFSET_MESSAGE_COMPLETE, OFFSET_MESSAGE_START,
-  OFFSET_METHOD, OFFSET_PROTOCOL, OFFSET_REASON, OFFSET_STATUS, OFFSET_TRAILERS, OFFSET_TRAILER_NAME,
-  OFFSET_TRAILER_VALUE, OFFSET_URL, OFFSET_VERSION, RESPONSE,
+  clear_offsets, error_code_string, flags, get_content_length, get_error_code, get_error_description_len,
+  get_message_type, get_offsets_count, get_position, get_state, get_status, has_chunked_transfer_encoding,
+  state_string, Offsets, Parser, DEBUG, MAX_OFFSETS_COUNT, OFFSET_BODY, OFFSET_CHUNK, OFFSET_CHUNK_EXTENSION_NAME,
+  OFFSET_CHUNK_EXTENSION_VALUE, OFFSET_CHUNK_LENGTH, OFFSET_DATA, OFFSET_HEADERS, OFFSET_HEADER_NAME,
+  OFFSET_HEADER_VALUE, OFFSET_MESSAGE_COMPLETE, OFFSET_MESSAGE_START, OFFSET_METHOD, OFFSET_PROTOCOL, OFFSET_REASON,
+  OFFSET_STATUS, OFFSET_TRAILERS, OFFSET_TRAILER_NAME, OFFSET_TRAILER_VALUE, OFFSET_URL, OFFSET_VERSION, RESPONSE,
 };
 
 use self::output::extract_payload;
 
 pub fn process_offsets(parser: &Parser) {
   let mut context = unsafe { Box::from_raw(parser.owner.get() as *mut context::Context) };
-  let mut offsets = unsafe { Vec::from_raw_parts(parser.offsets.get(), MAX_OFFSETS_COUNT * 3, MAX_OFFSETS_COUNT * 3) };
+  let offsets = unsafe { Vec::from_raw_parts(parser.offsets, MAX_OFFSETS_COUNT * 3, MAX_OFFSETS_COUNT * 3) };
 
-  let total = offsets[2];
-  offsets[2] = 0;
+  let total = get_offsets_count(parser);
+  clear_offsets(parser);
 
-  for i in 1..=total {
+  for i in 0..total {
     let offset_from = offsets[i * 3 + 1];
     let offset_size = offsets[i * 3 + 2];
 
@@ -127,7 +128,7 @@ pub fn before_state_change(parser: &Parser, from: usize, size: usize) -> isize {
     parser,
     format!(
       "\"pos\": {}, \"event\": \"before_state_change\", \"current_state\": \"{}\"",
-      parser.position.get(),
+      get_position(parser),
       state_string(parser)
     ),
     from,
@@ -140,7 +141,7 @@ pub fn after_state_change(parser: &Parser, from: usize, size: usize) -> isize {
     parser,
     format!(
       "\"pos\": {}, \"event\": \"after_state_change\", \"current_state\": \"{}\"",
-      parser.position.get(),
+      get_position(parser),
       state_string(parser)
     ),
     from,
@@ -153,7 +154,7 @@ pub fn on_message_start(parser: &Parser, from: usize, size: usize) -> isize {
     parser,
     format!(
       "\"pos\": {}, \"event\": \"begin\", \"configuration\": {{ \"debug\": {} }}",
-      parser.position.get(),
+      get_position(parser),
       DEBUG,
     ),
     from,
@@ -163,7 +164,7 @@ pub fn on_message_start(parser: &Parser, from: usize, size: usize) -> isize {
 
 pub fn on_message_complete(parser: &Parser, from: usize, size: usize) -> isize {
   process_offsets(parser);
-  output::event(parser, "complete", parser.position.get(), from, size)
+  output::event(parser, "complete", get_position(parser), from, size)
 }
 
 pub fn on_error(parser: &Parser, from: usize, size: usize) -> isize {
@@ -172,13 +173,13 @@ pub fn on_error(parser: &Parser, from: usize, size: usize) -> isize {
       parser,
       format!(
         "\"pos\": {}, \"event\": {}, \"error_code={}, \"error_code_string\": \"{}\", reason=\"{}\"",
-        parser.position.get(),
+        get_position(parser),
         "error",
-        parser.error_code.get(),
+        get_error_code(parser),
         error_code_string(parser),
         str::from_utf8_unchecked(slice::from_raw_parts(
           parser.error_description.get(),
-          parser.error_description_len.get()
+          get_error_description_len(parser)
         ))
       ),
       from,
@@ -188,15 +189,15 @@ pub fn on_error(parser: &Parser, from: usize, size: usize) -> isize {
 }
 
 pub fn on_finish(parser: &Parser, from: usize, size: usize) -> isize {
-  output::event(parser, "finish", parser.position.get(), from, size)
+  output::event(parser, "finish", get_position(parser), from, size)
 }
 
 pub fn on_request(parser: &Parser, from: usize, size: usize) -> isize {
-  output::event(parser, "request", parser.position.get(), from, size)
+  output::event(parser, "request", get_position(parser), from, size)
 }
 
 pub fn on_response(parser: &Parser, from: usize, size: usize) -> isize {
-  output::event(parser, "response", parser.position.get(), from, size)
+  output::event(parser, "response", get_position(parser), from, size)
 }
 
 pub fn on_method(parser: &Parser, from: usize, size: usize) -> isize { output::show_span(parser, "method", from, size) }
@@ -228,9 +229,9 @@ pub fn on_headers(parser: &Parser, from: usize, size: usize) -> isize {
 
   let context = unsafe { Box::from_raw(parser.owner.get() as *mut context::Context) };
 
-  let position = parser.position.get();
-  let chunked = parser.has_chunked_transfer_encoding.get();
-  let content_length = parser.content_length.get();
+  let position = get_position(parser);
+  let chunked = has_chunked_transfer_encoding(parser);
+  let content_length = get_content_length(parser);
 
   let method: String = context.method.clone();
   let url: String = context.url.clone();
@@ -238,7 +239,7 @@ pub fn on_headers(parser: &Parser, from: usize, size: usize) -> isize {
   let version: String = context.version.clone();
   Box::into_raw(context);
 
-  if parser.message_type.get() == RESPONSE {
+  if get_message_type(parser) == RESPONSE {
     let heading = format!(
       "\"pos\": {}, \"event\": {}, \"type\": \"response\", ",
       position,
@@ -251,7 +252,7 @@ pub fn on_headers(parser: &Parser, from: usize, size: usize) -> isize {
         format!(
           "{}\"status\": {}, \"protocol\": \"{}\", \"version\": \"{}\", \"body\": \"chunked\"",
           heading,
-          parser.status.get(),
+          get_status(parser),
           protocol,
           version,
         ),
@@ -264,7 +265,7 @@ pub fn on_headers(parser: &Parser, from: usize, size: usize) -> isize {
         format!(
           "{}\"status\": {}, \"protocol\": \"{}\", \"version\": \"{}\", \"body\": {}",
           heading,
-          parser.status.get(),
+          get_status(parser),
           protocol,
           version,
           content_length
@@ -278,7 +279,7 @@ pub fn on_headers(parser: &Parser, from: usize, size: usize) -> isize {
         format!(
           "{}\"status\": {}, \"protocol\": \"{}\", \"version\": \"{}\", \"body\": null",
           heading,
-          parser.status.get(),
+          get_status(parser),
           protocol,
           version,
         ),
@@ -328,7 +329,7 @@ pub fn on_headers(parser: &Parser, from: usize, size: usize) -> isize {
 }
 
 pub fn on_upgrade(parser: &Parser, from: usize, size: usize) -> isize {
-  output::event(parser, "upgrade", parser.position.get(), from, size)
+  output::event(parser, "upgrade", get_position(parser), from, size)
 }
 
 pub fn on_chunk_length(parser: &Parser, from: usize, size: usize) -> isize {
@@ -345,7 +346,7 @@ pub fn on_chunk_extension_value(parser: &Parser, from: usize, size: usize) -> is
 
 pub fn on_chunk(parser: &Parser, from: usize, size: usize) -> isize {
   process_offsets(parser);
-  output::event(parser, "chunk", parser.position.get(), from, size)
+  output::event(parser, "chunk", get_position(parser), from, size)
 }
 
 pub fn on_data(parser: &Parser, from: usize, size: usize) -> isize {
@@ -354,7 +355,7 @@ pub fn on_data(parser: &Parser, from: usize, size: usize) -> isize {
 }
 
 pub fn on_body(parser: &Parser, from: usize, size: usize) -> isize {
-  output::event(parser, "body", parser.position.get(), from, size)
+  output::event(parser, "body", get_position(parser), from, size)
 }
 
 pub fn on_trailer_name(parser: &Parser, from: usize, size: usize) -> isize {
@@ -367,5 +368,5 @@ pub fn on_trailer_value(parser: &Parser, from: usize, size: usize) -> isize {
 
 pub fn on_trailers(parser: &Parser, from: usize, size: usize) -> isize {
   process_offsets(parser);
-  output::event(parser, "trailers", parser.position.get(), from, size)
+  output::event(parser, "trailers", get_position(parser), from, size)
 }

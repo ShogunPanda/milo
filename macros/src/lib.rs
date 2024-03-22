@@ -7,6 +7,7 @@ mod generators;
 mod matchers;
 mod native;
 mod parsing;
+mod values;
 mod wasm;
 
 // #region definitions
@@ -55,6 +56,29 @@ pub fn url(_: TokenStream) -> TokenStream { matchers::url() }
 pub fn otherwise(input: TokenStream) -> TokenStream { matchers::otherwise(input) }
 // #endregion matchers
 
+// #region values access
+#[proc_macro]
+pub fn get(input: TokenStream) -> TokenStream { values::get(input) }
+
+#[proc_macro]
+pub fn set(input: TokenStream) -> TokenStream { values::set(input) }
+
+#[proc_macro]
+pub fn add(input: TokenStream) -> TokenStream { values::add(input) }
+
+#[proc_macro]
+pub fn sub(input: TokenStream) -> TokenStream { values::sub(input) }
+
+#[proc_macro]
+pub fn getters(_: TokenStream) -> TokenStream { values::getters() }
+
+#[proc_macro]
+pub fn native_getters(_: TokenStream) -> TokenStream { native::getters_native() }
+
+#[proc_macro]
+pub fn wasm_getters(_: TokenStream) -> TokenStream { wasm::wasm_getters() }
+// #endregion values access
+
 // #region actions
 #[proc_macro]
 pub fn string_length(input: TokenStream) -> TokenStream { actions::string_length(input) }
@@ -100,8 +124,4 @@ pub fn generate_enums(_: TokenStream) -> TokenStream { generators::generate_enum
 
 #[proc_macro]
 pub fn generate_callbacks(_: TokenStream) -> TokenStream { native::generate_callbacks_native() }
-
-#[proc_macro]
-pub fn wasm_getter(input: TokenStream) -> TokenStream { wasm::wasm_getter(input) }
-
 // #endregion generators

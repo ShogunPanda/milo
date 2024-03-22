@@ -12,23 +12,22 @@ use core::str;
 use core::{slice, slice::from_raw_parts};
 
 use js_sys::{Function, Uint8Array};
-use milo_macros::callback_no_return;
+use milo_macros::{callback_no_return, get, set};
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::{wasm_bindgen, JsValue};
 
 #[cfg(target_family = "wasm")]
 use crate::run_callback;
 use crate::{
-  fail, states_handlers, Parser, ERROR_CALLBACK_ERROR, ERROR_UNEXPECTED_DATA, MAX_OFFSETS_COUNT, STATE_ERROR,
-  STATE_FINISH, SUSPEND,
+  fail, Parser, ERROR_CALLBACK_ERROR, ERROR_UNEXPECTED_DATA, MAX_OFFSETS_COUNT, STATES_HANDLERS, STATE_ERROR,
+  STATE_FINISH, SUSPEND, VALUE_OFFSETS_COUNT,
 };
 
 /// Parses a slice of characters. It returns the number of consumed
 /// characters.
 pub fn parse(parser: &Parser, data: *const c_uchar, limit: usize) -> usize {
   // If the parser is paused, this is a no-op
-
-  if parser.paused.get() {
+  if get!(paused) {
     return 0;
   }
 
@@ -39,9 +38,9 @@ pub fn parse(parser: &Parser, data: *const c_uchar, limit: usize) -> usize {
   let mut consumed = 0;
   let mut limit = limit;
   let aggregate: Vec<c_uchar>;
-  let unconsumed_len = parser.unconsumed_len.get();
+  let unconsumed_len = get!(unconsumed_len);
 
-  let mut current = if parser.manage_unconsumed.get() && unconsumed_len > 0 {
+  let mut current = if get!(manage_unconsumed) && unconsumed_len > 0 {
     unsafe {
       limit += unconsumed_len;
       let unconsumed = from_raw_parts(parser.unconsumed.get(), unconsumed_len);
@@ -63,29 +62,30 @@ pub fn parse(parser: &Parser, data: *const c_uchar, limit: usize) -> usize {
   let start = Instant::now();
 
   #[cfg(all(debug_assertions, feature = "debug"))]
-  let mut previous_state = parser.state.get();
+  let mut previous_state = get!(state);
 
   // Since states might advance position manually, the parser have to explicitly
   // track it
-  let mut initial_position = parser.position.update(|_| 0);
+  set!(position, 0);
+  let mut initial_position = 0;
 
-  let offsets = parser.offsets.get();
-  unsafe { *(offsets.offset(2)) = 0 };
+  let offsets = &parser.offsets;
+  unsafe { parser.values.add(VALUE_OFFSETS_COUNT).cast::<usize>().write(0) };
 
   // Until there is data or there is a request to continue
-  while !current.is_empty() || parser.continue_without_data.get() {
+  while !current.is_empty() || get!(continue_without_data) {
     // Reset the continue_without_data bit
-    parser.continue_without_data.set(false);
+    set!(continue_without_data, false);
 
     // If the parser has finished and it receives more data, error
-    if parser.state.get() == STATE_FINISH {
+    if get!(state) == STATE_FINISH {
       let _ = fail(parser, ERROR_UNEXPECTED_DATA, "unexpected data");
       continue;
     }
 
     // Apply the current state
-    let result = (states_handlers[parser.state.get()])(parser, current);
-    let new_state = parser.state.get();
+    let result = (STATES_HANDLERS[get!(state)])(parser, current);
+    let new_state = get!(state);
 
     // If the parser finished or errored, execute callbacks
     if new_state == STATE_FINISH {
@@ -93,7 +93,7 @@ pub fn parse(parser: &Parser, data: *const c_uchar, limit: usize) -> usize {
     } else if new_state == STATE_ERROR {
       callback_no_return!(on_error);
       break;
-    } else if unsafe { *(offsets.offset(2)) as usize } == MAX_OFFSETS_COUNT {
+    } else if unsafe { parser.values.add(VALUE_OFFSETS_COUNT).cast::<usize>().read() } == MAX_OFFSETS_COUNT {
       // We can't write a new offset, bail out earlier
       break;
     } else if result == SUSPEND {
@@ -102,7 +102,8 @@ pub fn parse(parser: &Parser, data: *const c_uchar, limit: usize) -> usize {
     }
 
     // Update the position of the parser
-    let new_position = parser.position.update(|x| x + (result as usize));
+    let new_position = get!(position) + (result as usize);
+    set!(position, new_position);
 
     // Compute how many bytes were actually consumed and then advance the data
     let difference = new_position - initial_position;
@@ -120,7 +121,7 @@ pub fn parse(parser: &Parser, data: *const c_uchar, limit: usize) -> usize {
         println!(
           "[milo::debug] loop iteration ({:?} -> {:?}) completed in {} ns",
           previous_state,
-          parser.state.get(),
+          get!(state),
           duration
         );
       }
@@ -130,21 +131,21 @@ pub fn parse(parser: &Parser, data: *const c_uchar, limit: usize) -> usize {
     }
 
     // If a callback paused the parser, break now
-    if parser.paused.get() {
+    if get!(paused) {
       break;
     }
   }
 
-  parser.parsed.update(|x| x + (consumed as u64));
+  set!(parsed, get!(parsed) + (consumed as u64));
 
-  if parser.manage_unconsumed.get() {
+  if get!(manage_unconsumed) {
     unsafe {
       // Drop any previous retained data
       if unconsumed_len > 0 {
         Vec::from_raw_parts(parser.unconsumed.get() as *mut c_uchar, unconsumed_len, unconsumed_len);
 
         parser.unconsumed.set(ptr::null());
-        parser.unconsumed_len.set(0);
+        set!(unconsumed_len, 0);
       }
 
       // If less bytes were consumed than requested, copy the unconsumed portion in
@@ -153,7 +154,7 @@ pub fn parse(parser: &Parser, data: *const c_uchar, limit: usize) -> usize {
         let (ptr, len, _) = current.to_vec().into_raw_parts();
 
         parser.unconsumed.set(ptr);
-        parser.unconsumed_len.set(len);
+        set!(unconsumed_len, len);
       }
     }
   }
@@ -165,7 +166,7 @@ pub fn parse(parser: &Parser, data: *const c_uchar, limit: usize) -> usize {
     if duration > 0 {
       println!(
         "[milo::debug] parse ({:?}, consumed {} of {}) completed in {} ns",
-        parser.state.get(),
+        get!(state),
         consumed,
         limit,
         duration
@@ -174,7 +175,7 @@ pub fn parse(parser: &Parser, data: *const c_uchar, limit: usize) -> usize {
   }
 
   unsafe {
-    *(offsets.offset(0)) = parser.state.get();
+    *(offsets.offset(0)) = get!(state);
     *(offsets.offset(1)) = consumed;
   }
 

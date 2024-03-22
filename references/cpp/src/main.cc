@@ -23,17 +23,17 @@ uchar_t* copy_string(uchar_t* source, usize_t size) {
 }
 
 void process_offsets(const milo::Parser* parser) {
-  usize_t position = parser->position;
-  usize_t content_length = parser->content_length;
-  bool chunked = parser->has_chunked_transfer_encoding;
+  usize_t position = milo::milo_get_position(parser);
+  usize_t content_length = milo::milo_get_content_length(parser);
+  bool chunked = milo::milo_has_chunked_transfer_encoding(parser);
 
   context_t* context = reinterpret_cast<context_t*>(parser->owner);
 
   usize_t* offsets = parser->offsets;
-  usize_t total = offsets[2];
-  offsets[2] = 0;
+  usize_t total = milo::milo_get_offsets_count(parser);
+  milo::milo_clear_offsets(parser);
 
-  for (uintptr_t i = 1; i <= total; i++) {
+  for (uintptr_t i = 0; i < total; i++) {
     usize_t offset_from = offsets[i * 3 + 1];
     usize_t offset_size = offsets[i * 3 + 2];
     EXTRACT_PAYLOAD(value, parser, offset_from, offset_size);
@@ -113,7 +113,7 @@ void process_offsets(const milo::Parser* parser) {
 isize_t before_state_change(const milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
 
-  usize_t position = parser->position;
+  usize_t position = milo::milo_get_position(parser);
   auto state = milo::milo_state_string(parser);
 
   auto message = create_string();
@@ -126,7 +126,7 @@ isize_t before_state_change(const milo::Parser* parser, usize_t from, usize_t si
 
 isize_t after_state_change(const milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  usize_t position = parser->position;
+  usize_t position = milo::milo_get_position(parser);
   auto state = milo::milo_state_string(parser);
 
   auto message = create_string();
@@ -139,7 +139,7 @@ isize_t after_state_change(const milo::Parser* parser, usize_t from, usize_t siz
 
 isize_t on_message_start(const milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  usize_t position = parser->position;
+  usize_t position = milo::milo_get_position(parser);
 
   auto message = create_string();
   snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
@@ -153,13 +153,13 @@ isize_t on_message_complete(const milo::Parser* parser, usize_t from, usize_t si
   process_offsets(parser);
 
   EXTRACT_PAYLOAD(data, parser, from, size);
-  return event(parser, "complete", parser->position, data, size);
+  return event(parser, "complete", milo::milo_get_position(parser), data, size);
 }
 
 isize_t on_error(const milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  usize_t position = parser->position;
-  usize_t error_code = static_cast<usize_t>(parser->error_code);
+  usize_t position = milo::milo_get_position(parser);
+  usize_t error_code = static_cast<usize_t>(milo::milo_get_error_code(parser));
   auto error_code_string = milo::milo_error_code_string(parser);
   auto error_code_description = milo::milo_error_description_string(parser);
 
@@ -175,17 +175,17 @@ isize_t on_error(const milo::Parser* parser, usize_t from, usize_t size) {
 
 isize_t on_finish(const milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  return event(parser, "finish", parser->position, data, size);
+  return event(parser, "finish", milo::milo_get_position(parser), data, size);
 }
 
 isize_t on_request(const milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  return event(parser, "request", parser->position, data, size);
+  return event(parser, "request", milo::milo_get_position(parser), data, size);
 }
 
 isize_t on_response(const milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  return event(parser, "response", parser->position, data, size);
+  return event(parser, "response", milo::milo_get_position(parser), data, size);
 }
 
 isize_t on_method(const milo::Parser* parser, usize_t from, usize_t size) {
@@ -230,9 +230,9 @@ isize_t on_header_value(const milo::Parser* parser, usize_t from, usize_t size) 
 
 isize_t on_headers(const milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  usize_t position = parser->position;
-  usize_t content_length = parser->content_length;
-  bool chunked = parser->has_chunked_transfer_encoding;
+  usize_t position = milo::milo_get_position(parser);
+  usize_t content_length = milo::milo_get_content_length(parser);
+  bool chunked = milo::milo_has_chunked_transfer_encoding(parser);
 
   context_t* context = reinterpret_cast<context_t*>(parser->owner);
   uchar_t* method = context->method;
@@ -243,22 +243,22 @@ isize_t on_headers(const milo::Parser* parser, usize_t from, usize_t size) {
   auto message = create_string();
   process_offsets(parser);
 
-  if (parser->message_type == milo::RESPONSE) {
+  if (milo::milo_get_message_type(parser) == milo::RESPONSE) {
     if (chunked) {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %lu, \"protocol\": \"%s\", "
                "\"version\": \"%s\", \"body\": \"chunked\"",
-               position, parser->status, protocol, version);
+               position, milo::milo_get_status(parser), protocol, version);
     } else if (content_length > 0) {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %lu, \"protocol\": \"%s\", "
                "\"version\": \"%s\", \"body\": %lu",
-               position, parser->status, protocol, version, content_length);
+               position, milo::milo_get_status(parser), protocol, version, content_length);
     } else {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %lu, \"protocol\": \"%s\", "
                "\"version\": \"%s\", \"body\": null",
-               position, parser->status, protocol, version);
+               position, milo::milo_get_status(parser), protocol, version);
     }
   } else {
     if (chunked) {
@@ -284,7 +284,7 @@ isize_t on_headers(const milo::Parser* parser, usize_t from, usize_t size) {
 
 isize_t on_upgrade(const milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  return event(parser, "upgrade", parser->position, data, size);
+  return event(parser, "upgrade", milo::milo_get_position(parser), data, size);
 }
 
 isize_t on_chunk_length(const milo::Parser* parser, usize_t from, usize_t size) {
@@ -305,36 +305,13 @@ isize_t on_chunk_extension_value(const milo::Parser* parser, usize_t from, usize
 isize_t on_chunk(const milo::Parser* parser, usize_t from, usize_t size) {
   process_offsets(parser);
 
-  usize_t* offsets = parser->offsets;
-  usize_t total = offsets[2];
-
-  for (uintptr_t i = 1; i <= total; i++) {
-    usize_t offset_from = offsets[i * 3 + 1];
-    usize_t offset_size = offsets[i * 3 + 2];
-    EXTRACT_PAYLOAD(value, parser, offset_from, offset_size);
-
-    switch (offsets[i * 3]) {
-    case milo::OFFSET_CHUNK_LENGTH:
-      event(parser, "offset.chunk_length", offset_from, value, offset_size);
-      break;
-    case milo::OFFSET_CHUNK_EXTENSION_NAME:
-      event(parser, "offset.chunk_extensions_name", offset_from, value, offset_size);
-      break;
-    case milo::OFFSET_CHUNK_EXTENSION_VALUE:
-      event(parser, "offset.chunk_extension_value", offset_from, value, offset_size);
-      break;
-    }
-  }
-
-  milo::milo_clear_offsets(parser);
-
   EXTRACT_PAYLOAD(data, parser, from, size);
-  return event(parser, "chunk", parser->position, data, size);
+  return event(parser, "chunk", milo::milo_get_position(parser), data, size);
 }
 
 isize_t on_body(const milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  return event(parser, "body", parser->position, data, size);
+  return event(parser, "body", milo::milo_get_position(parser), data, size);
 }
 
 isize_t on_data(const milo::Parser* parser, usize_t from, usize_t size) {
@@ -358,7 +335,7 @@ isize_t on_trailers(const milo::Parser* parser, usize_t from, usize_t size) {
   process_offsets(parser);
 
   EXTRACT_PAYLOAD(data, parser, from, size);
-  return event(parser, "trailers", parser->position, data, size);
+  return event(parser, "trailers", milo::milo_get_position(parser), data, size);
 }
 
 int main() {
@@ -403,7 +380,8 @@ int main() {
   usize_t consumed = milo::milo_parse(parser, reinterpret_cast<const uchar_t*>(request1), strlen(request1));
   auto state = milo::milo_state_string(parser);
 
-  printf("{ \"pos\": %lu, \"consumed\": %lu, \"state\": \"%s\" }\n", parser->position, consumed, state.ptr);
+  printf("{ \"pos\": %lu, \"consumed\": %lu, \"state\": \"%s\" }\n", milo::milo_get_position(parser), consumed,
+         state.ptr);
   milo::milo_free_string(state);
   clear_context(&context);
 
@@ -413,7 +391,8 @@ int main() {
   consumed = milo::milo_parse(parser, reinterpret_cast<const uchar_t*>(request2), strlen(request2));
   state = milo::milo_state_string(parser);
 
-  printf("{ \"pos\": %lu, \"consumed\": %lu, \"state\": \"%s\" }\n", parser->position, consumed, state.ptr);
+  printf("{ \"pos\": %lu, \"consumed\": %lu, \"state\": \"%s\" }\n", milo::milo_get_position(parser), consumed,
+         state.ptr);
   milo::milo_free_string(state);
   clear_context(&context);
 

@@ -1,9 +1,11 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use regex::{Captures, Regex};
-use syn::parse_macro_input;
 
-use crate::parsing::{IdentifiersWithExpr, Property};
+use crate::{
+  definitions::{VALUES, VALUES_OFFSETS},
+  parsing::IdentifiersWithExpr,
+};
 
 // Handles a callback.
 pub fn callback_wasm(definition: &IdentifiersWithExpr, return_on_error: bool) -> proc_macro2::TokenStream {
@@ -48,14 +50,14 @@ pub fn callback_wasm(definition: &IdentifiersWithExpr, return_on_error: bool) ->
   let invocation = if let Some(length) = &definition.expr {
     quote! {
       {
-        let ret = run_callback(parser.wasm_ptr.get(), crate::#callback_value, parser.position.get(), #length);
+        let ret = run_callback(parser.ptr.get(), crate::#callback_value, get!(position), #length);
         #validate_wasm
       }
     }
   } else {
     quote! {
       {
-        let ret = run_callback(parser.wasm_ptr.get(), crate::#callback_value, 0, 0);
+        let ret = run_callback(parser.ptr.get(), crate::#callback_value, 0, 0);
         #validate_wasm
       }
     }
@@ -81,22 +83,40 @@ pub fn callback_wasm(definition: &IdentifiersWithExpr, return_on_error: bool) ->
   }
 }
 
-// Generates a getter.
-pub fn wasm_getter(input: TokenStream) -> TokenStream {
-  let definition = parse_macro_input!(input as Property);
-  let property = definition.property;
-  let fn_name = format_ident!("get_{}", &property.to_string());
-  let getter = definition.getter;
-  let return_type = definition.r#type;
+/// Generate getters for the parser.
+pub fn wasm_getters() -> TokenStream {
+  let values_offsets = unsafe { VALUES_OFFSETS.get().unwrap() };
 
-  TokenStream::from(quote! {
-    #[wasm_bindgen(js_name = #getter)]
-    pub fn #fn_name(raw: *mut c_void) -> #return_type {
-      let parser = unsafe { Box::from_raw(raw as *mut Parser) };
-      let value = parser.#property.get();
-      Box::into_raw(parser);
+  let getters: Vec<_> = unsafe { VALUES.get().unwrap() }
+    .iter()
+    .map(|(name, raw_return_type)| {
+      let offset = values_offsets.get(name).unwrap();
+      let getter = if name.starts_with("is") || name.starts_with("has") {
+        format_ident!("{}", name)
+      } else {
+        format_ident!("{}_{}", if raw_return_type == "bool" { "is" } else { "get" }, name)
+      };
 
-      value
-    }
-  })
+      let snake_matcher = Regex::new(r"_([a-z])").unwrap();
+
+      let js_name = format_ident!(
+        "{}",
+        snake_matcher.replace_all(&getter.to_string(), |captures: &Captures| captures[1].to_uppercase())
+      );
+
+      let return_type = format_ident!("{}", raw_return_type);
+
+      quote! {
+        // Returns the parser #name.
+        #[wasm_bindgen(js_name = #js_name)]
+
+        // Returns the parser #name.
+        pub fn #getter (parser: *mut c_void) -> #return_type {
+          unsafe { parser.cast::<Parser>().read().values.add(#offset).cast::<#return_type>().read() }
+        }
+      }
+    })
+    .collect();
+
+  TokenStream::from(quote! { #(#getters)* })
 }

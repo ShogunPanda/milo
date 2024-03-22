@@ -27,7 +27,6 @@ export async function main() {
   const consumed = milo.parse(parser, ptr, message.length)
 
   const state = milo.States[milo.getState(parser)]
-  console.log(parser)
   console.log(
     JSON.stringify(
       {

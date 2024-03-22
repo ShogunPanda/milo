@@ -3,7 +3,7 @@ use quote::{format_ident, quote};
 use syn::{parse_macro_input, parse_str, Arm, Expr, Ident};
 
 use crate::{
-  definitions::{init_constants, METHODS, OFFSETS},
+  definitions::{init_constants, METHODS, OFFSETS, VALUES_OFFSETS},
   native::callback_native,
   parsing::{Failure, IdentifiersWithExpr, StringLength},
   wasm::callback_wasm,
@@ -49,14 +49,14 @@ pub fn move_to(input: TokenStream) -> TokenStream {
     if let Some(expr) = definition.expr {
       TokenStream::from(quote! {
         {
-          parser.state.set(#state);
+          set!(state, #state);
           (#expr) as isize
         }
       })
     } else {
       TokenStream::from(quote! {
         {
-          parser.state.set(#state);
+          set!(state, #state);
           1
         }
       })
@@ -96,7 +96,7 @@ pub fn consume(input: TokenStream) -> TokenStream {
   ];
 
   let table: Ident = if valid_tables.contains(&name) {
-    format_ident!("{}_table", name)
+    format_ident!("{}_TABLE", name.to_uppercase())
   } else {
     panic!("Unsupported consumed type {}", name)
   };
@@ -137,18 +137,20 @@ pub fn callback(input: TokenStream, return_on_error: bool) -> TokenStream {
 
     quote! {
       unsafe {
-        let offsets = parser.offsets.get();
+        let offsets = &parser.offsets;
 
-        // Get the current offset (and add 1 as the first three are reserved)
-        let current = ((*offsets.offset(2) + 1) * 3) as isize;
+        // Get the current offset and increase it
+        let offsets_count = parser.values.add(VALUE_OFFSETS_COUNT).cast::<usize>();
+        let mut current = offsets_count.read();
+        offsets_count.write(current + 1);
 
-        // Update the counter
-        *(offsets.offset(2)) += 1;
+        // Multiply by three since offsets are actually triplets
+        current *= 3;
 
         // Set the offset type, the start and the length
-        *(offsets.offset(current)) = #offset_name;
-        *(offsets.offset(current + 1)) = parser.position.get();
-        *(offsets.offset(current + 2)) = (#length);
+        offsets.add(current).cast::<usize>().write(#offset_name);
+        offsets.add(current + 1).cast::<usize>().write(get!(position));
+        offsets.add(current + 2).cast::<usize>().write((#length));
       }
     }
   } else {
@@ -177,7 +179,7 @@ pub fn suspend() -> TokenStream { TokenStream::from(quote! { SUSPEND }) }
 /// index).
 pub fn find_method(input: TokenStream) -> TokenStream {
   let identifier = parse_macro_input!(input as Expr);
-
+  let is_connect_offset = unsafe { VALUES_OFFSETS.get().unwrap().get("is_connect").unwrap() };
   init_constants();
 
   let methods: Vec<_> = METHODS
@@ -193,7 +195,11 @@ pub fn find_method(input: TokenStream) -> TokenStream {
         .join(", ");
 
       if x == "CONNECT" {
-        parse_str::<Arm>(&format!("[{}] => {{ parser.is_connect.set(true); {} }}", matcher, i)).unwrap()
+        parse_str::<Arm>(&format!(
+          "[{}] => {{ unsafe {{ parser.values.add({}).cast::<bool>().write(true); }}; {} }}",
+          matcher, is_connect_offset, i
+        ))
+        .unwrap()
       } else {
         parse_str::<Arm>(&format!("[{}] => {{ {} }}", matcher, i)).unwrap()
       }

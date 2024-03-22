@@ -88,5 +88,5 @@ pub fn show_span(parser: &Parser, name: &str, from: usize, size: usize) -> isize
     Box::into_raw(context);
   }
 
-  event(parser, name, parser.position.get(), from, size)
+  event(parser, name, milo::get_position(parser), from, size)
 }

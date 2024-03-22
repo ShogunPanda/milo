@@ -10,23 +10,23 @@ use core::time::Instant;
 use core::{slice, slice::from_raw_parts};
 
 use milo_macros::{
-  advance, callback, case_insensitive_string, char, consume, crlf, digit, double_crlf, fail, find_method, method,
-  move_to, otherwise, state, string, string_length, suspend, token,
+  add, advance, callback, case_insensitive_string, char, consume, crlf, digit, double_crlf, fail, find_method, method,
+  move_to, otherwise, state, string, string_length, sub, suspend, token,
 };
 
 use crate::*;
 
 // Depending on the mode flag, choose the initial state
 state!(start, {
-  match parser.mode.get() {
+  match get!(mode) {
     AUTODETECT => move_to!(autodetect, 0),
     REQUEST => {
-      parser.message_type.set(REQUEST);
+      set!(message_type, REQUEST);
       callback!(on_message_start);
       move_to!(request, 0)
     }
     RESPONSE => {
-      parser.message_type.set(RESPONSE);
+      set!(message_type, RESPONSE);
       callback!(on_message_start);
       move_to!(response, 0)
     }
@@ -43,12 +43,12 @@ state!(autodetect, {
   match data {
     crlf!() => 2, // RFC 9112 section 2.2,
     string!("HTTP/") | string!("RTSP/") => {
-      parser.message_type.set(RESPONSE);
+      set!(message_type, RESPONSE);
       callback!(on_message_start);
       move_to!(response, 0)
     }
     method!() => {
-      parser.message_type.set(REQUEST);
+      set!(message_type, REQUEST);
       callback!(on_message_start);
       move_to!(request, 0)
     }
@@ -79,7 +79,7 @@ state!(request_method, {
   match data[consumed] {
     char!(' ') if consumed > 0 => {
       find_method!(&data[..consumed]);
-      parser.method.set(method);
+      set!(method, method);
 
       callback!(on_method, consumed);
       move_to!(request_url, consumed + 1)
@@ -106,7 +106,7 @@ state!(request_protocol, {
   match data {
     string!("HTTP/") | string!("RTSP/") => {
       callback!(on_protocol, 4);
-      parser.position.update(|x| x + 4);
+      add!(position, 4);
 
       move_to!(request_version, 1)
     }
@@ -124,20 +124,20 @@ state!(request_version, {
       match version {
         string!("1.1") | string!("2.0") => {
           if data[0] == char!('1') {
-            parser.version_major.set(1);
-            parser.version_minor.set(1);
+            set!(version_major, 1);
+            set!(version_minor, 1);
           } else {
-            parser.version_major.set(2);
-            parser.version_minor.set(0);
+            set!(version_major, 2);
+            set!(version_minor, 0);
           }
           // Reject HTTP/2.0
-          if parser.method.get() == METHOD_PRI {
+          if get!(method) == METHOD_PRI {
             return fail!(UNSUPPORTED_HTTP_VERSION, "HTTP/2.0 is not supported");
           }
 
           callback!(on_version, 3);
 
-          parser.position.update(|x| x + 5);
+          add!(position, 5);
           callback!(on_request);
           move_to!(header_name, 0)
         }
@@ -176,11 +176,11 @@ state!(response_version, {
       match version {
         string!("1.1") | string!("2.0") => {
           if data[0] == char!('1') {
-            parser.version_major.set(1);
-            parser.version_minor.set(1);
+            set!(version_major, 1);
+            set!(version_minor, 1);
           } else {
-            parser.version_major.set(2);
-            parser.version_minor.set(0);
+            set!(version_major, 2);
+            set!(version_minor, 0);
           }
 
           callback!(on_version, 3);
@@ -199,10 +199,7 @@ state!(response_status, {
   match data {
     [digit!(), digit!(), digit!(), char!(' '), ..] => {
       // Store the status as integer
-      parser
-        .status
-        .set(unsafe { str::from_utf8_unchecked(&data[0..3]).parse::<usize>().unwrap() });
-
+      set!(status, str::from_utf8_unchecked(&data[0..3]).parse::<usize>().unwrap());
       callback!(on_status, 3);
       move_to!(response_reason, 4)
     }
@@ -218,10 +215,10 @@ state!(response_reason, {
     crlf!() => {
       if consumed > 0 {
         callback!(on_reason, consumed);
-        parser.position.update(|x| x + consumed);
+        add!(position, consumed);
       }
 
-      parser.position.update(|x| x + 2);
+      add!(position, 2);
       callback!(on_response);
       move_to!(header_name, 0)
     }
@@ -237,9 +234,9 @@ state!(header_name, {
   // Special headers treating
   match data {
     case_insensitive_string!("content-length:") => {
-      let status = parser.status.get();
+      let status = get!(status);
 
-      if parser.has_chunked_transfer_encoding.get() {
+      if get!(has_chunked_transfer_encoding) {
         return fail!(
           UNEXPECTED_CONTENT_LENGTH,
           "Unexpected Content-Length header when Transfer-Encoding header is present"
@@ -249,18 +246,18 @@ state!(header_name, {
           UNEXPECTED_CONTENT_LENGTH,
           "Unexpected Content-Length header for a response with status 204 or 1xx"
         );
-      } else if parser.content_length.get() != 0 {
+      } else if get!(content_length) != 0 {
         return fail!(INVALID_CONTENT_LENGTH, "Invalid duplicate Content-Length header");
       }
 
-      parser.has_content_length.set(true);
+      set!(has_content_length, true);
       callback!(on_header_name, string_length!("content-length"));
       return move_to!(header_content_length, string_length!("content-length", 1));
     }
     case_insensitive_string!("transfer-encoding:") => {
-      let status = parser.status.get();
+      let status = get!(status);
 
-      if parser.content_length.get() > 0 {
+      if get!(content_length) > 0 {
         return fail!(
           UNEXPECTED_TRANSFER_ENCODING,
           "Unexpected Transfer-Encoding header when Content-Length header is present"
@@ -282,13 +279,13 @@ state!(header_name, {
     }
     // RFC 9110 section 9.5
     case_insensitive_string!("trailer:") => {
-      parser.has_trailers.set(true);
+      set!(has_trailers, true);
       callback!(on_header_name, string_length!("trailer"));
       return move_to!(header_value, string_length!("trailer", 1));
     }
     // RFC 9110 section 7.8
     case_insensitive_string!("upgrade:") => {
-      parser.has_upgrade.set(true);
+      set!(has_upgrade, true);
       callback!(on_header_name, string_length!("upgrade"));
       return move_to!(header_value, string_length!("upgrade", 1));
     }
@@ -303,7 +300,7 @@ state!(header_name, {
       move_to!(header_value, consumed + 1)
     }
     crlf!() => {
-      parser.continue_without_data.set(true);
+      set!(continue_without_data, true);
       move_to!(headers, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid header field name character"),
@@ -315,7 +312,7 @@ state!(header_name, {
 state!(header_transfer_encoding, {
   // Ignore trailing OWS
   consume!(ws);
-  parser.position.update(|x| x + consumed);
+  add!(position, consumed);
   data = &data[consumed..];
 
   if let case_insensitive_string!("chunked\r\n")
@@ -325,15 +322,15 @@ state!(header_transfer_encoding, {
     // If this is 1, it means the Transfer-Encoding header was specified more than
     // once. This is the second repetition and therefore, the previous one is no
     // longer the last one, making it invalid.
-    if parser.has_chunked_transfer_encoding.get() {
+    if get!(has_chunked_transfer_encoding) {
       return fail!(
         INVALID_TRANSFER_ENCODING,
         "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can be provided only once"
       );
     }
 
-    parser.has_chunked_transfer_encoding.set(true);
-  } else if parser.has_chunked_transfer_encoding.get() {
+    set!(has_chunked_transfer_encoding, true);
+  } else if get!(has_chunked_transfer_encoding) {
     // Any other value when chunked was already specified is invalid as the previous
     // chunked would not be the last one anymore
     return fail!(
@@ -351,8 +348,8 @@ state!(header_transfer_encoding, {
   match data[consumed..] {
     double_crlf!() => {
       callback!(on_header_value, consumed);
-      parser.position.update(|x| x + consumed);
-      parser.continue_without_data.set(true);
+      add!(position, consumed);
+      set!(continue_without_data, true);
       move_to!(headers, 4)
     }
     crlf!() => {
@@ -368,7 +365,7 @@ state!(header_transfer_encoding, {
 state!(header_content_length, {
   // Ignore trailing OWS
   consume!(ws);
-  parser.position.update(|x| x + consumed);
+  add!(position, consumed);
   data = &data[consumed..];
 
   consume!(digit);
@@ -380,8 +377,8 @@ state!(header_content_length, {
   match data[consumed..] {
     crlf!() => {
       if let Ok(length) = unsafe { str::from_utf8_unchecked(&data[0..consumed]) }.parse::<u64>() {
-        parser.content_length.set(length);
-        parser.remaining_content_length.set(parser.content_length.get());
+        set!(content_length, length);
+        set!(remaining_content_length, length);
 
         callback!(on_header_value, consumed);
         move_to!(header_name, consumed + 2)
@@ -398,22 +395,22 @@ state!(header_content_length, {
 state!(header_connection, {
   // Ignore trailing OWS
   consume!(ws);
-  parser.position.update(|x| x + consumed);
+  add!(position, consumed);
   data = &data[consumed..];
 
   match data {
     case_insensitive_string!("close\r\n") => {
-      parser.connection.set(CONNECTION_CLOSE);
+      set!(connection, CONNECTION_CLOSE);
       callback!(on_header_value, string_length!("close"));
       return move_to!(header_name, string_length!("close", 2));
     }
     case_insensitive_string!("keep-alive\r\n") => {
-      parser.connection.set(CONNECTION_KEEPALIVE);
+      set!(connection, CONNECTION_KEEPALIVE);
       callback!(on_header_value, string_length!("keep-alive"));
       return move_to!(header_name, string_length!("keep-alive", 2));
     }
     case_insensitive_string!("upgrade\r\n") => {
-      parser.connection.set(CONNECTION_UPGRADE);
+      set!(connection, CONNECTION_UPGRADE);
       callback!(on_header_value, string_length!("upgrade"));
       return move_to!(header_name, string_length!("upgrade", 2));
     }
@@ -429,8 +426,8 @@ state!(header_connection, {
   match data[consumed..] {
     double_crlf!() => {
       callback!(on_header_value, consumed);
-      parser.position.update(|x| x + consumed);
-      parser.continue_without_data.set(true);
+      add!(position, consumed);
+      set!(continue_without_data, true);
       move_to!(headers, 4)
     }
     crlf!() => {
@@ -447,7 +444,7 @@ state!(header_value, {
   // Ignore trailing OWS
   consume!(ws);
 
-  parser.position.update(|x| x + consumed);
+  add!(position, consumed);
   data = &data[consumed..];
 
   consume!(token_value);
@@ -465,8 +462,8 @@ state!(header_value, {
   match data[consumed..] {
     double_crlf!() => {
       callback!(on_header_value, trimmed_consumed);
-      parser.position.update(|x| x + consumed);
-      parser.continue_without_data.set(true);
+      add!(position, consumed);
+      set!(continue_without_data, true);
       move_to!(headers, 4)
     }
     crlf!() => {
@@ -481,7 +478,7 @@ state!(header_value, {
 // RFC 9110 section 9.3.6 and 7.8 - Headers have finished, check if the
 // connection must be upgraded or a body is expected.
 state!(headers, {
-  if parser.has_upgrade.get() && parser.connection.get() != CONNECTION_UPGRADE {
+  if get!(has_upgrade) && get!(connection) != CONNECTION_UPGRADE {
     return fail!(
       MISSING_CONNECTION_UPGRADE,
       "Missing Connection header set to \"upgrade\" when using the Upgrade header"
@@ -490,12 +487,12 @@ state!(headers, {
 
   callback!(on_headers);
 
-  let method = parser.method.get();
-  let status = parser.status.get();
+  let method = get!(method);
+  let status = get!(status);
 
   // In case of Connection: Upgrade
-  if parser.has_upgrade.get() {
-    if parser.connection.get() != CONNECTION_UPGRADE {
+  if get!(has_upgrade) {
+    if get!(connection) != CONNECTION_UPGRADE {
       return fail!(
         MISSING_CONNECTION_UPGRADE,
         "Missing Connection header set to \"upgrade\" when using the Upgrade header"
@@ -507,43 +504,43 @@ state!(headers, {
   }
 
   // In case of CONNECT method
-  if parser.is_connect.get() {
+  if get!(is_connect) {
     callback!(on_connect);
     return move_to!(tunnel, 0);
   }
 
-  if (method == METHOD_GET || method == METHOD_HEAD) && parser.content_length.get() > 0 {
+  if (method == METHOD_GET || method == METHOD_HEAD) && get!(content_length) > 0 {
     return fail!(UNEXPECTED_CONTENT, "Unexpected content for the request (GET or HEAD)");
   }
 
   // RFC 9110 section 6.3
-  if parser.message_type.get() == REQUEST {
-    if parser.has_content_length.get() {
-      if parser.content_length.get() == 0 {
+  if get!(message_type) == REQUEST {
+    if get!(has_content_length) {
+      if get!(content_length) == 0 {
         return complete_message(parser, 0);
       }
-    } else if !parser.has_chunked_transfer_encoding.get() {
+    } else if !get!(has_chunked_transfer_encoding) {
       return complete_message(parser, 0);
     }
   } else {
-    if (status < 200 && status != 101) || method == METHOD_HEAD || parser.skip_body.get() {
+    if (status < 200 && status != 101) || method == METHOD_HEAD || get!(skip_body) {
       return complete_message(parser, 0);
     }
 
-    if parser.content_length.get() == 0 {
-      if parser.has_content_length.get() {
+    if get!(content_length) == 0 {
+      if get!(has_content_length) {
         return complete_message(parser, 0);
-      } else if !parser.has_chunked_transfer_encoding.get() {
+      } else if !get!(has_chunked_transfer_encoding) {
         return move_to!(body_with_no_length, 0);
       }
     }
   }
 
-  if parser.content_length.get() > 0 {
+  if get!(content_length) > 0 {
     return move_to!(body_via_content_length, 0);
   }
 
-  if parser.has_trailers.get() && !parser.has_chunked_transfer_encoding.get() {
+  if get!(has_trailers) && !get!(has_chunked_transfer_encoding) {
     return fail!(
       UNEXPECTED_TRAILERS,
       "Trailers are not allowed when not using chunked transfer encoding"
@@ -558,11 +555,11 @@ state!(headers, {
 // RFC 9110 section 6.4.1 - Message completed
 #[inline(always)]
 fn complete_message(parser: &Parser, advance: isize) -> isize {
-  parser.position.update(|x| (x as isize + advance) as usize);
+  set!(position, (get!(position) as isize + advance) as usize);
   callback!(on_message_complete);
   callback!(on_reset);
 
-  let must_close = parser.connection.get() == CONNECTION_CLOSE;
+  let must_close = get!(connection) == CONNECTION_CLOSE;
 
   if must_close {
     move_to!(finish, 0)
@@ -578,20 +575,20 @@ state!(tunnel, { suspend!() });
 // #region body via Content-Length
 // RFC 9112 section 6.2
 state!(body_via_content_length, {
-  let expected = parser.remaining_content_length.get();
+  let expected = get!(remaining_content_length);
   let available = data.len();
   let available_64 = available as u64;
 
   // Less data than what it is expected
   if available_64 < expected {
-    parser.remaining_content_length.update(|x| x - available_64);
+    sub!(remaining_content_length, available_64);
     callback!(on_data, available);
 
     return advance!(available);
   }
 
   callback!(on_data, expected as usize);
-  parser.remaining_content_length.set(0);
+  set!(remaining_content_length, 0);
   callback!(on_body);
   complete_message(parser, expected as isize)
 });
@@ -618,8 +615,8 @@ state!(chunk_length, {
       // Parse the length as integer
       if let Ok(length) = u64::from_str_radix(unsafe { str::from_utf8_unchecked(&data[..consumed]) }, 16) {
         callback!(on_chunk_length, consumed);
-        parser.chunk_size.set(length);
-        parser.remaining_chunk_size.set(parser.chunk_size.get());
+        set!(chunk_size, length);
+        set!(remaining_chunk_size, length);
         move_to!(chunk_extension_name, consumed + 1)
       } else {
         fail!(INVALID_CHUNK_SIZE, "Invalid chunk length")
@@ -629,9 +626,9 @@ state!(chunk_length, {
       if let Ok(length) = u64::from_str_radix(unsafe { str::from_utf8_unchecked(&data[..consumed]) }, 16) {
         // Parse the length as integer
         callback!(on_chunk_length, consumed);
-        parser.chunk_size.set(length);
-        parser.remaining_chunk_size.set(parser.chunk_size.get());
-        parser.continue_without_data.set(true);
+        set!(chunk_size, length);
+        set!(remaining_chunk_size, length);
+        set!(continue_without_data, true);
         move_to!(chunk_data, consumed + 2)
       } else {
         fail!(INVALID_CHUNK_SIZE, "Invalid chunk length")
@@ -661,7 +658,7 @@ state!(chunk_extension_name, {
     crlf!() => {
       callback!(on_chunk_extension_name, consumed);
 
-      parser.continue_without_data.set(true);
+      set!(continue_without_data, true);
       move_to!(chunk_data, consumed + 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid chunk extension name character"),
@@ -687,7 +684,7 @@ state!(chunk_extension_value, {
     }
     crlf!() => {
       callback!(on_chunk_extension_value, consumed);
-      parser.continue_without_data.set(true);
+      set!(continue_without_data, true);
       move_to!(chunk_data, consumed + 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid chunk extension value character"),
@@ -720,12 +717,12 @@ state!(chunk_extension_quoted_value, {
 
   match data[consumed..] {
     crlf!() => {
-      parser.continue_without_data.set(true);
+      set!(continue_without_data, true);
       callback!(on_chunk_extension_value, consumed - 1);
       move_to!(chunk_data, consumed + 2)
     }
     [char!(';'), ..] => {
-      parser.continue_without_data.set(true);
+      set!(continue_without_data, true);
       callback!(on_chunk_extension_value, consumed - 1);
       move_to!(chunk_extension_name, consumed + 2)
     }
@@ -738,24 +735,24 @@ state!(chunk_extension_quoted_value, {
 
 state!(chunk_data, {
   // When receiving the last chunk
-  if parser.chunk_size.get() == 0 {
+  if get!(chunk_size) == 0 {
     callback!(on_chunk);
     callback!(on_body);
 
-    if parser.has_trailers.get() {
+    if get!(has_trailers) {
       return move_to!(trailer_name, 0);
     } else {
       return move_to!(crlf_after_last_chunk, 0);
     }
   }
 
-  let expected = parser.remaining_chunk_size.get();
+  let expected = get!(remaining_chunk_size);
   let available = data.len();
   let available_64 = available as u64;
 
   // Less data than what it is expected for this chunk
   if available_64 < expected {
-    parser.remaining_chunk_size.update(|x| x - available_64);
+    sub!(remaining_chunk_size, available_64);
 
     callback!(on_chunk);
     callback!(on_data, available);
@@ -763,7 +760,7 @@ state!(chunk_data, {
     return advance!(available);
   }
 
-  parser.remaining_chunk_size.set(0);
+  set!(remaining_chunk_size, 0);
 
   callback!(on_chunk);
   callback!(on_data, expected as usize);
@@ -774,8 +771,8 @@ state!(chunk_data, {
 state!(chunk_end, {
   match data {
     crlf!() => {
-      parser.chunk_size.set(0);
-      parser.remaining_chunk_size.set(0);
+      set!(chunk_size, 0);
+      set!(remaining_chunk_size, 0);
       move_to!(chunk_length, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Unexpected character after chunk data"),
@@ -815,7 +812,7 @@ state!(trailer_name, {
 state!(trailer_value, {
   // Ignore trailing OWS
   consume!(ws);
-  parser.position.update(|x| x + consumed);
+  add!(position, consumed);
   data = &data[consumed..];
 
   consume!(token_value);

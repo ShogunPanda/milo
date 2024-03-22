@@ -37,5 +37,5 @@ isize_t show_span(const milo::Parser* parser, const char* name, const uchar_t* d
     free(string_data);
   }
 
-  return event(parser, name, parser->position, data, size);
+  return event(parser, name, milo::milo_get_position(parser), data, size);
 }

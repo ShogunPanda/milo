@@ -6,17 +6,24 @@ use core::{slice, slice::from_raw_parts};
 use std::ffi::{c_char, c_uchar, CString};
 
 use milo_macros::callback_no_return;
+use milo_macros::native_getters;
 
+use crate::clear;
 use crate::clear_offsets;
 use crate::create;
 use crate::error_code_string;
 use crate::error_description_string;
+use crate::fail;
 use crate::finish;
 use crate::flags;
 use crate::parse;
 use crate::pause;
 use crate::reset;
 use crate::resume;
+use crate::set_is_connect;
+use crate::set_manage_unconsumed;
+use crate::set_mode;
+use crate::set_skip_body;
 use crate::state_string;
 use crate::Flags;
 use crate::Parser;
@@ -36,6 +43,10 @@ impl CStringWithLength {
       len: value.len(),
     }
   }
+}
+
+impl Into<&str> for CStringWithLength {
+  fn into(self) -> &'static str { unsafe { str::from_utf8_unchecked(slice::from_raw_parts(self.ptr, self.len)) } }
 }
 
 /// A callback that simply returns `0`.
@@ -78,6 +89,17 @@ pub extern "C" fn milo_destroy(ptr: *mut Parser) {
 #[no_mangle]
 pub extern "C" fn milo_reset(parser: *const Parser, keep_parsed: bool) { unsafe { reset(&*parser, keep_parsed) } }
 
+/// Clears all values in the parser.
+///
+/// Persisted fields, unconsumed data and the position are not cleared.
+#[no_mangle]
+pub extern "C" fn milo_clear(parser: *const Parser) { unsafe { clear(&*parser) } }
+
+// TODO@PI: Document this (ALL)
+/// Clear the parser offsets.
+#[no_mangle]
+pub extern "C" fn milo_clear_offsets(parser: *const Parser) { unsafe { clear_offsets(&*parser) } }
+
 /// Parses a slice of characters. It returns the number of consumed characters.
 #[no_mangle]
 pub extern "C" fn milo_parse(parser: *const Parser, data: *const c_uchar, limit: usize) -> usize {
@@ -97,10 +119,29 @@ pub extern "C" fn milo_resume(parser: *const Parser) { unsafe { resume(&*parser)
 #[no_mangle]
 pub extern "C" fn milo_finish(parser: *const Parser) { unsafe { finish(&*parser) } }
 
-// TODO@PI: Document this (ALL)
-/// Clear the parser offsets.
+/// Marks the parsing a failed, setting a error code and and error message.
 #[no_mangle]
-pub extern "C" fn milo_clear_offsets(parser: *const Parser) { unsafe { clear_offsets(&*parser) } }
+pub extern "C" fn milo_fail(parser: &Parser, code: usize, reason: CStringWithLength) {
+  fail(&*parser, code, reason.into());
+}
+
+native_getters!();
+
+// Sets the parser mode.
+#[no_mangle]
+pub extern "C" fn milo_set_mode(parser: &Parser, value: usize) { set_mode(parser, value); }
+
+// Sets whether the parser should manage unconsumed data.
+#[no_mangle]
+pub extern "C" fn milo_set_manage_unconsumed(parser: &Parser, value: bool) { set_manage_unconsumed(parser, value); }
+
+// Sets whether the parser should skip the body.
+#[no_mangle]
+pub extern "C" fn milo_set_skip_body(parser: &Parser, value: bool) { set_skip_body(parser, value); }
+
+// Sets if the request is a connect request.
+#[no_mangle]
+pub extern "C" fn milo_set_is_connect(parser: &Parser, value: bool) { set_is_connect(parser, value); }
 
 /// Returns the current parser's state as string.
 ///

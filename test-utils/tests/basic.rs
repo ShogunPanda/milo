@@ -4,8 +4,8 @@ mod test {
   use std::ffi::c_uchar;
 
   use milo::{
-    create, finish, pause, reset, resume, Parser, REQUEST, RESPONSE, STATE_ERROR, STATE_FINISH, STATE_HEADER_NAME,
-    STATE_START,
+    create, finish, get_state, is_paused, pause, reset, resume, set_manage_unconsumed, set_mode, Parser, REQUEST,
+    RESPONSE, STATE_ERROR, STATE_FINISH, STATE_HEADER_NAME, STATE_START,
   };
   use milo_test_utils::{create_parser, http, parse};
 
@@ -33,15 +33,15 @@ mod test {
       "#,
     );
 
-    parser.mode.set(REQUEST);
+    set_mode(&parser, REQUEST);
     parse(&parser, &response);
-    assert!(matches!(parser.state.get(), STATE_ERROR));
+    assert!(matches!(get_state(&parser), STATE_ERROR));
 
     reset(&parser, false);
 
-    parser.mode.set(RESPONSE);
+    set_mode(&parser, RESPONSE);
     parse(&parser, &request);
-    assert!(matches!(parser.state.get(), STATE_ERROR));
+    assert!(matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
@@ -68,14 +68,14 @@ mod test {
     let consumed6 = parse(&parser, &sample6);
     assert!(consumed6 == sample6.len());
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
   fn basic_incomplete_string_2() {
     let parser = create_parser();
 
-    parser.mode.set(REQUEST);
+    set_mode(&parser, REQUEST);
     let sample1 = http(r#"GE"#);
     let sample2 = http(r#"GET / HTTP/1.1\r\nHost: foo\r\n\r\n"#);
 
@@ -85,13 +85,13 @@ mod test {
     let consumed2 = parse(&parser, &sample2);
     assert!(consumed2 == sample2.len());
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
   fn basic_incomplete_string_automanaged() {
     let parser = create_parser();
-    parser.manage_unconsumed.set(true);
+    set_manage_unconsumed(&parser, true);
 
     let sample1 = http(r#"GET / HTTP/1.1\r"#);
     let sample2 = http(r#"\n"#);
@@ -113,7 +113,7 @@ mod test {
     let consumed6 = parse(&parser, &sample6);
     assert!(consumed6 == sample5.len() + sample6.len());
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
 
     // Verify the field is not reset
     reset(&parser, true);
@@ -131,22 +131,22 @@ mod test {
     let consumed6 = parse(&parser, &sample6);
     assert!(consumed6 == sample5.len() + sample6.len());
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
   fn basic_incomplete_string_2_automanaged() {
     let parser = create_parser();
-    parser.manage_unconsumed.set(true);
+    set_manage_unconsumed(&parser, true);
 
-    parser.mode.set(REQUEST);
+    set_mode(&parser, REQUEST);
     let sample1 = http(r#"GE"#);
     let sample2 = http(r#"T / HTTP/1.1\r\nHost: foo\r\n\r\n"#);
 
     parse(&parser, &sample1);
     parse(&parser, &sample2);
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
@@ -176,7 +176,7 @@ mod test {
     );
 
     parse(&parser, &message);
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
@@ -198,7 +198,7 @@ mod test {
     );
 
     parse(&parser, &message);
-    assert!(matches!(parser.state.get(), STATE_FINISH));
+    assert!(matches!(get_state(&parser), STATE_FINISH));
   }
 
   #[test]
@@ -229,7 +229,7 @@ mod test {
     );
 
     parse(&parser, &message);
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
@@ -253,7 +253,7 @@ mod test {
     );
 
     parse(&parser, &message);
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
@@ -271,7 +271,7 @@ mod test {
     let consumed3 = parse(&parser, &sample3);
     assert!(consumed3 == sample3.len());
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
@@ -289,7 +289,7 @@ mod test {
     let consumed3 = parse(&parser, &sample3);
     assert!(consumed3 == sample3.len());
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
@@ -307,7 +307,7 @@ mod test {
     );
 
     parse(&parser, &close_connection);
-    assert!(matches!(parser.state.get(), STATE_FINISH));
+    assert!(matches!(get_state(&parser), STATE_FINISH));
 
     reset(&parser, false);
 
@@ -321,7 +321,7 @@ mod test {
     );
 
     parse(&parser, &keep_alive_connection);
-    assert!(matches!(parser.state.get(), STATE_START));
+    assert!(matches!(get_state(&parser), STATE_START));
   }
 
   #[test]
@@ -345,34 +345,34 @@ mod test {
         0
       });
 
-    assert!(!parser.paused.get());
+    assert!(!is_paused(&parser));
 
     let consumed1 = parse(&parser, &sample1);
     assert!(consumed1 == sample1.len());
 
-    assert!(!parser.paused.get());
+    assert!(!is_paused(&parser));
     let consumed2 = parse(&parser, &sample2);
     assert!(consumed2 == sample2.len() - 3);
-    assert!(parser.paused.get());
+    assert!(is_paused(&parser));
 
     let consumed3 = parse(&parser, &sample3);
     assert!(consumed3 == 0);
 
-    assert!(parser.paused.get());
+    assert!(is_paused(&parser));
     resume(&parser);
-    assert!(!parser.paused.get());
+    assert!(!is_paused(&parser));
 
     let consumed4 = parse(&parser, &sample3);
     assert!(consumed4 == sample3.len());
-    assert!(!parser.paused.get());
+    assert!(!is_paused(&parser));
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
   fn basic_restart() {
     let parser = create_parser();
-    parser.mode.set(RESPONSE);
+    set_mode(&parser, RESPONSE);
 
     let response = http(
       r#"
@@ -408,22 +408,22 @@ mod test {
     );
 
     parse(&parser, &response);
-    assert!(matches!(parser.state.get(), STATE_START));
+    assert!(matches!(get_state(&parser), STATE_START));
 
-    parser.mode.set(REQUEST);
+    set_mode(&parser, REQUEST);
     reset(&parser, false);
 
     parse(&parser, &request);
-    assert!(matches!(parser.state.get(), STATE_START));
+    assert!(matches!(get_state(&parser), STATE_START));
   }
 
   #[test]
   fn basic_finish_logic() {
     let parser = create_parser();
 
-    assert!(matches!(parser.state.get(), STATE_START));
+    assert!(matches!(get_state(&parser), STATE_START));
     finish(&parser);
-    assert!(matches!(parser.state.get(), STATE_FINISH));
+    assert!(matches!(get_state(&parser), STATE_FINISH));
 
     reset(&parser, false);
 
@@ -438,9 +438,9 @@ mod test {
     );
 
     parse(&parser, &close_connection);
-    assert!(matches!(parser.state.get(), STATE_FINISH));
+    assert!(matches!(get_state(&parser), STATE_FINISH));
     finish(&parser);
-    assert!(matches!(parser.state.get(), STATE_FINISH));
+    assert!(matches!(get_state(&parser), STATE_FINISH));
 
     reset(&parser, false);
 
@@ -454,9 +454,9 @@ mod test {
     );
 
     parse(&parser, &keep_alive_connection);
-    assert!(matches!(parser.state.get(), STATE_START));
+    assert!(matches!(get_state(&parser), STATE_START));
     finish(&parser);
-    assert!(matches!(parser.state.get(), STATE_FINISH));
+    assert!(matches!(get_state(&parser), STATE_FINISH));
 
     reset(&parser, false);
 
@@ -468,9 +468,9 @@ mod test {
 
     parse(&parser, &incomplete);
 
-    assert!(matches!(parser.state.get(), STATE_HEADER_NAME));
+    assert!(matches!(get_state(&parser), STATE_HEADER_NAME));
     finish(&parser);
-    assert!(matches!(parser.state.get(), STATE_ERROR));
+    assert!(matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
@@ -489,7 +489,7 @@ mod test {
 
     let parser = create_parser();
     parse(&parser, &message);
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
   }
 
   #[test]
@@ -506,7 +506,7 @@ mod test {
     // offsets
     let parser = create(None);
     let consumed = milo::parse(&parser, message.as_ptr(), message.len());
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(get_state(&parser), STATE_ERROR));
     assert!(consumed != message.len());
   }
 }

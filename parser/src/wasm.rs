@@ -1,10 +1,10 @@
 use core::ffi::{c_uchar, c_void};
 use std::slice;
 
-use milo_macros::wasm_getter;
+use milo_macros::{set, wasm_getters};
 use wasm_bindgen::prelude::{wasm_bindgen, JsValue};
 
-use crate::{Parser, MAX_OFFSETS_COUNT};
+use crate::{Parser, MAX_OFFSETS_COUNT, VALUE_IS_CONNECT, VALUE_MANAGE_UNCONSUMED, VALUE_MODE, VALUE_SKIP_BODY};
 
 #[cfg(debug_assertions)]
 #[wasm_bindgen(start)]
@@ -37,7 +37,7 @@ pub fn create(id: Option<usize>) -> *mut c_void {
   // Temporarily recreate the parser from the box to assign the reference to
   // itself
   let parser = unsafe { Box::from_raw(ptr as *mut Parser) };
-  parser.wasm_ptr.set(ptr);
+  parser.ptr.set(ptr);
   Box::into_raw(parser);
 
   ptr
@@ -48,7 +48,7 @@ pub fn create(id: Option<usize>) -> *mut c_void {
 pub fn destroy(raw: *mut c_void) {
   unsafe {
     let parser = Box::from_raw(raw as *mut Parser);
-    let _ = Vec::from_raw_parts(parser.offsets.get(), MAX_OFFSETS_COUNT * 3, MAX_OFFSETS_COUNT * 3);
+    let _ = Vec::from_raw_parts(parser.offsets, MAX_OFFSETS_COUNT * 3, MAX_OFFSETS_COUNT * 3);
     Box::into_raw(parser);
   }
 }
@@ -69,6 +69,15 @@ pub fn reset(raw: *mut c_void, keep_parsed: bool) {
 pub fn clear(raw: *mut c_void) {
   let parser = unsafe { Box::from_raw(raw as *mut Parser) };
   crate::clear(&parser);
+  Box::into_raw(parser);
+}
+
+// TODO@PI: Document this (Rust & WASM)
+/// Clear the parser offsets.
+#[wasm_bindgen(js_name=clearOffsets)]
+pub fn clear_offsets(raw: *mut c_void) {
+  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
+  crate::clear_offsets(&parser);
   Box::into_raw(parser);
 }
 
@@ -114,15 +123,6 @@ pub fn fail(raw: *mut c_void, code: usize, reason: &str) {
   Box::into_raw(parser);
 }
 
-// TODO@PI: Document this (Rust & WASM)
-/// Clear the parser offsets.
-#[wasm_bindgen(js_name=clearOffsets)]
-pub fn clear_offsets(raw: *mut c_void) {
-  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
-  crate::clear_offsets(&parser);
-  Box::into_raw(parser);
-}
-
 /// Returns the current parser's state as string.
 #[wasm_bindgen(js_name=getStateString)]
 pub fn state_string(raw: *mut c_void) -> String {
@@ -154,43 +154,44 @@ pub fn error_description_string(raw: *mut c_void) -> String {
 }
 
 // General values
-wasm_getter!(state, getState, usize);
-wasm_getter!(position, getPosition, usize);
-wasm_getter!(error_code, getErrorCode, usize);
-wasm_getter!(error_description_len, getErrorDescriptionLen, usize);
-wasm_getter!(unconsumed_len, getUnconsumedLen, usize);
-wasm_getter!(id, getId, usize);
-wasm_getter!(mode, getMode, usize);
-wasm_getter!(message_type, getMessageType, usize);
-wasm_getter!(method, getMethod, usize);
-wasm_getter!(status, getStatus, usize);
-wasm_getter!(version_major, getVersionMajor, usize);
-wasm_getter!(version_minor, getVersionMinor, usize);
-wasm_getter!(connection, getConnection, usize);
-
-// Large values
-wasm_getter!(parsed, getParsed, u64);
-wasm_getter!(content_length, getContentLength, u64);
-wasm_getter!(chunk_size, getChunkSize, u64);
-wasm_getter!(remaining_content_length, getRemainingContentLength, u64);
-wasm_getter!(remaining_chunk_size, getRemainingChunkSize, u64);
-
-// Flags
-wasm_getter!(paused, isPaused, bool);
-wasm_getter!(manage_unconsumed, manageUnconsumed, bool);
-wasm_getter!(continue_without_data, continueWithoutData, bool);
-wasm_getter!(is_connect, isConnect, bool);
-wasm_getter!(has_content_length, hasContentLength, bool);
-wasm_getter!(has_chunked_transfer_encoding, hasChunkedTransferEncoding, bool);
-wasm_getter!(has_upgrade, hasUpgrade, bool);
-wasm_getter!(has_trailers, hasTrailers, bool);
-wasm_getter!(skip_body, skipBody, bool);
+wasm_getters!();
 
 // Pointers
-wasm_getter!(offsets, getOffsets, *mut usize);
-wasm_getter!(unconsumed, getUnconsumed, *const c_uchar);
-wasm_getter!(error_description, getErrorDescription, *const c_uchar);
-wasm_getter!(owner, getOwner, *mut c_void);
+#[wasm_bindgen(js_name=getValues)]
+pub fn get_values(raw: *mut c_void) -> *mut usize {
+  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
+  let value = parser.values;
+  Box::into_raw(parser);
+
+  value
+}
+
+#[wasm_bindgen(js_name=getOffsets)]
+pub fn get_offsets(raw: *mut c_void) -> *mut usize {
+  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
+  let value = parser.offsets;
+  Box::into_raw(parser);
+
+  value
+}
+
+#[wasm_bindgen(js_name=getUnconsumed)]
+pub fn get_unconsumed(raw: *mut c_void) -> *const c_uchar {
+  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
+  let value = parser.unconsumed.get();
+  Box::into_raw(parser);
+
+  value
+}
+
+#[wasm_bindgen(js_name=getErrorDescription)]
+pub fn get_error_description(raw: *mut c_void) -> *const c_uchar {
+  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
+  let value = parser.error_description.get();
+  Box::into_raw(parser);
+
+  value
+}
 
 #[wasm_bindgen(js_name = getCallbackError)]
 pub fn get_callback_error(raw: *mut c_void) -> JsValue {
@@ -201,37 +202,54 @@ pub fn get_callback_error(raw: *mut c_void) -> JsValue {
   value
 }
 
-#[wasm_bindgen(js_name = setId)]
-pub fn set_id(raw: *mut c_void, value: usize) {
-  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
-  parser.id.set(value);
-  Box::into_raw(parser);
-}
-
 #[wasm_bindgen(js_name = setMode)]
-pub fn set_mode(raw: *mut c_void, value: usize) {
-  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
-  parser.mode.set(value);
-  Box::into_raw(parser);
+pub fn set_mode(parser: *mut c_void, value: usize) {
+  unsafe {
+    parser
+      .cast::<Parser>()
+      .read()
+      .values
+      .add(VALUE_MODE)
+      .cast::<usize>()
+      .write(value)
+  };
 }
 
 #[wasm_bindgen(js_name = setManageUnconsumed)]
-pub fn set_manage_unconsumed(raw: *mut c_void, value: bool) {
-  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
-  parser.manage_unconsumed.set(value);
-  Box::into_raw(parser);
+pub fn set_manage_unconsumed(parser: *mut c_void, value: bool) {
+  unsafe {
+    parser
+      .cast::<Parser>()
+      .read()
+      .values
+      .add(VALUE_MANAGE_UNCONSUMED)
+      .cast::<bool>()
+      .write(value)
+  };
 }
 
 #[wasm_bindgen(js_name = setSkipBody)]
-pub fn set_skip_body(raw: *mut c_void, value: bool) {
-  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
-  parser.skip_body.set(value);
-  Box::into_raw(parser);
+pub fn set_skip_body(parser: *mut c_void, value: bool) {
+  unsafe {
+    parser
+      .cast::<Parser>()
+      .read()
+      .values
+      .add(VALUE_SKIP_BODY)
+      .cast::<bool>()
+      .write(value)
+  };
 }
 
 #[wasm_bindgen(js_name = setIsConnect)]
-pub fn set_is_connect(raw: *mut c_void, value: bool) {
-  let parser = unsafe { Box::from_raw(raw as *mut Parser) };
-  parser.is_connect.set(value);
-  Box::into_raw(parser);
+pub fn set_is_connect(parser: *mut c_void, value: bool) {
+  unsafe {
+    parser
+      .cast::<Parser>()
+      .read()
+      .values
+      .add(VALUE_IS_CONNECT)
+      .cast::<bool>()
+      .write(value)
+  };
 }

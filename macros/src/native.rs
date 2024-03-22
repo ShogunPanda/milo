@@ -1,7 +1,10 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 
-use crate::{definitions::CALLBACKS, parsing::IdentifiersWithExpr};
+use crate::{
+  definitions::{CALLBACKS, VALUES},
+  parsing::IdentifiersWithExpr,
+};
 
 // Handles a callback.
 pub fn callback_native(definition: &IdentifiersWithExpr, return_on_error: bool) -> proc_macro2::TokenStream {
@@ -9,7 +12,7 @@ pub fn callback_native(definition: &IdentifiersWithExpr, return_on_error: bool) 
   let callback_name = callback.to_string();
 
   let invocation = if let Some(length) = &definition.expr {
-    quote! { (parser.callbacks.#callback.get())(parser, parser.position.get(), #length) }
+    quote! { (parser.callbacks.#callback.get())(parser, get!(position), #length) }
   } else {
     quote! { (parser.callbacks.#callback.get())(parser, 0, 0) }
   };
@@ -67,4 +70,29 @@ pub fn generate_callbacks_native() -> TokenStream {
       }
     }
   })
+}
+
+/// Generates all parser getter.
+pub fn getters_native() -> TokenStream {
+  let getters: Vec<_> = unsafe { VALUES.get().unwrap() }
+    .iter()
+    .map(|(name, raw_return_type)| {
+      let internal_getter = if name.starts_with("is") || name.starts_with("has") {
+        format_ident!("{}", name)
+      } else {
+        format_ident!("{}_{}", if raw_return_type == "bool" { "is" } else { "get" }, name)
+      };
+
+      let external_getter = format_ident!("milo_{}", internal_getter);
+      let return_type = format_ident!("{}", raw_return_type);
+
+      quote! {
+        // Returns the parser #name.
+        #[no_mangle]
+        pub extern "C" fn #external_getter (parser: &Parser) -> #return_type { crate::#internal_getter(parser) }
+      }
+    })
+    .collect();
+
+  TokenStream::from(quote! { #(#getters)* })
 }

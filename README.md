@@ -1,4 +1,4 @@
-# Milo
+# @perseveranza-pets/milo
 
 Milo is a fast and embeddable HTTP/1.1 parser written in [Rust][rust].
 

@@ -230,6 +230,9 @@ async function generateReadme() {
   let howtoSectionIndex
   let apiSectionIndex
 
+  // Adjust title
+  readme.children[0].children[0].value = 'Milo'
+
   // For each node
   for (let i = 0; i < readme.children.length; i++) {
     const node = readme.children[i]

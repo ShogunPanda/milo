@@ -73,7 +73,7 @@ fn main() {
     let len = payload.len();
     let iterations = (8 << 30) / len;
     let total = iterations * len;
-    let parser = Parser::new();
+    let mut parser = Parser::new();
 
     let start = Instant::now();
 

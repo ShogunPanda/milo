@@ -5,7 +5,7 @@ mod test {
 
   #[test]
   fn upgrade_connect_request() {
-    let parser = create_parser();
+    let mut parser = create_parser();
 
     let message1 = http(
       r#"
@@ -23,18 +23,18 @@ mod test {
       "#,
     );
 
-    let consumed1 = parse(&parser, &message1);
+    let consumed1 = parse(&mut parser, &message1);
     assert!(consumed1 == 70);
-    assert!(matches!(parser.state.get(), STATE_TUNNEL));
+    assert!(matches!(parser.state, STATE_TUNNEL));
 
-    let consumed2 = parse(&parser, &message2);
+    let consumed2 = parse(&mut parser, &message2);
     assert!(consumed2 == 0);
-    assert!(matches!(parser.state.get(), STATE_TUNNEL));
+    assert!(matches!(parser.state, STATE_TUNNEL));
   }
 
   #[test]
   fn upgrade_connection_upgrade() {
-    let parser = create_parser();
+    let mut parser = create_parser();
 
     let message1 = http(
       r#"
@@ -54,12 +54,12 @@ mod test {
       "#,
     );
 
-    let consumed1 = parse(&parser, &message1);
+    let consumed1 = parse(&mut parser, &message1);
     assert!(consumed1 == 97);
-    assert!(matches!(parser.state.get(), STATE_TUNNEL));
+    assert!(matches!(parser.state, STATE_TUNNEL));
 
-    let consumed2 = parse(&parser, &message2);
+    let consumed2 = parse(&mut parser, &message2);
     assert!(consumed2 == 0);
-    assert!(matches!(parser.state.get(), STATE_TUNNEL));
+    assert!(matches!(parser.state, STATE_TUNNEL));
   }
 }

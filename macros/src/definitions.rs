@@ -17,8 +17,16 @@ use crate::parsing::IdentifiersWithStatements;
 pub static METHODS: OnceLock<Vec<String>> = OnceLock::new();
 pub static mut ERRORS: OnceLock<IndexSet<String>> = OnceLock::new();
 pub static mut CALLBACKS: OnceLock<IndexSet<String>> = OnceLock::new();
-pub static mut OFFSETS: OnceLock<IndexSet<String>> = OnceLock::new();
 pub static mut STATES: OnceLock<IndexSet<String>> = OnceLock::new();
+
+// Global constants
+pub const MESSAGE_TYPE_AUTODETECT: usize = 0;
+pub const MESSAGE_TYPE_REQUEST: usize = 1;
+pub const MESSAGE_TYPE_RESPONSE: usize = 2;
+
+pub const CONNECTION_KEEPALIVE: usize = 0;
+pub const CONNECTION_CLOSE: usize = 1;
+pub const CONNECTION_UPGRADE: usize = 2;
 
 #[derive(Serialize)]
 struct BuildInfo {
@@ -32,39 +40,25 @@ pub fn init_constants() {
   absolute_path = absolute_path.canonicalize().unwrap();
 
   unsafe {
-    METHODS.get_or_init(|| {
-      absolute_path.push("methods.yml");
-      let f = File::open(absolute_path.to_str().unwrap()).unwrap();
-      absolute_path.pop();
+    absolute_path.push("methods.yml");
+    let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+    absolute_path.pop();
+    let methods = serde_yaml::from_reader(f).unwrap();
 
-      serde_yaml::from_reader(f).unwrap()
-    });
+    absolute_path.push("errors.yml");
+    let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+    absolute_path.pop();
+    let errors = serde_yaml::from_reader(f).unwrap();
 
-    ERRORS.get_or_init(|| {
-      absolute_path.push("errors.yml");
-      let f = File::open(absolute_path.to_str().unwrap()).unwrap();
-      absolute_path.pop();
+    absolute_path.push("callbacks.yml");
+    let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+    absolute_path.pop();
+    let callbacks = serde_yaml::from_reader(f).unwrap();
 
-      serde_yaml::from_reader(f).unwrap()
-    });
-
-    OFFSETS.get_or_init(|| {
-      absolute_path.push("offsets.yml");
-      let f = File::open(absolute_path.to_str().unwrap()).unwrap();
-      absolute_path.pop();
-
-      serde_yaml::from_reader(f).unwrap()
-    });
-
-    CALLBACKS.get_or_init(|| {
-      absolute_path.push("callbacks.yml");
-      let f = File::open(absolute_path.to_str().unwrap()).unwrap();
-      absolute_path.pop();
-
-      serde_yaml::from_reader(f).unwrap()
-    });
-
-    STATES.get_or_init(|| IndexSet::new());
+    let _ = METHODS.set(methods);
+    let _ = ERRORS.set(errors);
+    let _ = CALLBACKS.set(callbacks);
+    let _ = STATES.set(IndexSet::new());
   }
 }
 
@@ -88,19 +82,19 @@ pub fn save_constants() {
 
   // Serialize constants
   let mut consts: IndexMap<String, usize> = IndexMap::new();
-  consts.insert("AUTODETECT".into(), 0);
-  consts.insert("REQUEST".into(), 1);
-  consts.insert("RESPONSE".into(), 2);
-  consts.insert("CONNECTION_KEEPALIVE".into(), 0);
-  consts.insert("CONNECTION_CLOSE".into(), 1);
-  consts.insert("CONNECTION_UPGRADE".into(), 2);
+  consts.insert("MESSAGE_TYPE_AUTODETECT".into(), MESSAGE_TYPE_AUTODETECT);
+  consts.insert("MESSAGE_TYPE_REQUEST".into(), MESSAGE_TYPE_REQUEST);
+  consts.insert("MESSAGE_TYPE_RESPONSE".into(), MESSAGE_TYPE_RESPONSE);
+  consts.insert("CONNECTION_KEEPALIVE".into(), CONNECTION_KEEPALIVE);
+  consts.insert("CONNECTION_CLOSE".into(), CONNECTION_CLOSE);
+  consts.insert("CONNECTION_UPGRADE".into(), CONNECTION_UPGRADE);
 
   for (i, x) in METHODS.get().unwrap().iter().enumerate() {
     consts.insert(format!("METHOD_{}", x.replace('-', "_")), i);
   }
 
-  for (i, x) in unsafe { OFFSETS.get().unwrap() }.iter().enumerate() {
-    consts.insert(format!("OFFSET_{}", x.replace('-', "_")), i);
+  for (i, x) in unsafe { CALLBACKS.get().unwrap() }.iter().enumerate() {
+    consts.insert(format!("CALLBACK_{}", x.to_uppercase()), i);
   }
 
   for (i, x) in unsafe { ERRORS.get().unwrap() }.iter().enumerate() {
@@ -164,7 +158,7 @@ pub fn state(input: TokenStream) -> TokenStream {
 
   TokenStream::from(quote! {
     #[inline(always)]
-    pub fn #function (parser: &Parser, data: &[c_uchar]) -> isize {
+    pub fn #function (parser: &mut Parser, data: &[c_uchar]) -> usize {
       let mut data = data;
       #(#statements)*
     }

@@ -1,26 +1,19 @@
-#![feature(vec_into_raw_parts)]
-
-use std::{env, ffi::c_void};
+use std::os::raw::c_void;
 
 use milo::Parser;
-use regex::Regex;
+use milo_test_utils::{callbacks, context::Context, parse};
 
-pub mod context;
-mod output;
-
-#[path = "./callbacks.rs"]
-pub mod callbacks;
-
-pub fn create_parser() -> Parser {
+fn main() {
   let mut parser = Parser::new();
-  let context = Box::new(context::Context::new());
+  let context = Box::new(Context::new());
   parser.context = Box::into_raw(context) as *mut c_void;
 
-  if env::var_os("DEBUG_TESTS").unwrap_or("false".into()) == "true" {
-    parser.callbacks.before_state_change = callbacks::before_state_change;
-    parser.callbacks.after_state_change = callbacks::after_state_change;
-  }
+  let request1 = "GET / HTTP/1.1\r\n\r\n";
+  let request2 = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: x-trailer\r\n\r\nc;need=love\r\nhello \
+                  world!\r\n0\r\nX-Trailer: value\r\n\r\n";
 
+  parser.callbacks.before_state_change = callbacks::before_state_change;
+  parser.callbacks.after_state_change = callbacks::after_state_change;
   parser.callbacks.on_error = callbacks::on_error;
   parser.callbacks.on_finish = callbacks::on_finish;
   parser.callbacks.on_request = callbacks::on_request;
@@ -47,26 +40,22 @@ pub fn create_parser() -> Parser {
   parser.callbacks.on_trailer_value = callbacks::on_trailer_value;
   parser.callbacks.on_trailers = callbacks::on_trailers;
 
-  parser
-}
+  let mut consumed = parse(&mut parser, request1);
 
-pub fn http(input: &str) -> String {
-  let trailing_ws = Regex::new(r"(?m)^\s+").unwrap();
+  println!(
+    "{{ \"pos\": {}, \"consumed\": {}, \"state\": \"{}\" }}",
+    parser.position,
+    consumed,
+    parser.state_str(),
+  );
 
-  trailing_ws
-    .replace_all(input.trim(), "")
-    .replace('\n', "")
-    .replace("\\r", "\r")
-    .replace("\\n", "\n")
-    .replace("\\s", " ")
-}
+  println!("\n------------------------------------------------------------------------------------------\n");
 
-pub fn output(input: &str) -> String { String::from(input.trim()) + "\n" }
-
-pub fn parse(parser: &mut Parser, content: &str) -> usize {
-  let mut context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
-  context.input = String::from(content);
-  Box::into_raw(context);
-
-  parser.parse(content.as_ptr(), content.len())
+  consumed = parse(&mut parser, request2);
+  println!(
+    "{{ \"pos\": {}, \"consumed\": {}, \"state\": \"{}\" }}",
+    parser.position,
+    consumed,
+    parser.state_str(),
+  );
 }

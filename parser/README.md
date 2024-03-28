@@ -2,38 +2,18 @@
 
 This folder contains the milo main parser.
 
-Milo is currently distributed as static library which is meant to be statically linked in a C++ executable (or anything that can link against a static library).
-
 To build milo, simply run:
 
 ```bash
-make
+makers
 ```
 
-this will generate `libmilo.a` and `milo.h` in the `dist` folder.
+this will generate `cpp` and `wasm` build in `dist` folder.
 These files can be copied in the source code to embed milo.
 
-Alternatively, run:
-
-```bash
-make debug
-```
-
-To build a debug version of the static library which also enables the `before_state_change` and `after_state_change` callbacks for easier debugging.
-
-## How to use and API
+## How to use the API
 
 See the main [README.md](../README.md) in the parent folder.
-
-## Run test suite
-
-Rust tests are provided to ensure milo's integrity.
-
-Run:
-
-```bash
-cargo test
-```
 
 ## Verify compiled code and macro substitution
 

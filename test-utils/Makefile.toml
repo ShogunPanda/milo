@@ -1,0 +1,20 @@
+[config]
+  skip_core_tasks = true
+
+[tasks.default]
+  dependencies = ["all"]
+
+[tasks.verify]
+  dependencies = ["clean", "all", "test"]
+
+[tasks.all]
+  command = "cargo"
+  args    = ["build"]
+
+[tasks.clean]
+  command = "cargo"
+  args    = ["clean"]
+
+[tasks.test]
+  command = "cargo"
+  args    = ["test"]

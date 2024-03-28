@@ -4,7 +4,6 @@ use quote::quote;
 mod actions;
 mod definitions;
 mod generators;
-mod implementation;
 mod matchers;
 mod native;
 mod parsing;
@@ -56,6 +55,11 @@ pub fn url(_: TokenStream) -> TokenStream { matchers::url() }
 pub fn otherwise(input: TokenStream) -> TokenStream { matchers::otherwise(input) }
 // #endregion matchers
 
+// #region values access
+#[proc_macro]
+pub fn wasm_getter(input: TokenStream) -> TokenStream { wasm::wasm_getter(input) }
+// #endregion values access
+
 // #region actions
 #[proc_macro]
 pub fn string_length(input: TokenStream) -> TokenStream { actions::string_length(input) }
@@ -73,10 +77,13 @@ pub fn fail(input: TokenStream) -> TokenStream { actions::fail(input) }
 pub fn consume(input: TokenStream) -> TokenStream { actions::consume(input) }
 
 #[proc_macro]
-pub fn callback(input: TokenStream) -> TokenStream { actions::callback(input, true, false) }
+pub fn callback(input: TokenStream) -> TokenStream { actions::callback(input, "parser", true) }
 
 #[proc_macro]
-pub fn callback_no_return(input: TokenStream) -> TokenStream { actions::callback(input, false, true) }
+pub fn callback_on_self(input: TokenStream) -> TokenStream { actions::callback(input, "self", true) }
+
+#[proc_macro]
+pub fn callback_on_self_no_return(input: TokenStream) -> TokenStream { actions::callback(input, "self", false) }
 
 #[proc_macro]
 pub fn suspend(_: TokenStream) -> TokenStream { actions::suspend() }
@@ -84,11 +91,6 @@ pub fn suspend(_: TokenStream) -> TokenStream { actions::suspend() }
 #[proc_macro]
 pub fn find_method(input: TokenStream) -> TokenStream { actions::find_method(input) }
 // #endregion actions
-
-// #region parse
-#[proc_macro]
-pub fn parse(_: TokenStream) -> TokenStream { implementation::parse() }
-// #endregion parse
 
 // #region generators
 #[proc_macro]
@@ -105,5 +107,5 @@ pub fn generate_constants(_: TokenStream) -> TokenStream { generators::generate_
 pub fn generate_enums(_: TokenStream) -> TokenStream { generators::generate_enums() }
 
 #[proc_macro]
-pub fn generate_callbacks(_: TokenStream) -> TokenStream { generators::generate_callbacks() }
+pub fn generate_callbacks(_: TokenStream) -> TokenStream { native::generate_callbacks_native() }
 // #endregion generators

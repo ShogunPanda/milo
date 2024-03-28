@@ -1,23 +1,15 @@
 # Rust API
 
-## `no-copy` mode
-
-By default, Milo buffers unconsumed data from parsing and automatically prepends it in the next invocation of the `parse` method.
-
-If Milo is built with the `no-copy` feature (`--features milo/no-copy`), such behavior is disabled.
-
 ## Constants
 
 The crate exports several constants (`*` is used to denote a family prefix):
 
 - `DEBUG`: If the debug informations are enabled or not.
-- `NO_COPY`: If the `no-copy` mode is enabled.
-- `AUTODETECT`: Set the parser to autodetect if the next message is a request or a response.
-- `REQUEST`: Set the parser to only parse requests.
-- `RESPONSE`: Set the parser to only parse response.
-- `CONNECTION_*`: A `Connection` header value.
+- `MESSAGE_TYPE_*`: The type of the parser: it can autodetect (default) or only parse requests or response.
 - `ERROR_*`: An error code.
 - `METHOD_*`: An HTTP/RTSP request method.
+- `CONNECTION_*`: A `Connection` header value.
+- `CALLBACK_*`: A parser callback.
 - `STATE_*`: A parser state.
 
 ## `Flags`
@@ -31,32 +23,20 @@ A struct representing the current compile flags of Milo:
 All callback in Milo have the following signature (`Callback`):
 
 ```rust
-type Callback = fn (&Parser, *const c_uchar, usize) -> isize
+type Callback = fn (&mut Parser, usize, usize)
 ```
 
 where the parameters have the following meaning:
 
 1. The current parser.
-2. A data pointer. Can be `NULL` (and in that case the next parameter will be 0).
-3. The data length. Can be `0` (and in that case the previous parameter will be `NULL`).
+2. The payload offset. Can be `0`.
+3. The data length. Can be `0`.
 
-If Milo is built in `no-copy` mode (see above) then the callbacks signature changes as follows:
+If both offset and length are `0`, it means the callback has no payload associated.
 
-```rust
-type Callback = fn (&Parser, usize, usize) -> isize
-```
+## `ParserCallbacks`
 
-where the parameters have the following meaning:
-
-1. The current parser.
-2. The offset (relative to the last data passed to `milo_parse`) where the current payload starts.
-3. The data length. Can be `0` (and in that case the previous parameter will be `0`).
-
-In both cases the return value must be `0` in case of success, any other value will halt the parser in error state.
-
-## `Callbacks`
-
-A struct representing the callbacks for a parser. Each callback is wrapped in a `Cell`.
+A struct representing the callbacks for a parser.
 
 Here's the list of supported callbacks:
 
@@ -96,97 +76,119 @@ If you want to remove a previously set callback, you can use the `milo_noop` fun
 
 A struct representing a parser. It has the following fields:
 
-- `owner` (`Cell<*mut c_void>`): The owner of this parser. Use is reserved to the developer.
-- `state` (`Cell<u8>`): The current parser state.
-- `position` (`Cell<usize>`): The current parser position in the slice in the current execution of `milo_parse`.
-- `parsed` (`Cell<u64>`): The total bytes consumed from this parser.
-- `paused` (`Cell<bool>`): If the parser is paused.
-- `error_code` (`Cell<u8>`): The parser error. By default is `ERROR_NONE`.
-- `error_description` (`Cell<*const c_uchar>`): The parser error description.
-- `error_description_len` (`Cell<usize>`): The parser error description length.
-- `unconsumed` (`Cell<*const c_uchar>`): The unconsumed data from the previous execution of `milo_parse`. _This is not available in `no-copy` mode (see above)_.
-- `unconsumed_len` (`Cell<usize>`): The unconsumed data length from the previous execution of `milo_parse`. _This is not available in `no-copy` mode (see above)_.
-- `id` (`Cell<u8>`): The current parser ID. Use is reserved to the developer.
-- `mode` (`Cell<u8>`): The current parser mode. Can be `AUTODETECT`, `REQUEST` or `RESPONSE`,
-- `continue_without_data` (`Cell<bool>`): If the next execution of the parse loop should execute even if there is no more data.
-- `message_type` (`Cell<u8>`): The current message type. Can be `REQUEST` or `RESPONSE`.
-- `is_connect` (`Cell<bool>`): If the current request used `CONNECT` method.
-- `method` (`Cell<u8>`): The current request method as integer.
-- `status` (`Cell<usize>`): The current response status.
-- `version_major` (`Cell<u8>`): The current message HTTP version major version.
-- `version_minor` (`Cell<u8>`): The current message HTTP version minor version.
-- `connection` (`Cell<u8>`): The value for the connection header. Can be `CONNECTION_CLOSE`, `CONNECTION_UPGRADE` or `CONNECTION_KEEPALIVE` (which is the default when no header is set).
-- `has_content_length` (`Cell<bool>`): If the current request has a `Content-Length` header.
-- `has_chunked_transfer_encoding` (`Cell<bool>`): If the current request has a `Transfer-Encoding` header.
-- `has_upgrade` (`Cell<bool>`): If the current request has a `Connection: upgrade` header.
-- `has_trailers` (`Cell<bool>`): If the current request has a `Trailers` header.
-- `content_length` (`Cell<u64>`): The value of the `Content-Length` header.
-- `chunk_size` (`Cell<u64>`): The expected length of the next chunk.
-- `remaining_content_length` (`Cell<u64>`): The missing data length of the body according to the `content_length` field.
-- `remaining_chunk_size` (`Cell<u64>`): The missing data length of the next chunk according to the `chunk_size` field.
-- `skip_body` (`Cell<bool>`): If the parser should skip the body.
-- `callbacks` (`Callbacks`): The callbacks for the current parser.
+- `mode` (`usize`): The current parser mode. Can be `MESSAGE_TYPE_AUTODETECT`, `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`,
+- `paused` (`bool`): If the parser is paused.
+- `manage_unconsumed` (`bool`): If the parser should automatically copy and prepend unconsumed data.
+- `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
+- `is_connect` (`bool`): If the current request used `CONNECT` method.
+- `skip_body` (`bool`): If the parser should skip the body.
+- `owner` (`*mut c_void`): The context of this parser. Use is reserved to the developer.
+- `state` (`usize`): The current parser state.
+- `position` (`usize`): The current parser position in the slice in the current execution of `milo_parse`.
+- `parsed` (`u64`): The total bytes consumed from this parser.
+- `error_code` (`usize`): The parser error. By default is `ERROR_NONE`.
+- `message_type` (`usize`): The current message type. Can be `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`.
+- `method` (`usize`): The current request method.
+- `status` (`usize`): The current response status.
+- `version_major` (`usize`): The current message HTTP version major version.
+- `version_minor` (`usize`): The current message HTTP version minor version.
+- `connection` (`usize`): The value for the connection header. Can be `CONNECTION_CLOSE`, `CONNECTION_UPGRADE` or `CONNECTION_KEEPALIVE` (which is the default when no header is set).
+- `content_length` (`u64`): The value of the `Content-Length` header.
+- `chunk_size` (`u64`): The expected length of the next chunk.
+- `remaining_content_length` (`u64`): The missing data length of the body according to the `content_length` field.
+- `remaining_chunk_size` (`u64`): The missing data length of the next chunk according to the `chunk_size` field.
+- `has_content_length` (`bool`): If the current message has a `Content-Length` header.
+- `has_chunked_transfer_encoding` (`bool`): If the current message has a `Transfer-Encoding` header.
+- `has_upgrade` (`bool`): If the current message has a `Connection: upgrade` header.
+- `has_trailers` (`bool`): If the current message has a `Trailers` header.
+- `callbacks` (`ParserCallbacks`): The callbacks for the current parser.
+- `error_description` (`*const c_uchar`): The parser error description.
+- `error_description_len` (`usize`): The parser error description length.
+- `unconsumed` (`*const c_uchar`): The unconsumed data from the previous execution of `parse` when `manage_unconsumed` is `true`.
+- `unconsumed_len` (`usize`): The unconsumed data length from the previous execution of `parse` when `manage_unconsumed` is `true`.
 
-Most of the fields **MUST** be considered readonly. The only exception are:
+All the fields **MUST** be considered readonly, with the following exceptions:
 
-- `owner`
-- `id`
 - `mode`
+- `manage_unconsumed`
+- `continue_without_data`
 - `is_connect`
 - `skip_body`
+- `context`
 - `callbacks`
-
-The only persisted fields across resets are `owner`, `id`, `mode` and `continue_without_data`.
 
 ### `Parser::new() -> Parser`
 
 Creates a new parser.
 
-### `Parser::reset(&self, keep_parsed: bool)`
-
-Resets a parser. The second parameters specifies if to also reset the parsed counter.
-
-### `Parser::clear(&self)`
-
-Clears all values in the parser.
-
-Persisted fields, unconsumed data and the position are **NOT** cleared.
-
-### `Parser::parse(&self, data: *const c_uchar, mut limit: usize) -> usize`
+### `Parser::parse(&mut self, data: *const c_uchar, limit: usize) -> usize`
 
 Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
-### `Parser::pause(&self)`
+### `Parser::reset(&mut self, keep_parsed: bool)`
+
+Resets a parser. The second parameters specifies if to also reset the
+parsed counter.
+
+The following fields are not modified:
+
+- `position`
+- `context`
+- `mode`
+- `manage_unconsumed`
+- `continue_without_data`
+- `context`
+
+### `Parser::clear(&mut self)`
+
+Clears all values about the message in the parser.
+
+The connection and message type fields are not cleared.
+
+### `Parser::pause(&mut self)`
 
 Pauses the parser. The parser will have to be resumed via `Parser::resume`.
 
-### `Parser::resume(&self)`
+### `Parser::resume(&mut self)`
 
 Resumes the parser.
 
-### `Parser::finish(&self)`
+### `Parser::finish(&mut self)`
 
-Marks the parser as finished. Any new invocation of `Parser::parse` will put the parser in the error state.
+Marks the parser as finished. Any new data received via `parse` will
+put the parser in the error state.
 
-### `Parser::state_string(&self) -> &str`
+### `Parser::move_to(&mut self, state: usize, advance: usize) -> usize`
+
+Moves the parsers to a new state and marks a certain number of characters as used.
+
+This is meant to internal use.
+
+### `Parser::fail(&mut self, code: usize, description: &str) -> usize`
+
+Marks the parsing a failed, setting a error code and and error message.
+
+It always returns zero for internal use.
+
+### `Parser::state_str(&self) -> &str`
 
 Returns the current parser's state as string.
 
-### `Parser::error_code_string(&self) -> &str`
+### `Parser::error_code_str(&self) -> &str`
 
 Returns the current parser's error state as string.
 
-### `Parser::error_description_string(&self) -> &str`
+### `Parser::error_description_str(&self) -> &str`
 
 Returns the current parser's error descrition.
 
-### `flags() -> Flags`
+## `flags() -> Flags`
 
 Returns a struct representing the current compile flags of Milo.
 
-## `milo_noop(_parser: &Parser, _data: *const c_uchar, _len: usize) -> isize`
+## `milo_noop(_parser: &Parser, _data: *const c_uchar, _len: usize)`
 
 A callback that simply returns `0`.
 
@@ -194,27 +196,31 @@ Use this callback as pointer when you want to remove a callback from the parser.
 
 ## Enums
 
-All the enums below implement `TryFrom<u8>` and `Into<String>` traits and also have the `fn as_string() -> String` method.
+All the enums below implement `TryFrom<usize>` and `Into<&str>` traits and have the `as_str` method.
 
 ### `MessageTypes`
 
 An enum listing all possible message types.
 
-### `Connections`
+### `Errors`
 
-An enum listing all possible connection (`Connection` header value) types.
+An enum listing all possible parser errors.
 
 ### `Methods`
 
 An enum listing all possible HTTP/RTSP methods.
 
+### `Connections`
+
+An enum listing all possible connection (`Connection` header value) types.
+
 ### `States`
 
 An enum listing all possible parser states.
 
-### `Errors`
+### `States`
 
-An enum listing all possible parser errors.
+An enum listing all possible parser callbacks.
 
 ## C++ public interface
 
@@ -222,11 +228,18 @@ The following functions are defined to allow Rust to work in a C++ environment.
 
 While you can use these functions within Rust, it makes little sense as they only call the corresponding method of the parser passed as first argument.
 
+### `CStringWithLength`
+
+A struct representing a string containing the following fields:
+
+- `ptr` (`*const c_uchar`): The string data pointer.
+- `len` (`usize`): The string length.
+
 ### `milo_flags() -> Flags`
 
 Returns a struct representing the current compile flags of Milo.
 
-### `milo_free_string(s: *const c_uchar)`
+### `milo_free_string(s: CStringWithLength)`
 
 Release memory from a string previously obtained from other APIs.
 
@@ -240,41 +253,61 @@ Creates a new parser.
 
 Destroys a parser.
 
-### `milo_reset(parser: *const Parser, keep_parsed: bool)`
-
-Resets a parser. The second parameters specifies if to also reset the parsed counter.
-
-### `milo_parse(parser: *const Parser, data: *const c_uchar, limit: usize) -> usize`
+### `milo_parse(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize`
 
 Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
-### `milo_pause(parser: *const Parser)`
+### `milo_reset(parser: *mut Parser, keep_parsed: bool)`
+
+Resets a parser. The second parameters specifies if to also reset the
+parsed counter.
+
+The following fields are not modified:
+
+- `position`
+- `context`
+- `mode`
+- `manage_unconsumed`
+- `continue_without_data`
+- `context`
+
+### `milo_clear(parser: *mut Parser)`
+
+Clears all values about the message in the parser.
+
+The connection and message type fields are not cleared.
+
+### `milo_pause(parser: *mut Parser)`
 
 Pauses the parser. The parser will have to be resumed via `milo::milo_resume`.
 
-### `milo_resume(parser: *const Parser)`
+### `milo_resume(parser: *mut Parser)`
 
 Resumes the parser.
 
-### `milo_finish(parser: *const Parser)`
+### `milo_finish(parser: *mut Parser)`
 
 Marks the parser as finished. Any new invocation of `milo_parse` will put the parser in the error state.
 
-### `milo_state_string(parser: *const Parser) -> *const c_uchar`
+### `milo_fail(parser: *mut Parser, code: usize, description: CStringWithLength)`
+
+Marks the parsing a failed, setting a error code and and error message.
+
+### `milo_state_string(parser: *mut Parser) -> *const c_uchar`
 
 Returns the current parser's state as string.
 
 **The returned value MUST be freed using `milo_free_string`.**
 
-### `milo_error_code_string(parser: *const Parser) -> *const c_uchar`
+### `milo_error_code_string(parser: *mut Parser) -> *const c_uchar`
 
 Returns the current parser's error state as string.
 
 **The returned value MUST be freed using `milo_free_string`.**
 
-### `milo_error_description_string(parser: *const Parser) -> *const c_uchar`
+### `milo_error_description_string(parser: *mut Parser) -> *const c_uchar`
 
 Returns the current parser's error descrition.
 

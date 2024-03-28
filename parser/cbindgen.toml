@@ -1,21 +1,20 @@
-language = "C++"
+language      = "C++"
 include_guard = "MILO_H"
-namespace = "milo"
+namespace     = "milo"
 
 [parse.expand]
-crates = ["milo"]
+  crates = ["milo"]
 
 [export]
-include = [
-  "CStringWithLength",
-  "Callback",
-  "MessageTypes",
-  "Connections",
-  "Methods",
-  "States",
-  "Errors",
-  "Flags",
-  "Parser",
-  "Offsets",
-  "methods",
-]
+  include = [
+    "Parser",
+    "ParserCallbacks",
+    "Flags",
+    "CStringWithLength",
+    "Callback",
+    "MessageTypes",
+    "Connections",
+    "Methods",
+    "States",
+    "Errors",
+  ]

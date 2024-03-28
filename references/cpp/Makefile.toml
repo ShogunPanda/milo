@@ -7,8 +7,23 @@
 [tasks.default]
   dependencies = ["all"]
 
+[tasks.verify]
+  dependencies = ["clean", "all", "test"]
+
 [tasks.all]
   dependencies = ["release", "debug"]
+
+[tasks.readme]
+  script = [
+    "mkdir -p lib/release",
+    "cd ../../parser",
+    "makers cpp-release",
+    "cp -a dist/cpp/release/libmilo.a dist/cpp/release/milo.h ../references/cpp/lib/release",
+    "cd ../references/cpp",
+    "mkdir -p dist",
+    "clang++ -std=c++11 -I lib/release -o dist/readme lib/release/libmilo.a src/readme.cc",
+    "./dist/readme",
+  ]
 
 [tasks.clean]
   script = "rm -rf dist lib tmp"

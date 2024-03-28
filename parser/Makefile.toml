@@ -1,13 +1,15 @@
 [env]
-  TARGET          = { script = ["rustc -vV | sed -n 's|host: ||p'"] }
-  COMMON_OPTIONS  = "-Z unstable-options --target ${TARGET}"
-  RELEASE_OPTIONS = "-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort"
+  TARGET         = { script = ["rustc -vV | sed -n 's|host: ||p'"] }
+  COMMON_OPTIONS = "-Z unstable-options --target ${TARGET}"
 
 [config]
   skip_core_tasks = true
 
 [tasks.default]
   dependencies = ["all"]
+
+[tasks.verify]
+  dependencies = ["clean", "all"]
 
 [tasks.all]
   dependencies = ["cpp", "wasm"]
@@ -59,20 +61,22 @@
   dependencies = ["wasm-release", "wasm-debug"]
 
 [tasks.wasm-release]
-  env      = { CONFIGURATION = "release", "WASMPACK_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false" }
+  env      = { CONFIGURATION = "release", "CARGO_OPTIONS" = "--release", "WASMPACK_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false" }
   run_task = "wasm-module"
 
 [tasks.wasm-debug]
-  env      = { CONFIGURATION = "debug", "WASMPACK_OPTIONS" = "--debug", POSTBUILD_OPTIONS = "DEBUG:true" }
+  env      = { CONFIGURATION = "debug", "CARGO_OPTIONS" = "", "WASMPACK_OPTIONS" = "--debug", POSTBUILD_OPTIONS = "DEBUG:true" }
   run_task = "wasm-module"
 
 [tasks.wasm-module]
   script = [
     "mkdir -p dist/wasm",
     "rm -rf dist/wasm/${CONFIGURATION}",
-    "wasm-pack build -d target/wasm/${CONFIGURATION} -t nodejs ${WASMPACK_OPTIONS}",
-    "cp -a target/wasm/${CONFIGURATION} dist/wasm/${CONFIGURATION}",
-    "rm -rf dist/wasm/${CONFIGURATION}/.gitignore dist/wasm/${CONFIGURATION}/README.md",
+    "mkdir -p dist/wasm/${CONFIGURATION}",
+    "cargo build -Z unstable-options --target wasm32-unknown-unknown ${CARGO_OPTIONS}",
+    "cp -a target/wasm32-unknown-unknown/${CONFIGURATION}/milo.wasm dist/wasm/${CONFIGURATION}",
+    # "wasm-pack build -d target/wasm/${CONFIGURATION} -t no-modules --no-typescript ${WASMPACK_OPTIONS}",
+    #"rm -rf dist/wasm/${CONFIGURATION}/.gitignore dist/wasm/${CONFIGURATION}/README.md",
     "node ./tools/postbuild-wasm.mjs	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
   ]
 

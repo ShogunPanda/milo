@@ -14,7 +14,7 @@ This project aims to:
 
 To see the rationale behind the replacement of llhttp, check Paolo's talk at [Vancouver's Node Collab Summit][vancouver-talk] in January 2023 ([slides][vancouver-slides]).
 
-To see the initial disclosure of milo, check Paolo's talk at [Bilbao's Node Collab Summit][bilbao-talk] in September 2023 ([slides][bilbao-slides]).
+To see the initial disclosure of milo, check Paolo's talk at [NodeConf EU 2023][nodeconf-talk] in November 2023 ([slides][slides]).
 
 ## How it works?
 
@@ -24,46 +24,59 @@ See the [macros](./macros/README.md) internal crate for more information.
 
 The data matching is possible thanks to power of the Rust's [match] statement applied to [data slices][match-slice].
 
-The resulting parser is as simple state machine which copies the data in only one specific case, to automatically handle unconsumed portion of the input data.
+The resulting parser is as simple state machine which copies the data in only one (optional) specific case: to automatically handle unconsumed portion of the input data.
 
-In all other all cases, no data is copied and the memory footprint is very small as only 20 `intprt_t` fields can represent the entire parser state.
+In all other all cases, no data is copied and the memory footprint is very small as only 30 `bool`, `uintprt_t` or `uint64_t` fields can represent the entire parser state.
 
-The performances are stunning, on a 2023 Apple M2 Max MacBook Pro it takes 500 nanosecond to parse a 1KB message.
+## How to use it (JavaScript via WebAssembly)
 
-## How to use it (WebAssembly)
+Install it from npm:
 
-Add the `dist/wasm` folder somewhere in your project. For instance, let's use: `deps/milo`.
+```
+npm install @perseveranza-pets/milo
+```
 
 Then create a sample source file:
 
 ```javascript
-const { Parser } = require("./wasm");
+const milo = require('@perseveranza-pets/milo')
 
-// Create the parser
-const parser = new Parser();
-const message = Buffer.from("HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc");
+// Prepare a message to parse.
+const message = Buffer.from('HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc')
 
-// Milo works using callbacks.
-// All callbacks have either no argument or a Uint8Array and its length.
-// The callback MUST return 0 in case of success and non-zero in case of errors.
-parser.setOnData((data, len) => {
-  // Do something with the informations.
-  console.log(
-    `Pos=${parser.position} Body: ${Buffer.from(data).slice(0, len).toString()}`
-  );
+// Allocate a memory in the WebAssembly space. This speeds up data copying to the WebAssembly layer.
+const ptr = milo.alloc(message.length)
 
-  // All good, let's return.
-  return 0;
-});
+// Create a buffer we can use normally.
+const buffer = Buffer.from(milo.memory.buffer, ptr, message.length)
 
-// This is the main method you invoke.
-// It takes a Buffer and how many bytes to parse at most.
-//
-// It returns the number of consumed characters.
-// Note that if not all characters are consumed, milo will automatically copies
-// and prepends them in the next run of the function so there is no need to
-// pass it again.
-parser.parse(message, message.length);
+// Create the parser.
+const parser = milo.create()
+
+/*
+  Milo works using callbacks.
+
+  All callbacks have the same signature, which characterizes the payload:
+  
+    * The current parent
+    * from: The payload offset.
+    * size: The payload length.
+    
+  The payload parameters above are relative to the last data sent to the milo.parse method.
+
+  If the current callback has no payload, both values are set to 0.
+*/
+milo.setOnData(parser, (p, from, size) => {
+  console.log(`Pos=${milo.getPosition(p)} Body: ${message.slice(from, from + size).toString()}`)
+})
+
+// Now perform the main parsing using milo.parse. The method returns the number of consumed characters.
+buffer.set(Buffer.from(message), 0)
+const consumed = milo.parse(parser, ptr, message.length)
+
+// Cleanup used resources.
+milo.destroy(parser)
+milo.dealloc(ptr, message.length)
 ```
 
 Finally build and execute it using `node`:
@@ -85,55 +98,56 @@ edition = "2021"
 publish = false
 
 [dependencies]
-milo = { path = "../parser" }
+milo = "0.1.0"
 ```
 
 Create a sample source file:
 
 ```rust
-use std::ffi::c_uchar;
-use std::slice;
-use std::str;
+use core::ffi::c_void;
+use core::slice;
 
 use milo::Parser;
 
 fn main() {
-  // Create the parser
-  let parser = Parser::new();
-  let message = "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc";
+  // Create the parser.
+  let mut parser = Parser::new();
+
+  // Prepare a message to parse.
+  let message = String::from("HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc");
+  parser.context = message.as_ptr() as *mut c_void;
 
   // Milo works using callbacks.
-  // All callbacks have the same signature, but data can be eventually NULL (and
-  // therefore size is 0). The callback should return 0 in case of success and
-  // non-zero in case of errors.
-  parser.callbacks.on_data = |p: &mut Parser, data: *const c_uchar, size: usize| -> isize {
-    // Do something with the informations.
-    println!("Pos={} Body: {}", p.position, unsafe {
-      str::from_utf8_unchecked(slice::from_raw_parts(data, size))
-    });
+  //
+  // All callbacks have the same signature, which characterizes the payload:
+  //
+  // p: The current parser.
+  // from: The payload offset.
+  // size: The payload length.
+  //
+  // The payload parameters above are relative to the last data sent to the parse
+  // method.
+  //
+  // If the current callback has no payload, both values are set to 0.
+  parser.callbacks.on_data = |p: &mut Parser, from: usize, size: usize| {
+    let message =
+      unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(p.context.add(from) as *const u8, size)) };
 
-    // All good, let's return.
-    0
+    // Do somethin cvdg with the informations.
+    println!("Pos={} Body: {}", p.position, message);
   };
 
-  // This is the main method you invoke.
-  // It takes a data pointer and how many bytes to parse at most.
-  //
-  // It returns the number of consumed characters.
-  // Note that if not all characters are consumed, milo will automatically copies
-  // and prepends them in the next run of the function so there is no need to
-  // pass it again.
-  unsafe {
-    parser.parse(message.as_ptr(), message.len());
-  }
+  // Now perform the main parsing using milo.parse. The method returns the number
+  // of consumed characters.
+  parser.parse(message.as_ptr(), message.len());
 }
+
 ```
 
 Finally build and execute it using `cargo`:
 
 ```bash
 cargo run
-# ... cargo build output ...
 # Pos=38 Body: abc
 ```
 
@@ -150,42 +164,40 @@ Create a sample source file:
 #include "stdio.h"
 #include "string.h"
 
-int main()
-{
-  // Create the parser
-  milo::Parser *parser = milo::milo_create();
-  const char *message = "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc";
+int main() {
+  // Create the parser.
+  milo::Parser* parser = milo::milo_create();
+
+  // Prepare a message to parse.
+  const char* message = "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc";
+
+  parser->context = (char*) message;
 
   /*
     Milo works using callbacks.
-    All callbacks have the same signature, but data can be eventually NULL (and therefore size is 0).
-    The callback should return 0 in case of success and non-zero in case of errors.
+
+    All callbacks have the same signature, which characterizes the payload:
+
+      * p: The current parser.
+      * at: The payload offset.
+      * len: The payload length.
+
+    The payload parameters above are relative to the last data sent to the milo_parse method.
+
+    If the current callback has no payload, both values are set to 0.
   */
-  parser->callbacks.on_data = [](milo::Parser *p, const unsigned char *data, uintptr_t size) -> intptr_t
-  {
-    char *content = reinterpret_cast<char *>(malloc(sizeof(char) * 1000));
-    // Rust internall uses unsigned chars for string, so we need to cast.
-    strncpy(content, reinterpret_cast<const char *>(data), size);
+  parser->callbacks.on_data = [](milo::Parser* p, uintptr_t from, uintptr_t size) {
+    char* payload = reinterpret_cast<char*>(malloc(sizeof(char) * size));
+    strncpy(payload, reinterpret_cast<const char*>(p->context) + from, size);
 
-    // Do something with the informations.
-    printf("Pos=%lu Body: %s\n", p->position, content);
-    free(content);
-
-    // All good, let's return.
-    return 0;
+    printf("Pos=%lu Body: %s\n", p->position, payload);
+    free(payload);
   };
 
-  /*
-    This is the main method you invoke.
-    It takes a parser, a data pointer and how many bytes to parse at most.
+  // Now perform the main parsing using milo.parse. The method returns the number of consumed characters.
+  milo::milo_parse(parser, reinterpret_cast<const unsigned char*>(message), strlen(message));
 
-    It returns the number of consumed characters.
-    Note that if not all characters are consumed, milo will automatically copies and prepends them in
-    the next run of the function so there is no need to pass it again.
-  */
-  milo::milo_parse(parser, reinterpret_cast<const unsigned char *>(message), strlen(message));
-
-  // Remember not to leak memory. ;)
+  // Cleanup used resources.
   milo::milo_destroy(parser);
 }
 ```
@@ -198,11 +210,11 @@ clang++ -std=c++11 -o example libmilo.a main.cc
 # Pos=38 Body: abc
 ```
 
-### Build milo locally
+### Build milo (WebAssembly and C++) locally
 
 If you want to build it locally, you need the following tools:
 
-- [make]
+- [cargo-make][cargo-make]
 - Rust toolchain - You can install it via [rustup].
 
 Make sure you have the `nightly` toolchain installed locally:
@@ -215,17 +227,18 @@ After all the requirements are met, you can then run:
 
 ```bash
 cd parser
-make
+makers
 ```
 
-The command above will produce the release file.
-If you want the debug file (which also enables the `before_state_change` and `after_state_change` callbacks), run `make debug`.
+The command above will produce debug and release builds for each language in the `dist` folder.
+
+The debug build will also enables the `before_state_change` and `after_state_change` callbacks and it's more verbose in case of WebAssembly errors.
 
 ## API
 
 See the following files, according to the language you are using:
 
-- [WebAssembly API](./docs/wasm.md)
+- [JavaScript via WebAssembly API](./docs/wasm.md)
 - [Rust API](./docs/rust.md)
 - [C++ API](./docs/cpp.md)
 
@@ -250,14 +263,14 @@ Licensed under the ISC license, which can be found at https://choosealicense.com
 [Node.js]: https://nodejs.org
 [vancouver-talk]: https://youtube.com/watch?v=L-VONzXQ944
 [vancouver-slides]: https://talks.cowtech.it/http-parser
-[bilbao-talk]: http://localhost
-[bilbao-slides]: https://talks.cowtech.it/milo/01
+[nodeconf-talk]: https://youtube.com/watch?v=dcHbAeO_ccY
+[slides]: https://talks.paoloinsogna.dev/milo
 [isc]: https://choosealicense.com/licenses/isc
 [procedural macro]: https://doc.rust-lang.org/reference/procedural-macros.html
 [syn]: https://crates.io/crates/syn
 [quote]: https://crates.io/crates/quote
 [match]: https://doc.rust-lang.org/rust-by-example/flow_control/match.html
 [match-slice]: https://doc.rust-lang.org/rust-by-example/flow_control/match/destructuring/destructure_slice.html
-[make]: https://www.gnu.org/software/make/
+[cargo-make]: https://github.com/sagiegurari/cargo-make
 [rust-up]: https://rustup.rs/
 [Clang]: https://clang.llvm.org/

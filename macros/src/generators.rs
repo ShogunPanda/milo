@@ -1,11 +1,11 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
+use regex::{Captures, Regex};
 use syn::{parse_str, Arm, ItemConst};
 
-use crate::{
-  definitions::{save_constants, ERRORS, METHODS, OFFSETS, STATES},
-  native::generate_callbacks_native,
-  wasm::generate_callbacks_wasm,
+use crate::definitions::{
+  save_constants, CALLBACKS, CONNECTION_CLOSE, CONNECTION_KEEPALIVE, CONNECTION_UPGRADE, ERRORS,
+  MESSAGE_TYPE_AUTODETECT, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE, METHODS, STATES,
 };
 
 /// Generates all parser constants.
@@ -17,7 +17,7 @@ pub fn generate_constants() -> TokenStream {
     .unwrap()
     .iter()
     .enumerate()
-    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const METHOD_{}: u8 = {};", x.replace('-', "_"), i)).unwrap())
+    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const METHOD_{}: usize = {};", x.replace('-', "_"), i)).unwrap())
     .collect();
 
   let errors_consts: Vec<_> = unsafe {
@@ -26,18 +26,23 @@ pub fn generate_constants() -> TokenStream {
       .unwrap()
       .iter()
       .enumerate()
-      .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const ERROR_{}: u8 = {};", x, i)).unwrap())
+      .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const ERROR_{}: usize = {};", x, i)).unwrap())
       .collect()
   };
 
-  let offsets_consts: Vec<_> = unsafe {
-    OFFSETS
+  let callbacks_consts: Vec<_> = unsafe {
+    CALLBACKS
       .get()
       .unwrap()
       .iter()
       .enumerate()
       .map(|(i, x)| {
-        parse_str::<ItemConst>(&format!("pub const OFFSET_{}: usize = {};", x.replace('-', "_"), i)).unwrap()
+        parse_str::<ItemConst>(&format!(
+          "pub const CALLBACK_{}: usize = {};",
+          x.replace('-', "_").to_uppercase(),
+          i
+        ))
+        .unwrap()
       })
       .collect()
   };
@@ -47,7 +52,7 @@ pub fn generate_constants() -> TokenStream {
   let states_consts: Vec<_> = states_ref
     .iter()
     .enumerate()
-    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const STATE_{}: u8 = {};", x, i)).unwrap())
+    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const STATE_{}: usize = {};", x, i)).unwrap())
     .collect();
 
   let states_len = states_ref.len();
@@ -112,93 +117,91 @@ pub fn generate_constants() -> TokenStream {
   ws_table[32] = true;
 
   TokenStream::from(quote! {
-    type StateHandler = fn (parser: &Parser, data: &[c_uchar]) -> isize;
+    type StateHandler = fn (parser: &mut Parser, data: &[c_uchar]) -> usize;
 
     #[no_mangle]
-    pub type Callback = fn (&Parser, usize, usize) -> isize;
-
-    pub const MAX_OFFSETS_COUNT: usize = 2049 * 3; // 2048 + 1 for the initial three status one
-    pub const MAX_INPUT_SIZE: usize = 1024 * 64;
-    pub const SUSPEND: isize = isize::MIN;
+    pub type Callback = fn (&mut Parser, usize, usize);
 
     pub const DEBUG: bool = cfg!(debug_assertions);
 
-    pub const AUTODETECT: u8 = 0;
-    pub const REQUEST: u8 = 1;
-    pub const RESPONSE: u8 = 2;
+    pub const SUSPEND: usize = usize::MAX;
 
-    pub const CONNECTION_KEEPALIVE: u8 = 0;
-    pub const CONNECTION_CLOSE: u8 = 1;
-    pub const CONNECTION_UPGRADE: u8 = 2;
+    pub const MESSAGE_TYPE_AUTODETECT: usize = #MESSAGE_TYPE_AUTODETECT;
+    pub const MESSAGE_TYPE_REQUEST: usize = #MESSAGE_TYPE_REQUEST;
+    pub const MESSAGE_TYPE_RESPONSE: usize = #MESSAGE_TYPE_RESPONSE;
 
-    #(#errors_consts)*
+    pub const CONNECTION_KEEPALIVE: usize = #CONNECTION_KEEPALIVE;
+    pub const CONNECTION_CLOSE: usize = #CONNECTION_CLOSE;
+    pub const CONNECTION_UPGRADE: usize = #CONNECTION_UPGRADE;
 
     #(#methods_consts)*
 
+    #(#errors_consts)*
+
+    #(#callbacks_consts)*
+
     #(#states_consts)*
 
-    #(#offsets_consts)*
+    /// cbindgen:ignore
+    static DIGIT_TABLE: [bool; 256] = [#(#digit_table),*];
 
     /// cbindgen:ignore
-    static digit_table: [bool; 256] = [#(#digit_table),*];
+    static HEX_DIGIT_TABLE: [bool; 256] = [#(#hex_digit_table),*];
 
     /// cbindgen:ignore
-    static hex_digit_table: [bool; 256] = [#(#hex_digit_table),*];
+    static TOKEN_TABLE: [bool; 256] = [#(#token_table),*];
 
     /// cbindgen:ignore
-    static token_table: [bool; 256] = [#(#token_table),*];
+    static TOKEN_VALUE_TABLE: [bool; 256] = [#(#token_value_table),*];
 
     /// cbindgen:ignore
-    static token_value_table: [bool; 256] = [#(#token_value_table),*];
+    static TOKEN_VALUE_QUOTED_TABLE: [bool; 256] = [#(#token_value_quoted_table),*];
 
     /// cbindgen:ignore
-    static token_value_quoted_table: [bool; 256] = [#(#token_value_quoted_table),*];
+    static URL_TABLE: [bool; 256] = [#(#url_table),*];
 
     /// cbindgen:ignore
-    static url_table: [bool; 256] = [#(#url_table),*];
+    static WS_TABLE: [bool; 256] = [#(#ws_table),*];
 
     /// cbindgen:ignore
-    static ws_table: [bool; 256] = [#(#ws_table),*];
-
-    /// cbindgen:ignore
-    static states_handlers: [StateHandler; #states_len] = [#(#states_table),*];
+    static STATES_HANDLERS: [StateHandler; #states_len] = [#(#states_table),*];
   })
 }
 
 /// Generates all parser enums.
 pub fn generate_enums() -> TokenStream {
+  let snake_matcher = Regex::new(r"_([a-z])").unwrap();
+
   let methods_ref = METHODS.get().unwrap();
-  let offsets_ref = unsafe { OFFSETS.get().unwrap() };
-  let states_ref = unsafe { STATES.get().unwrap() };
   let errors_ref = unsafe { ERRORS.get().unwrap() };
+  let callbacks_ref = unsafe { CALLBACKS.get().unwrap() };
+  let states_ref = unsafe { STATES.get().unwrap() };
 
   let methods: Vec<_> = methods_ref
     .iter()
     .map(|x| format_ident!("{}", x.replace('-', "_")))
     .collect();
 
-  let offsets: Vec<_> = offsets_ref.iter().map(|x| format_ident!("{}", x)).collect();
+  let errors: Vec<_> = errors_ref.iter().map(|x| format_ident!("{}", x)).collect();
+
+  let callbacks: Vec<_> = callbacks_ref
+    .iter()
+    .map(|x| {
+      let lowercase = x.to_lowercase();
+
+      format_ident!(
+        "{}",
+        snake_matcher.replace_all(lowercase.as_str(), |captures: &Captures| captures[1].to_uppercase())
+      )
+    })
+    .collect();
 
   let states: Vec<_> = states_ref.iter().map(|x| format_ident!("{}", x)).collect();
-
-  let errors: Vec<_> = errors_ref.iter().map(|x| format_ident!("{}", x)).collect();
 
   let methods_from: Vec<_> = methods_ref
     .iter()
     .enumerate()
     .map(|(x, i)| parse_str::<Arm>(&format!("{} => Ok(Methods::{})", x, i.replace('-', "_"))).unwrap())
-    .collect();
-
-  let offsets_from: Vec<_> = offsets_ref
-    .iter()
-    .enumerate()
-    .map(|(x, i)| parse_str::<Arm>(&format!("{} => Ok(Offsets::{})", x, i.replace('-', "_"))).unwrap())
-    .collect();
-
-  let states_from: Vec<_> = states_ref
-    .iter()
-    .enumerate()
-    .map(|(x, i)| parse_str::<Arm>(&format!("{} => Ok(States::{})", x, i)).unwrap())
     .collect();
 
   let errors_from: Vec<_> = errors_ref
@@ -207,19 +210,21 @@ pub fn generate_enums() -> TokenStream {
     .map(|(x, i)| parse_str::<Arm>(&format!("{} => Ok(Errors::{})", x, i)).unwrap())
     .collect();
 
+  let callbacks_from: Vec<_> = callbacks
+    .iter()
+    .enumerate()
+    .map(|(x, i)| parse_str::<Arm>(&format!("{} => Ok(Callbacks::{})", x, i)).unwrap())
+    .collect();
+
+  let states_from: Vec<_> = states_ref
+    .iter()
+    .enumerate()
+    .map(|(x, i)| parse_str::<Arm>(&format!("{} => Ok(States::{})", x, i)).unwrap())
+    .collect();
+
   let methods_into: Vec<_> = methods_ref
     .iter()
     .map(|x| parse_str::<Arm>(&format!("Methods::{} => \"{}\"", x.replace('-', "_"), x)).unwrap())
-    .collect();
-
-  let offsets_into: Vec<_> = offsets_ref
-    .iter()
-    .map(|x| parse_str::<Arm>(&format!("Offsets::{} => \"{}\"", x.replace('-', "_"), x)).unwrap())
-    .collect();
-
-  let states_into: Vec<_> = states_ref
-    .iter()
-    .map(|x| parse_str::<Arm>(&format!("States::{} => \"{}\"", x, x)).unwrap())
     .collect();
 
   let errors_into: Vec<_> = errors_ref
@@ -227,11 +232,20 @@ pub fn generate_enums() -> TokenStream {
     .map(|x| parse_str::<Arm>(&format!("Errors::{} => \"{}\"", x, x)).unwrap())
     .collect();
 
+  let callbacks_into: Vec<_> = callbacks
+    .iter()
+    .map(|x| parse_str::<Arm>(&format!("Callbacks::{} => \"{}\"", x, x)).unwrap())
+    .collect();
+
+  let states_into: Vec<_> = states_ref
+    .iter()
+    .map(|x| parse_str::<Arm>(&format!("States::{} => \"{}\"", x, x)).unwrap())
+    .collect();
+
   TokenStream::from(quote! {
     // MessageType and Connection reflects the constants in generate_constants
     // to allow easier interoperability, especially in WASM.
-    #[wasm_bindgen]
-    #[repr(u8)]
+    #[repr(usize)]
     #[derive(Copy, Clone, Debug)]
     pub enum MessageTypes {
       AUTODETECT,
@@ -239,8 +253,7 @@ pub fn generate_enums() -> TokenStream {
       RESPONSE,
     }
 
-    #[wasm_bindgen]
-    #[repr(u8)]
+    #[repr(usize)]
     #[derive(Copy, Clone, Debug)]
     pub enum Connections {
       KEEPALIVE,
@@ -248,38 +261,34 @@ pub fn generate_enums() -> TokenStream {
       UPGRADE,
     }
 
-    #[wasm_bindgen]
     #[repr(usize)]
-    #[derive(Copy, Clone, Debug)]
-    pub enum Offsets {
-      #(#offsets),*
-    }
-
-    #[wasm_bindgen]
-    #[repr(u8)]
     #[derive(Copy, Clone, Debug)]
     pub enum Methods {
       #(#methods),*
     }
 
-    #[wasm_bindgen]
-    #[repr(u8)]
-    #[derive(Copy, Clone, Debug)]
-    pub enum States {
-      #(#states),*
-    }
-
-    #[wasm_bindgen]
-    #[repr(u8)]
+    #[repr(usize)]
     #[derive(Copy, Clone, Debug)]
     pub enum Errors {
       #(#errors),*
     }
 
-    impl TryFrom<u8> for MessageTypes {
+    #[repr(usize)]
+    #[derive(Copy, Clone, Debug)]
+    pub enum Callbacks {
+      #(#callbacks),*
+    }
+
+    #[repr(usize)]
+    #[derive(Copy, Clone, Debug)]
+    pub enum States {
+      #(#states),*
+    }
+
+    impl TryFrom<usize> for MessageTypes {
       type Error = ();
 
-      fn try_from(value: u8) -> Result<Self, ()> {
+      fn try_from(value: usize) -> Result<Self, ()> {
         match value {
           0 => Ok(MessageTypes::AUTODETECT),
           1 => Ok(MessageTypes::REQUEST),
@@ -289,10 +298,10 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl TryFrom<u8> for Connections {
+    impl TryFrom<usize> for Connections {
       type Error = ();
 
-      fn try_from(value: u8) -> Result<Self, ()> {
+      fn try_from(value: usize) -> Result<Self, ()> {
         match value {
           0 => Ok(Connections::KEEPALIVE),
           1 => Ok(Connections::CLOSE),
@@ -302,21 +311,10 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl TryFrom<usize> for Offsets {
+    impl TryFrom<usize> for Methods {
       type Error = ();
 
       fn try_from(value: usize) -> Result<Self, ()> {
-        match value {
-          #(#offsets_from),*,
-          _ => Err(())
-        }
-      }
-    }
-
-    impl TryFrom<u8> for Methods {
-      type Error = ();
-
-      fn try_from(value: u8) -> Result<Self, ()> {
         match value {
           #(#methods_from),*,
           _ => Err(())
@@ -324,23 +322,34 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl TryFrom<u8> for States {
+    impl TryFrom<usize> for Errors {
       type Error = ();
 
-      fn try_from(value: u8) -> Result<Self, ()> {
+      fn try_from(value: usize) -> Result<Self, ()> {
         match value {
-          #(#states_from),*,
+          #(#errors_from),*,
           _ => Err(())
         }
       }
     }
 
-    impl TryFrom<u8> for Errors {
+    impl TryFrom<usize> for Callbacks {
       type Error = ();
 
-      fn try_from(value: u8) -> Result<Self, ()> {
+      fn try_from(value: usize) -> Result<Self, ()> {
         match value {
-          #(#errors_from),*,
+          #(#callbacks_from),*,
+          _ => Err(())
+        }
+      }
+    }
+
+    impl TryFrom<usize> for States {
+      type Error = ();
+
+      fn try_from(value: usize) -> Result<Self, ()> {
+        match value {
+          #(#states_from),*,
           _ => Err(())
         }
       }
@@ -366,16 +375,6 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl Into<&str> for Offsets {
-      fn into(self) -> &'static str {
-        match self {
-          #(#offsets_into),*,
-        }
-      }
-    }
-
-
-
     impl Into<&str> for Methods {
       fn into(self) -> &'static str {
         match self {
@@ -384,18 +383,26 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl Into<&str> for States {
-      fn into(self) -> &'static str {
-        match self {
-          #(#states_into),*
-        }
-      }
-    }
-
     impl Into<&str> for Errors {
       fn into(self) -> &'static str {
         match self {
           #(#errors_into),*
+        }
+      }
+    }
+
+    impl Into<&str> for Callbacks {
+      fn into(self) -> &'static str {
+        match self {
+          #(#callbacks_into),*
+        }
+      }
+    }
+
+    impl Into<&str> for States {
+      fn into(self) -> &'static str {
+        match self {
+          #(#states_into),*
         }
       }
     }
@@ -412,19 +419,7 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl Offsets {
-      pub fn as_str(self) -> &'static str {
-        self.into()
-      }
-    }
-
     impl Methods {
-      pub fn as_str(self) -> &'static str {
-        self.into()
-      }
-    }
-
-    impl States {
       pub fn as_str(self) -> &'static str {
         self.into()
       }
@@ -435,16 +430,17 @@ pub fn generate_enums() -> TokenStream {
         self.into()
       }
     }
-  })
-}
 
-/// Generates all parser callbacks.
-pub fn generate_callbacks() -> TokenStream {
-  let native = generate_callbacks_native();
-  let wasm = generate_callbacks_wasm();
+    impl Callbacks {
+      pub fn as_str(self) -> &'static str {
+        self.into()
+      }
+    }
 
-  TokenStream::from(quote! {
-    #native
-    #wasm
+    impl States {
+      pub fn as_str(self) -> &'static str {
+        self.into()
+      }
+    }
   })
 }

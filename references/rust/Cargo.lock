@@ -63,15 +63,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af150ab688ff2122fcef229be89cb50dd66af9e01a4ff320cc137eecc9bacc38"
 
 [[package]]
-name = "js-sys"
-version = "0.3.69"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29c15563dc2726973df627357ce0c9ddddbea194836909d655df6a75d2cf296d"
-dependencies = [
- "wasm-bindgen",
-]
-
-[[package]]
 name = "log"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -88,7 +79,6 @@ name = "milo"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
- "js-sys",
  "milo-macros",
  "wasm-bindgen",
 ]
@@ -110,7 +100,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "milo-reference-rs"
+name = "milo-reference-rust"
 version = "0.1.0"
 dependencies = [
  "milo",

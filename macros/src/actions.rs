@@ -3,7 +3,7 @@ use quote::{format_ident, quote};
 use syn::{parse_macro_input, parse_str, Arm, Expr, Ident};
 
 use crate::{
-  definitions::{init_constants, METHODS, OFFSETS},
+  definitions::{init_constants, METHODS},
   native::callback_native,
   parsing::{Failure, IdentifiersWithExpr, StringLength},
   wasm::callback_wasm,
@@ -17,7 +17,7 @@ fn format_state(ident: &Ident) -> Ident { format_ident!("STATE_{}", ident.to_str
 pub fn string_length(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as StringLength);
 
-  let len = definition.string.value().len() as usize + definition.modifier;
+  let len = definition.string.value().len() + definition.modifier;
 
   TokenStream::from(quote! { #len })
 }
@@ -26,7 +26,7 @@ pub fn string_length(input: TokenStream) -> TokenStream {
 pub fn advance(input: TokenStream) -> TokenStream {
   let name = parse_macro_input!(input as Ident);
 
-  TokenStream::from(quote! { #name as isize })
+  TokenStream::from(quote! { #name })
 }
 
 /// Moves the parsers to a new state and marks a certain number of characters as
@@ -38,7 +38,7 @@ pub fn move_to(input: TokenStream) -> TokenStream {
   #[cfg(debug_assertions)]
   {
     if let Some(expr) = definition.expr {
-      TokenStream::from(quote! { parser.move_to(#state, (#expr) as isize) })
+      TokenStream::from(quote! { parser.move_to(#state, #expr) })
     } else {
       TokenStream::from(quote! { parser.move_to(#state, 1) })
     }
@@ -49,14 +49,14 @@ pub fn move_to(input: TokenStream) -> TokenStream {
     if let Some(expr) = definition.expr {
       TokenStream::from(quote! {
         {
-          parser.state.set(#state);
-          (#expr) as isize
+          parser.state = #state;
+          #expr
         }
       })
     } else {
       TokenStream::from(quote! {
         {
-          parser.state.set(#state);
+          parser.state = #state;
           1
         }
       })
@@ -70,11 +70,7 @@ pub fn fail(input: TokenStream) -> TokenStream {
   let error = format_ident!("ERROR_{}", definition.error);
   let message = definition.message;
 
-  if let Expr::Lit(_) = message {
-    TokenStream::from(quote! { parser.fail(#error, #message) })
-  } else {
-    TokenStream::from(quote! { parser.fail_with_string(#error, #message) })
-  }
+  TokenStream::from(quote! { parser.fail(#error, #message) })
 }
 
 /// Tries to detect the longest prefix of the data matching the provided
@@ -100,7 +96,7 @@ pub fn consume(input: TokenStream) -> TokenStream {
   ];
 
   let table: Ident = if valid_tables.contains(&name) {
-    format_ident!("{}_table", name)
+    format_ident!("{}_TABLE", name.to_uppercase())
   } else {
     panic!("Unsupported consumed type {}", name)
   };
@@ -127,56 +123,30 @@ pub fn consume(input: TokenStream) -> TokenStream {
 /// the data (via pointer and length). If the callback errors, the operation is
 /// NOT interrupted. This call will also append the location information to
 /// the offsets.
-pub fn callback(input: TokenStream, return_on_error: bool, use_self: bool) -> TokenStream {
+pub fn callback(input: TokenStream, target: &str, return_on_fail: bool) -> TokenStream {
   let definition = parse_macro_input!(input as IdentifiersWithExpr);
-  let native = callback_native(&definition, return_on_error, use_self);
-  let wasm = callback_wasm(&definition, return_on_error, use_self);
-  let name = definition.identifier.to_string().to_uppercase();
+  let target = format_ident!("{}", target);
 
-  let parser = if use_self {
-    format_ident!("self")
+  let native = callback_native(&definition, &target);
+  let wasm = callback_wasm(&definition, &target);
+
+  let error_handling = if return_on_fail {
+    quote!({ if #target.state == STATE_ERROR { return 0 }; })
   } else {
-    format_ident!("parser")
-  };
-
-  // Check if the offset named after the callbacks (except the "on_" prefix)
-  // exists
-  let offset = if unsafe { OFFSETS.get().unwrap() }.contains(&name[3..]) {
-    let length = definition.expr.unwrap_or(parse_str::<Expr>(&format!("0")).unwrap());
-    let offset_name = format_ident!("OFFSET_{}", name[3..]);
-
-    quote! {
-      unsafe {
-        let offsets = #parser.offsets.get();
-
-        // Get the current offset (and add 1 as the first three are reserved)
-        let current = (*offsets.offset(2) + 1) as isize * 3;
-
-        // Update the counter
-        // TODO@PI: Handle overflow
-        *(offsets.offset(2)) += 1;
-
-        // Set the offset type, the start and the length
-        *(offsets.offset(current)) = #offset_name;
-        *(offsets.offset(current + 1)) = #parser.position.get();
-        *(offsets.offset(current + 2)) = (#length) as usize;
-      }
-    }
-  } else {
-    quote! {}
+    quote!()
   };
 
   TokenStream::from(quote! {
-    #offset
-
     #[cfg(not(target_family = "wasm"))]
     {
       #native
+      #error_handling
     }
 
     #[cfg(target_family = "wasm")]
     {
       #wasm
+      #error_handling
     }
   })
 }
@@ -188,7 +158,6 @@ pub fn suspend() -> TokenStream { TokenStream::from(quote! { SUSPEND }) }
 /// index).
 pub fn find_method(input: TokenStream) -> TokenStream {
   let identifier = parse_macro_input!(input as Expr);
-
   init_constants();
 
   let methods: Vec<_> = METHODS
@@ -204,7 +173,7 @@ pub fn find_method(input: TokenStream) -> TokenStream {
         .join(", ");
 
       if x == "CONNECT" {
-        parse_str::<Arm>(&format!("[{}] => {{ parser.is_connect.set(true); {} }}", matcher, i)).unwrap()
+        parse_str::<Arm>(&format!("[{}] => {{ parser.is_connect = true; {} }}", matcher, i)).unwrap()
       } else {
         parse_str::<Arm>(&format!("[{}] => {{ {} }}", matcher, i)).unwrap()
       }

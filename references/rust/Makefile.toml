@@ -9,8 +9,14 @@
 [tasks.default]
   dependencies = ["all"]
 
+[tasks.verify]
+  dependencies = ["clean", "all", "test"]
+
 [tasks.all]
   dependencies = ["release", "debug"]
+
+[tasks.readme]
+  script = ["cargo run --bin readme"]
 
 [tasks.clean]
   script = "rm -rf dist target"
@@ -33,5 +39,5 @@
   script = [
     "mkdir -p dist",
     "cargo build ${COMMON_OPTIONS} ${EXTRA_OPTIONS} --out-dir target/${CONFIGURATION}",
-    "cp target/${CONFIGURATION}/milo-reference-rs dist/reference-${CONFIGURATION}",
+    "cp target/${CONFIGURATION}/reference dist/reference-${CONFIGURATION}",
   ]

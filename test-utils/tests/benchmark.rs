@@ -20,10 +20,10 @@ mod test {
       "#,
     );
 
-    let parser = create_parser();
-    let consumed = parse(&parser, &message);
+    let mut parser = create_parser();
+    let consumed = parse(&mut parser, &message);
     assert!(consumed == message.len());
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(parser.state, STATE_ERROR));
   }
 
   #[test]
@@ -47,9 +47,9 @@ mod test {
       "#,
     );
 
-    let parser = create_parser();
-    let consumed = parse(&parser, &message);
+    let mut parser = create_parser();
+    let consumed = parse(&mut parser, &message);
     assert!(consumed == message.len());
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(parser.state, STATE_ERROR));
   }
 }

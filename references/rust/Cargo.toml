@@ -1,9 +1,17 @@
 [package]
-name = "milo-reference-rs"
-version = "0.1.0"
-edition = "2021"
-publish = false
+  name    = "milo-reference-rust"
+  version = "0.1.0"
+  edition = "2021"
+  publish = false
+
+[[bin]]
+  name = "reference"
+  path = "src/reference.rs"
+
+[[bin]]
+  name = "readme"
+  path = "src/readme.rs"
 
 [dependencies]
-milo = { path = "../../parser" }
-milo-test-utils = { path = "../../test-utils" }
+  milo            = { path = "../../parser" }
+  milo-test-utils = { path = "../../test-utils" }

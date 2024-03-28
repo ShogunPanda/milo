@@ -4,6 +4,9 @@
 [tasks.default]
   dependencies = ["all"]
 
+[tasks.verify]
+  dependencies = ["clean", "all", "test"]
+
 [tasks.all]
   dependencies = ["lib"]
   script = [
@@ -13,6 +16,10 @@
     "echo '#!/bin/sh\nnode $(dirname $0)/../src/reference.mjs debug' > dist/reference-debug",
     "chmod a+x dist/*",
   ]
+
+[tasks.readme]
+  dependencies = ["lib"]
+  script       = ["node src/readme.mjs"]
 
 [tasks.clean]
   script = "rm -rf dist lib"

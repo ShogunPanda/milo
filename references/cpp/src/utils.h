@@ -5,7 +5,6 @@
 #include <cstdlib>
 #define MAX_FORMAT 1000
 
-typedef intptr_t isize_t;
 typedef uintptr_t usize_t;
 typedef unsigned char uchar_t;
 

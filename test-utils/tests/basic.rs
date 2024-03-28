@@ -3,12 +3,14 @@ mod test {
   #[allow(unused_imports)]
   use std::ffi::c_uchar;
 
-  use milo::{Parser, REQUEST, RESPONSE, STATE_ERROR, STATE_FINISH, STATE_HEADER_NAME, STATE_START};
+  use milo::{
+    Parser, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE, STATE_ERROR, STATE_FINISH, STATE_HEADER_NAME, STATE_START,
+  };
   use milo_test_utils::{create_parser, http, parse};
 
   #[test]
   fn basic_disable_autodetect() {
-    let parser = create_parser();
+    let mut parser = create_parser();
 
     let request = http(
       r#"
@@ -30,20 +32,20 @@ mod test {
       "#,
     );
 
-    parser.mode.set(REQUEST);
-    parse(&parser, &response);
-    assert!(matches!(parser.state.get(), STATE_ERROR));
+    parser.mode = MESSAGE_TYPE_REQUEST;
+    parse(&mut parser, &response);
+    assert!(matches!(parser.state, STATE_ERROR));
 
     parser.reset(false);
 
-    parser.mode.set(RESPONSE);
-    parse(&parser, &request);
-    assert!(matches!(parser.state.get(), STATE_ERROR));
+    parser.mode = MESSAGE_TYPE_RESPONSE;
+    parse(&mut parser, &request);
+    assert!(matches!(parser.state, STATE_ERROR));
   }
 
   #[test]
   fn basic_incomplete_string() {
-    let parser = create_parser();
+    let mut parser = create_parser();
 
     let sample1 = http(r#"GET / HTTP/1.1\r"#);
     let sample2 = http(r#"1.1\r\n"#);
@@ -52,43 +54,43 @@ mod test {
     let sample5 = http(r#"Value"#);
     let sample6 = http(r#"Value\r\n\r\n"#);
 
-    let consumed1 = parse(&parser, &sample1);
+    let consumed1 = parse(&mut parser, &sample1);
     assert!(consumed1 == sample1.len() - 4);
-    let consumed2 = parse(&parser, &sample2);
+    let consumed2 = parse(&mut parser, &sample2);
     assert!(consumed2 == sample2.len());
-    let consumed3 = parse(&parser, &sample3);
+    let consumed3 = parse(&mut parser, &sample3);
     assert!(consumed3 == 0);
-    let consumed4 = parse(&parser, &sample4);
+    let consumed4 = parse(&mut parser, &sample4);
     assert!(consumed4 == sample4.len());
-    let consumed5 = parse(&parser, &sample5);
+    let consumed5 = parse(&mut parser, &sample5);
     assert!(consumed5 == 0);
-    let consumed6 = parse(&parser, &sample6);
+    let consumed6 = parse(&mut parser, &sample6);
     assert!(consumed6 == sample6.len());
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(parser.state, STATE_ERROR));
   }
 
   #[test]
   fn basic_incomplete_string_2() {
-    let parser = create_parser();
+    let mut parser = create_parser();
 
-    parser.mode.set(REQUEST);
+    parser.mode = MESSAGE_TYPE_REQUEST;
     let sample1 = http(r#"GE"#);
     let sample2 = http(r#"GET / HTTP/1.1\r\nHost: foo\r\n\r\n"#);
 
-    let consumed1 = parse(&parser, &sample1);
+    let consumed1 = parse(&mut parser, &sample1);
     assert!(consumed1 == 0);
 
-    let consumed2 = parse(&parser, &sample2);
+    let consumed2 = parse(&mut parser, &sample2);
     assert!(consumed2 == sample2.len());
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(parser.state, STATE_ERROR));
   }
 
   #[test]
   fn basic_incomplete_string_automanaged() {
-    let parser = create_parser();
-    parser.manage_unconsumed.set(true);
+    let mut parser = create_parser();
+    parser.manage_unconsumed = true;
 
     let sample1 = http(r#"GET / HTTP/1.1\r"#);
     let sample2 = http(r#"\n"#);
@@ -97,58 +99,58 @@ mod test {
     let sample5 = http(r#"Value"#);
     let sample6 = http(r#"\r\n\r\n"#);
 
-    let consumed1 = parse(&parser, &sample1);
+    let consumed1 = parse(&mut parser, &sample1);
     assert!(consumed1 == sample1.len() - 4);
-    let consumed2 = parse(&parser, &sample2);
+    let consumed2 = parse(&mut parser, &sample2);
     assert!(consumed2 == sample2.len() + 4);
-    let consumed3 = parse(&parser, &sample3);
+    let consumed3 = parse(&mut parser, &sample3);
     assert!(consumed3 == 0);
-    let consumed4 = parse(&parser, &sample4);
+    let consumed4 = parse(&mut parser, &sample4);
     assert!(consumed4 == sample3.len() + sample4.len());
-    let consumed5 = parse(&parser, &sample5);
+    let consumed5 = parse(&mut parser, &sample5);
     assert!(consumed5 == 0);
-    let consumed6 = parse(&parser, &sample6);
+    let consumed6 = parse(&mut parser, &sample6);
     assert!(consumed6 == sample5.len() + sample6.len());
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(parser.state, STATE_ERROR));
 
     // Verify the field is not reset
     parser.reset(true);
 
-    let consumed1 = parse(&parser, &sample1);
+    let consumed1 = parse(&mut parser, &sample1);
     assert!(consumed1 == sample1.len() - 4);
-    let consumed2 = parse(&parser, &sample2);
+    let consumed2 = parse(&mut parser, &sample2);
     assert!(consumed2 == sample2.len() + 4);
-    let consumed3 = parse(&parser, &sample3);
+    let consumed3 = parse(&mut parser, &sample3);
     assert!(consumed3 == 0);
-    let consumed4 = parse(&parser, &sample4);
+    let consumed4 = parse(&mut parser, &sample4);
     assert!(consumed4 == sample3.len() + sample4.len());
-    let consumed5 = parse(&parser, &sample5);
+    let consumed5 = parse(&mut parser, &sample5);
     assert!(consumed5 == 0);
-    let consumed6 = parse(&parser, &sample6);
+    let consumed6 = parse(&mut parser, &sample6);
     assert!(consumed6 == sample5.len() + sample6.len());
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(parser.state, STATE_ERROR));
   }
 
   #[test]
   fn basic_incomplete_string_2_automanaged() {
-    let parser = create_parser();
-    parser.manage_unconsumed.set(true);
+    let mut parser = create_parser();
+    parser.manage_unconsumed = true;
+    parser.mode = MESSAGE_TYPE_REQUEST;
 
-    parser.mode.set(REQUEST);
     let sample1 = http(r#"GE"#);
     let sample2 = http(r#"T / HTTP/1.1\r\nHost: foo\r\n\r\n"#);
 
-    parse(&parser, &sample1);
-    parse(&parser, &sample2);
+    parse(&mut parser, &sample1);
+    parse(&mut parser, &sample2);
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(parser.state, STATE_ERROR));
   }
 
   #[test]
   fn basic_sample_multiple_requests() {
-    let parser = create_parser();
+    let mut parser = create_parser();
 
     let message = http(
       r#"
@@ -172,13 +174,13 @@ mod test {
       "#,
     );
 
-    parse(&parser, &message);
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    parse(&mut parser, &message);
+    assert!(!matches!(parser.state, STATE_ERROR));
   }
 
   #[test]
   fn basic_connection_close() {
-    let parser = create_parser();
+    let mut parser = create_parser();
 
     let message = http(
       r#"
@@ -194,13 +196,13 @@ mod test {
       "#,
     );
 
-    parse(&parser, &message);
-    assert!(matches!(parser.state.get(), STATE_FINISH));
+    parse(&mut parser, &message);
+    assert!(matches!(parser.state, STATE_FINISH));
   }
 
   #[test]
   fn basic_sample_multiple_responses() {
-    let parser = create_parser();
+    let mut parser = create_parser();
 
     let message = http(
       r#"
@@ -225,13 +227,13 @@ mod test {
       "#,
     );
 
-    parse(&parser, &message);
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    parse(&mut parser, &message);
+    assert!(!matches!(parser.state, STATE_ERROR));
   }
 
   #[test]
   fn basic_trailers() {
-    let parser = create_parser();
+    let mut parser = create_parser();
 
     let message = http(
       r#"
@@ -249,49 +251,49 @@ mod test {
       "#,
     );
 
-    parse(&parser, &message);
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    parse(&mut parser, &message);
+    assert!(!matches!(parser.state, STATE_ERROR));
   }
 
   #[test]
-  fn incomplete_body() {
-    let parser = create_parser();
+  fn basic_incomplete_body() {
+    let mut parser = create_parser();
 
     let sample1 = http(r#"POST / HTTP/1.1\r\nContent-Length: 10\r\n\r\n12345"#);
     let sample2 = http(r#"67"#);
     let sample3 = http(r#"890\r\n"#);
 
-    let consumed1 = parse(&parser, &sample1);
+    let consumed1 = parse(&mut parser, &sample1);
     assert!(consumed1 == sample1.len());
-    let consumed2 = parse(&parser, &sample2);
+    let consumed2 = parse(&mut parser, &sample2);
     assert!(consumed2 == sample2.len());
-    let consumed3 = parse(&parser, &sample3);
+    let consumed3 = parse(&mut parser, &sample3);
     assert!(consumed3 == sample3.len());
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(parser.state, STATE_ERROR));
   }
 
   #[test]
-  fn incomplete_chunk() {
-    let parser = create_parser();
+  fn basic_incomplete_chunk() {
+    let mut parser = create_parser();
 
     let sample1 = http(r#"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nTrailer: x-foo\r\n\r\na\r\n12345"#);
     let sample2 = http(r#"67"#);
     let sample3 = http(r#"890\r\n0\r\nx-foo: value\r\n\r\n"#);
 
-    let consumed1 = parse(&parser, &sample1);
+    let consumed1 = parse(&mut parser, &sample1);
     assert!(consumed1 == sample1.len());
-    let consumed2 = parse(&parser, &sample2);
+    let consumed2 = parse(&mut parser, &sample2);
     assert!(consumed2 == sample2.len());
-    let consumed3 = parse(&parser, &sample3);
+    let consumed3 = parse(&mut parser, &sample3);
     assert!(consumed3 == sample3.len());
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(parser.state, STATE_ERROR));
   }
 
   #[test]
-  fn connection_header() {
-    let parser = create_parser();
+  fn basic_connection_header() {
+    let mut parser = create_parser();
 
     let close_connection = http(
       r#"
@@ -303,8 +305,8 @@ mod test {
       "#,
     );
 
-    parse(&parser, &close_connection);
-    assert!(matches!(parser.state.get(), STATE_FINISH));
+    parse(&mut parser, &close_connection);
+    assert!(matches!(parser.state, STATE_FINISH));
 
     parser.reset(false);
 
@@ -317,13 +319,13 @@ mod test {
       "#,
     );
 
-    parse(&parser, &keep_alive_connection);
-    assert!(matches!(parser.state.get(), STATE_START));
+    parse(&mut parser, &keep_alive_connection);
+    assert!(matches!(parser.state, STATE_START));
   }
 
   #[test]
-  fn pause_and_resume() {
-    let parser = create_parser();
+  fn basic_pause_and_resume() {
+    let mut parser = create_parser();
 
     let sample1 = http(
       r#"
@@ -334,42 +336,38 @@ mod test {
     let sample2 = http(r#"\r\nabc"#); // This will be paused before the body
     let sample3 = http(r#"abc"#);
 
-    parser
-      .callbacks
-      .on_headers
-      .set(|p: &Parser, _at: usize, _size: usize| -> isize {
-        p.pause();
-        0
-      });
+    parser.callbacks.on_headers = |p: &mut Parser, _at: usize, _size: usize| {
+      p.pause();
+    };
 
-    assert!(!parser.paused.get());
+    assert!(!parser.paused);
 
-    let consumed1 = parse(&parser, &sample1);
+    let consumed1 = parse(&mut parser, &sample1);
     assert!(consumed1 == sample1.len());
 
-    assert!(!parser.paused.get());
-    let consumed2 = parse(&parser, &sample2);
+    assert!(!parser.paused);
+    let consumed2 = parse(&mut parser, &sample2);
     assert!(consumed2 == sample2.len() - 3);
-    assert!(parser.paused.get());
+    assert!(parser.paused);
 
-    let consumed3 = parse(&parser, &sample3);
+    let consumed3 = parse(&mut parser, &sample3);
     assert!(consumed3 == 0);
 
-    assert!(parser.paused.get());
+    assert!(parser.paused);
     parser.resume();
-    assert!(!parser.paused.get());
+    assert!(!parser.paused);
 
-    let consumed4 = parse(&parser, &sample3);
+    let consumed4 = parse(&mut parser, &sample3);
     assert!(consumed4 == sample3.len());
-    assert!(!parser.paused.get());
+    assert!(!parser.paused);
 
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    assert!(!matches!(parser.state, STATE_ERROR));
   }
 
   #[test]
-  fn restart() {
-    let parser = create_parser();
-    parser.mode.set(RESPONSE);
+  fn basic_restart() {
+    let mut parser = create_parser();
+    parser.mode = MESSAGE_TYPE_RESPONSE;
 
     let response = http(
       r#"
@@ -404,23 +402,23 @@ mod test {
       "#,
     );
 
-    parse(&parser, &response);
-    assert!(matches!(parser.state.get(), STATE_START));
+    parse(&mut parser, &response);
+    assert!(matches!(parser.state, STATE_START));
 
-    parser.mode.set(REQUEST);
+    parser.mode = MESSAGE_TYPE_REQUEST;
     parser.reset(false);
 
-    parse(&parser, &request);
-    assert!(matches!(parser.state.get(), STATE_START));
+    parse(&mut parser, &request);
+    assert!(matches!(parser.state, STATE_START));
   }
 
   #[test]
-  fn finish() {
-    let parser = create_parser();
+  fn basic_finish_logic() {
+    let mut parser = create_parser();
 
-    assert!(matches!(parser.state.get(), STATE_START));
+    assert!(matches!(parser.state, STATE_START));
     parser.finish();
-    assert!(matches!(parser.state.get(), STATE_FINISH));
+    assert!(matches!(parser.state, STATE_FINISH));
 
     parser.reset(false);
 
@@ -434,10 +432,10 @@ mod test {
       "#,
     );
 
-    parse(&parser, &close_connection);
-    assert!(matches!(parser.state.get(), STATE_FINISH));
+    parse(&mut parser, &close_connection);
+    assert!(matches!(parser.state, STATE_FINISH));
     parser.finish();
-    assert!(matches!(parser.state.get(), STATE_FINISH));
+    assert!(matches!(parser.state, STATE_FINISH));
 
     parser.reset(false);
 
@@ -450,10 +448,10 @@ mod test {
       "#,
     );
 
-    parse(&parser, &keep_alive_connection);
-    assert!(matches!(parser.state.get(), STATE_START));
+    parse(&mut parser, &keep_alive_connection);
+    assert!(matches!(parser.state, STATE_START));
     parser.finish();
-    assert!(matches!(parser.state.get(), STATE_FINISH));
+    assert!(matches!(parser.state, STATE_FINISH));
 
     parser.reset(false);
 
@@ -463,15 +461,15 @@ mod test {
       "#,
     );
 
-    parse(&parser, &incomplete);
+    parse(&mut parser, &incomplete);
 
-    assert!(matches!(parser.state.get(), STATE_HEADER_NAME));
+    assert!(matches!(parser.state, STATE_HEADER_NAME));
     parser.finish();
-    assert!(matches!(parser.state.get(), STATE_ERROR));
+    assert!(matches!(parser.state, STATE_ERROR));
   }
 
   #[test]
-  fn undici() {
+  fn basic_undici() {
     let message = http(
       r#"
         HTTP/1.1 200 OK\r\n
@@ -484,8 +482,8 @@ mod test {
     )
     .replace("@", &format!("{:-<65535}", "-"));
 
-    let parser = create_parser();
-    parse(&parser, &message);
-    assert!(!matches!(parser.state.get(), STATE_ERROR));
+    let mut parser = create_parser();
+    parse(&mut parser, &message);
+    assert!(!matches!(parser.state, STATE_ERROR));
   }
 }

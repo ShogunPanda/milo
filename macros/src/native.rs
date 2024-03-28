@@ -1,49 +1,25 @@
+use proc_macro::TokenStream;
 use quote::{format_ident, quote};
+use syn::Ident;
 
 use crate::{definitions::CALLBACKS, parsing::IdentifiersWithExpr};
 
-pub fn callback_native(
-  definition: &IdentifiersWithExpr,
-  return_on_error: bool,
-  use_self: bool,
-) -> proc_macro2::TokenStream {
+// Handles a callback.
+pub fn callback_native(definition: &IdentifiersWithExpr, target: &Ident) -> proc_macro2::TokenStream {
   let callback = &definition.identifier;
-  let callback_name = callback.to_string();
-
-  let parser = if use_self {
-    format_ident!("self")
-  } else {
-    format_ident!("parser")
-  };
+  let target = format_ident!("{}", target);
 
   let invocation = if let Some(length) = &definition.expr {
-    quote! { (#parser.callbacks.#callback.get())(#parser, #parser.position.get() as usize, (#length) as usize) }
+    quote! { (#target.callbacks.#callback)(#target, #target.position, #length); }
   } else {
-    quote! { (#parser.callbacks.#callback.get())(#parser, 0, 0) }
+    quote! { (#target.callbacks.#callback)(#target, 0, 0); }
   };
 
-  let error_message = format!("Callback {} failed with non zero return value.", callback_name);
-  let error_handling = if return_on_error {
-    quote! {
-      return #parser.fail(ERROR_CALLBACK_ERROR, #error_message);
-    }
-  } else {
-    quote! {
-      let _ = #parser.fail(ERROR_CALLBACK_ERROR, #error_message);
-    }
-  };
-
-  quote! {
-    let invocation_result = #invocation;
-
-    if invocation_result != 0 {
-      #error_handling
-    }
-  }
+  quote! { #invocation; }
 }
 
 /// Generates all parser callbacks.
-pub fn generate_callbacks_native() -> proc_macro2::TokenStream {
+pub fn generate_callbacks_native() -> TokenStream {
   let callbacks: Vec<_> = unsafe {
     CALLBACKS
       .get()
@@ -53,26 +29,24 @@ pub fn generate_callbacks_native() -> proc_macro2::TokenStream {
       .collect()
   };
 
-  quote! {
+  TokenStream::from(quote! {
     #[cfg(not(target_family = "wasm"))]
-    fn noop_internal(_parser: &Parser, _data: usize, _len: usize) -> isize {
-      0
-    }
+    fn noop_internal(_parser: &mut Parser, _data: usize, _len: usize) {}
 
     #[cfg(not(target_family = "wasm"))]
     #[repr(C)]
     #[derive(Clone, Debug)]
-    pub struct Callbacks {
-      #( pub #callbacks: Cell<Callback>),*
+    pub struct ParserCallbacks {
+      #( pub #callbacks: Callback),*
     }
 
     #[cfg(not(target_family = "wasm"))]
-    impl Callbacks {
-      fn new() -> Callbacks {
-        Callbacks {
-          #( #callbacks: Cell::new(noop_internal) ),*
+    impl ParserCallbacks {
+      fn new() -> ParserCallbacks {
+        ParserCallbacks {
+          #( #callbacks: noop_internal ),*
         }
       }
     }
-  }
+  })
 }

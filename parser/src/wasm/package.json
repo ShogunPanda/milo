@@ -1,0 +1,31 @@
+{
+  "name": "@perseveranza-pets/milo",
+  "version": "x.y.z",
+  "description": "A fast and embeddable HTTP/1.1 parser.",
+  "homepage": "https://sw.cowtech.it/milo",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ShogunPanda/milo.git"
+  },
+  "keywords": [
+    "http", "parser"
+  ],
+  "bugs": {
+    "url": "https://github.com/ShogunPanda/milo/issues"
+  },
+  "author": "Shogun <shogun@cowtech.it>",
+  "license": "ISC",
+  "private": false,
+  "files": [
+    "milo.wasm",
+    "index.js",
+    "index.d.ts",
+    "LICENSE.md",
+    "README.md"
+  ],
+  "main": "index.js",
+  "types": "index.d.ts",
+  "engines": {
+    "node": ">= 18.18.0"
+  }
+}

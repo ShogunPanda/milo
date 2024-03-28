@@ -24,7 +24,7 @@ async function prependVersionAndMethodMap() {
 #define MILO_VERSION_MINOR ${minor}
 #define MILO_VERSION_PATCH ${patch}
 
-#define MILO_FLAGS_DEBUG ${configuration['DEBUG'] === 'true' ? 1 : 0}
+#define MILO_FLAGS_DEBUG ${configuration.DEBUG === 'true' ? 1 : 0}
 
 #define MILO_METHODS_MAP(EACH) \\
 ${methods.map(([v, i]) => `  EACH(${i}, ${v}, ${v}) \\`).join('\n')}

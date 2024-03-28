@@ -1,5 +1,7 @@
-const { resolve } = require('node:path')
+/* eslint-disable no-unused-vars,camelcase,no-undef */
+
 const { readFileSync } = require('node:fs')
+const { resolve } = require('node:path')
 
 // These are currently unused but required by wasm-bindgen
 function __objectDropRef() {}
@@ -137,6 +139,7 @@ function load() {
     $milo_getters,
     getErrorDescription: getErrorDescription.bind(wasm),
     getCallbackError: getCallbackError.bind(wasm, state),
+    // eslint-disable-next-line no-dupe-keys
     $milo_wasm: {
       setContinueWithoutData,
       setIsConnect,

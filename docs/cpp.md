@@ -39,7 +39,7 @@ A struct representing the current compile flags of Milo:
 A struct representing a string containing the following fields:
 
 - `ptr` (`const unsigned char *`): The string data pointer.
-- `len` (`uintptr_t`): The string length.
+- `len` (`uintptr_t`): The string length.
 
 ## `milo::ParserCallbacks`
 

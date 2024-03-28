@@ -80,12 +80,6 @@
     "node ./tools/postbuild-wasm.mjs	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
   ]
 
-[tasks.wasm-npm]
+[tasks.publish]
   dependencies = ["wasm-release"]
-  script = [
-    "cd dist/wasm/release",
-    "yq -eMP -i -o json '.name=\"@ShogunPanda/milo\"' package.json",
-    "yq -eMP -i -o json '.repository=\"https://github.com/ShogunPanda/milo.git\"' package.json",
-    "cp ../../../../.npmrc .",
-    "npm publish",
-  ]
+  script       = ["node ./tools/publish.mjs"]

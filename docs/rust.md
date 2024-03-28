@@ -233,7 +233,7 @@ While you can use these functions within Rust, it makes little sense as they onl
 A struct representing a string containing the following fields:
 
 - `ptr` (`*const c_uchar`): The string data pointer.
-- `len` (`usize`): The string length.
+- `len` (`usize`): The string length.
 
 ### `milo_flags() -> Flags`
 

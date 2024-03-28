@@ -2,32 +2,6 @@
 
 Milo is a fast and embeddable HTTP/1.1 parser written in [Rust][rust].
 
-## Why?
-
-The scope of Milo is to replace [llhttp] as [Node.js] main HTTP parser.
-
-This project aims to:
-
-- Make it maintainable and verificable using easy to read Rust code.
-- Be performant by avoiding any unnecessary data copy.
-- Be self-contained and dependency-free.
-
-To see the rationale behind the replacement of llhttp, check Paolo's talk at [Vancouver's Node Collab Summit][vancouver-talk] in January 2023 ([slides][vancouver-slides]).
-
-To see the initial disclosure of milo, check Paolo's talk at [NodeConf EU 2023][nodeconf-talk] in November 2023 ([slides][slides]).
-
-## How it works?
-
-Milo leverages Rust's [procedural macro], [syn] and [quote] crates to allow an easy definition of states and matchers for the parser.
-
-See the [macros](./macros/README.md) internal crate for more information.
-
-The data matching is possible thanks to power of the Rust's [match] statement applied to [data slices][match-slice].
-
-The resulting parser is as simple state machine which copies the data in only one (optional) specific case: to automatically handle unconsumed portion of the input data.
-
-In all other all cases, no data is copied and the memory footprint is very small as only 30 `bool`, `uintprt_t` or `uint64_t` fields can represent the entire parser state.
-
 ## How to use it (JavaScript via WebAssembly)
 
 Install it from npm:
@@ -238,9 +212,39 @@ The debug build will also enables the `before_state_change` and `after_state_cha
 
 See the following files, according to the language you are using:
 
-- [JavaScript via WebAssembly API](./docs/wasm.md)
+- [JavaScript via WebAssembly API](./docs/js.md)
 - [Rust API](./docs/rust.md)
 - [C++ API](./docs/cpp.md)
+
+## How it works?
+
+Milo leverages Rust's [procedural macro], [syn] and [quote] crates to allow an easy definition of states and matchers for the parser.
+
+See the [macros](./macros/README.md) internal crate for more information.
+
+The data matching is possible thanks to power of the Rust's [match] statement applied to [data slices][match-slice].
+
+The resulting parser is as simple state machine which copies the data in only one (optional) specific case: to automatically handle unconsumed portion of the input data.
+
+In all other all cases, no data is copied and the memory footprint is very small as only 30 `bool`, `uintprt_t` or `uint64_t` fields can represent the entire parser state.
+
+## Why?
+
+The scope of Milo is to replace [llhttp] as [Node.js] main HTTP parser.
+
+This project aims to:
+
+- Make it maintainable and verificable using easy to read Rust code.
+- Be performant by avoiding any unnecessary data copy.
+- Be self-contained and dependency-free.
+
+To see the rationale behind the replacement of llhttp, check Paolo's talk at [Vancouver's Node Collab Summit][vancouver-talk] in January 2023 ([slides][vancouver-slides]).
+
+To see the initial disclosure of milo, check Paolo's talk at [NodeConf EU 2023][nodeconf-talk] in November 2023 ([slides][slides]).
+
+## Sponsored by
+
+[![NearForm](https://raw.githubusercontent.com/ShogunPanda/milo/main/docs/nearform.jpg)][nearform]
 
 ## Contributing to milo
 
@@ -258,6 +262,7 @@ Copyright (C) 2023 and above Paolo Insogna (paolo@cowtech.it) and NearForm (http
 Licensed under the ISC license, which can be found at https://choosealicense.com/licenses/isc or in the [LICENSE.md](./LICENSE.md) file.
 
 [rust]: https://www.rust-lang.org/
+[webassembly]: https://webassembly.org/
 [nearform]: https://nearform.com
 [llhttp]: https://github.com/nodejs/llhttp
 [Node.js]: https://nodejs.org

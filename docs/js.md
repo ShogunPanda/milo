@@ -1,13 +1,3 @@
-# Using Milo in JavaScript via WebAssembly
-
-## Install it
-
-Use `npm` or similar:
-
-```
-npm install @perseveranza-pets/milo
-```
-
 # Javascript API
 
 The module exports several constants (`*` is used to denote a family prefix):
@@ -72,33 +62,33 @@ An enum listing all possible parser states.
 
 Access is supported from string constant or numeric value.
 
-## `alloc`
+## `alloc`
 
 Allocates a shared memory area with the WebAssembly instance which can be used to pass data to the parser.
 
 **The returned value MUST be destroyed later using `dealloc`.**
 
-## `dealloc(ptr)`
+## `dealloc(ptr)`
 
 Deallocates a shared memory area created with `alloc`.
 
-## `create`
+## `create`
 
 Creates a new parser.
 
 **The returned value MUST be destroyed later using `destroy`.**
 
-## `destroy(parser)`
+## `destroy(parser)`
 
 Destroys a parser.
 
-## `parse(parser, data, limit)`
+## `parse(parser, data, limit)`
 
 Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
-## `reset(parser)`
+## `reset(parser)`
 
 Resets a parser. The second parameters specifies if to also reset the
 parsed counter.
@@ -112,25 +102,25 @@ The following fields are not modified:
 - `continue_without_data`
 - `context`
 
-## `clear(parser)`
+## `clear(parser)`
 
 Clears all values about the message in the parser.
 
 The connection and message type fields are not cleared.
 
-## `pause(parser)`
+## `pause(parser)`
 
 Pauses the parser. The parser will have to be resumed via `resume`.
 
-## `resume(parser)`
+## `resume(parser)`
 
 Resumes the parser.
 
-## `finish(parser)`
+## `finish(parser)`
 
 Marks the parser as finished. Any new invocation of `milo::milo_parse` will put the parser in the error state.
 
-## `fail(parser, code, description)`
+## `fail(parser, code, description)`
 
 Marks the parsing a failed, setting a error code and and error message.
 
@@ -216,19 +206,19 @@ Returns the parser missing data length of the next chunk according to to the `ch
 
 ## `hasContentLength(parser)`
 
-Returns `true` if the parser the current message has a `Content-Length` header.
+Returns `true` if the parser the current message has a `Content-Length` header.
 
 ## `hasChunkedTransferEncoding(parser)`
 
-Returns `true` if the parser the current message has a `Transfer-Encoding: chunked` header.
+Returns `true` if the parser the current message has a `Transfer-Encoding: chunked` header.
 
 ## `hasUpgrade(parser)`
 
-Returns `true` if the parser the current message has a `Connection: upgrade` header.
+Returns `true` if the parser the current message has a `Connection: upgrade` header.
 
 ## `hasTrailers(parser)`
 
-Returns `true` if the parser the current message has a `Trailers` header.
+Returns `true` if the parser the current message has a `Trailers` header.
 
 ## `getErrorDescription(parser)`
 

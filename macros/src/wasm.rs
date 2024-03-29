@@ -11,9 +11,9 @@ pub fn callback_wasm(definition: &IdentifiersWithExpr, target: &Ident) -> proc_m
   let callback_value = format_ident!("CALLBACK_{}", callback_name.to_uppercase());
 
   let invocation = if let Some(length) = &definition.expr {
-    quote! { run_callback(crate::#callback_value, #target.ptr, #target.position, #length); }
+    quote! { unsafe { run_callback(crate::#callback_value, #target.ptr, #target.position, #length) }; }
   } else {
-    quote! { run_callback(crate::#callback_value, #target.ptr, 0, 0); }
+    quote! { unsafe { run_callback(crate::#callback_value, #target.ptr, 0, 0) }; }
   };
 
   quote! {
@@ -25,13 +25,17 @@ pub fn callback_wasm(definition: &IdentifiersWithExpr, target: &Ident) -> proc_m
 pub fn wasm_getter(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as Property);
   let property = definition.property;
-  let fn_name = format_ident!("get_{}", &property.to_string());
-  let getter = definition.getter;
+  let property_string = property.to_string();
+  let fn_name = if property_string.starts_with("is_") || property_string.starts_with("has_") {
+    format_ident!("{}", property_string)
+  } else {
+    format_ident!("get_{}", property_string)
+  };
   let return_type = definition.r#type;
 
   TokenStream::from(quote! {
     /// Gets the parser #property.
-    #[wasm_bindgen(js_name = #getter)]
+    #[no_mangle]
     pub fn #fn_name(parser: *const c_void) -> #return_type { unsafe { (*(parser as *const Parser)).#property } }
   })
 }

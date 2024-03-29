@@ -2,25 +2,20 @@ use core::ffi::{c_uchar, c_void};
 use std::slice;
 
 use milo_macros::wasm_getter;
-use wasm_bindgen::prelude::{wasm_bindgen, JsValue};
 
 use crate::Parser;
 
 #[cfg(debug_assertions)]
-#[wasm_bindgen(start)]
-fn init_error_handler() { std::panic::set_hook(Box::new(console_error_panic_hook::hook)); }
+pub fn debug(message: String) { unsafe { crate::logger(((message.as_ptr() as u64) << 32) + message.len() as u64) } }
 
-#[cfg(debug_assertions)]
-pub fn debug(message: String) { crate::logger(((message.as_ptr() as u64) << 32) + message.len() as u64) }
-
-#[wasm_bindgen]
+#[no_mangle]
 pub fn alloc(len: usize) -> *mut c_void {
   let buffer = Vec::with_capacity(len);
   let (ptr, _, _) = { buffer.into_raw_parts() };
   ptr as *mut c_void
 }
 
-#[wasm_bindgen]
+#[no_mangle]
 pub fn dealloc(ptr: *mut c_void, len: usize) {
   if ptr.is_null() {
     return;
@@ -32,7 +27,7 @@ pub fn dealloc(ptr: *mut c_void, len: usize) {
 }
 
 /// Creates a new parser.
-#[wasm_bindgen]
+#[no_mangle]
 pub fn create() -> *mut c_void {
   let ptr = Box::into_raw(Box::new(Parser::new())) as *mut c_void;
 
@@ -45,7 +40,7 @@ pub fn create() -> *mut c_void {
 }
 
 /// Destroys a parser.
-#[wasm_bindgen]
+#[no_mangle]
 pub fn destroy(parser: *mut c_void) {
   if parser.is_null() {
     return;
@@ -58,36 +53,36 @@ pub fn destroy(parser: *mut c_void) {
 
 /// Resets a parser. The second parameters specifies if to also reset the
 /// parsed counter.
-#[wasm_bindgen]
+#[no_mangle]
 pub fn reset(parser: *mut c_void, keep_parsed: bool) { unsafe { (*(parser as *mut Parser)).reset(keep_parsed) } }
 
 /// Clears all values in the parser.
 ///
 /// Persisted fields, unconsumed data and the position are not cleared.
-#[wasm_bindgen]
+#[no_mangle]
 pub fn clear(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).clear() } }
 
 // Parses a slice of characters. It returns the number of consumed characters.
-#[wasm_bindgen]
+#[no_mangle]
 pub fn parse(parser: *mut c_void, data: *const c_uchar, limit: usize) -> usize {
   unsafe { (*(parser as *mut Parser)).parse(data, limit) }
 }
 
 /// Pauses the parser. It will have to be resumed via `resume`.
-#[wasm_bindgen]
+#[no_mangle]
 pub fn pause(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).pause() } }
 
 /// Resumes the parser.
-#[wasm_bindgen]
+#[no_mangle]
 pub fn resume(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).resume() } }
 
 /// Marks the parser as finished. Any new data received via `parse` will
 /// put the parser in the error state.
-#[wasm_bindgen]
+#[no_mangle]
 pub fn finish(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).finish() } }
 
 /// Marks the parser as failed.
-#[wasm_bindgen]
+#[no_mangle]
 pub fn fail(parser: *mut c_void, code: usize, description_ptr: *const c_uchar, description_len: usize) {
   unsafe {
     (*(parser as *mut Parser)).fail(
@@ -128,8 +123,8 @@ wasm_getter!(has_trailers, hasTrailers, bool);
 
 /// Gets the parser callback error description, if any. This is meant for
 /// internal use.
-#[wasm_bindgen(js_name=getErrorDescriptionRaw)]
-pub fn get_error_description(parser: *mut c_void) -> u64 {
+#[no_mangle]
+pub fn get_error_description_raw(parser: *mut c_void) -> u64 {
   let parser = unsafe { &(*(parser as *const Parser)) };
 
   let ptr = parser.error_description as u64;
@@ -138,35 +133,35 @@ pub fn get_error_description(parser: *mut c_void) -> u64 {
   (ptr << 32) + len
 }
 
-#[wasm_bindgen(js_name=setMode)]
+#[no_mangle]
 pub fn set_mode(parser: *mut c_void, value: usize) {
   unsafe {
     (*(parser as *mut Parser)).mode = value;
   }
 }
 
-#[wasm_bindgen(js_name=setManageUnconsumed)]
+#[no_mangle]
 pub fn set_manage_unconsumed(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).manage_unconsumed = value;
   }
 }
 
-#[wasm_bindgen(js_name=setContinueWithoutData)]
+#[no_mangle]
 pub fn set_continue_without_data(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).continue_without_data = value;
   }
 }
 
-#[wasm_bindgen(js_name=setSkipBody)]
+#[no_mangle]
 pub fn set_skip_body(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).skip_body = value;
   }
 }
 
-#[wasm_bindgen(js_name=setIsConnect)]
+#[no_mangle]
 pub fn set_is_connect(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).is_connect = value;

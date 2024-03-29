@@ -3,16 +3,6 @@
 const { readFileSync } = require('node:fs')
 const { resolve } = require('node:path')
 
-// These are currently unused but required by wasm-bindgen
-function __objectDropRef() {}
-function __new() {}
-function __error() {}
-function __stack() {}
-function __throw() {}
-function __describe() {}
-function __externrefTableGrow() {}
-function __externrefTableSetNull() {}
-
 function logger(context, raw) {
   const len = Number(BigInt.asUintN(32, raw))
   const ptr = Number(raw >> 32n)
@@ -114,7 +104,9 @@ function load() {
 
   const bytes = readFileSync(resolve(__dirname, 'milo.wasm'))
   const mod = new WebAssembly.Module(bytes)
-  const instance = new WebAssembly.Instance(mod, { $milo_imports })
+  const instance = new WebAssembly.Instance(mod, {
+    env: { run_callback: runCallback.bind(null, callbackContext), logger }
+  })
   const wasm = instance.exports
 
   callbackContext.fail = fail.bind(wasm)

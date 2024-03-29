@@ -8,12 +8,7 @@
   crate_type = ["cdylib", "staticlib", "lib"]
 
 [dependencies]
-  console_error_panic_hook = { version = "0.1.7", optional = true }
-  milo-macros              = { path = "../macros" }
-  wasm-bindgen             = "0.2.92"
-
-[features]
-  default = ["console_error_panic_hook"]
+  milo-macros = { path = "../macros" }
 
 [profile.bench]
   opt-level        = 3
@@ -37,12 +32,3 @@
   codegen-units    = 16
   rpath            = false
   strip            = true
-
-[package.metadata.wasm-pack.profile.release]
-  wasm-opt = ['-O3']
-
-  [package.metadata.wasm-pack.profile.release.wasm-bindgen]
-    debug-js-glue            = false
-    demangle-name-section    = false
-    dwarf-debug-info         = false
-    omit-default-module-path = false

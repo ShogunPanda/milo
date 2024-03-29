@@ -12,42 +12,7 @@ function camelCase(source) {
   return source.toLowerCase().replace(/_(.)/g, (...t) => t[1].toUpperCase().trim())
 }
 
-async function generateImports(profile) {
-  const imports = {}
-  // Open and parse the WASM file
-  const mod = await WebAssembly.compile(await readFile(new URL(`../dist/wasm/${profile}/milo.wasm`, import.meta.url)))
-
-  for (const i of WebAssembly.Module.imports(mod)) {
-    if (typeof imports[i.module] === 'undefined') {
-      imports[i.module] = {}
-    }
-
-    let name
-
-    if (i.name.startsWith('__wbg_runCallback')) {
-      name = 'runCallback.bind(null, callbackContext)'
-    } else if (i.name.startsWith('__wbg_log')) {
-      name = 'logger.bind(null, callbackContext)'
-    } else {
-      name =
-        '__' +
-        (i.name.startsWith('__wbg_') ? i.name.slice(6).split('_')[0] : camelCase(i.name.replace('__wbindgen_', '')))
-    }
-    imports[i.module][i.name] = name
-  }
-
-  const ast = parse('const imports = ' + JSON.stringify(imports, null, 2), {})
-
-  traverse.default(ast, {
-    StringLiteral(path) {
-      path.replaceWithSourceString(path.node.value)
-    }
-  })
-
-  return ast.program.body[0].declarations[0].init.properties
-}
-
-async function generateGluecode(profile, version, flags, constants, imports) {
+async function generateGluecode(profile, version, flags, constants) {
   const getters = []
   const enums = []
   let callbacks
@@ -67,6 +32,7 @@ async function generateGluecode(profile, version, flags, constants, imports) {
       const cleanName = path.node.id.name.slice(6)
       if (cleanName.startsWith('getter_')) {
         const getter = cleanName.slice(7)
+        const wasmGetter = getter.replace(/([A-Z])/g, t => '_' + t.toLowerCase())
         getters.push(getter)
 
         let converter
@@ -86,10 +52,10 @@ async function generateGluecode(profile, version, flags, constants, imports) {
 
         path.insertBefore(
           parseExpression(`
-          function ${getter}(parser) {
-            return ${converter.replace('$', `this.${getter}(parser)`)}
-          }
-        `)
+            function ${getter}(parser) {
+              return ${converter.replace('$', `this.${wasmGetter}(parser)`)}
+            }
+          `)
         )
       } else if (cleanName === 'callbacks') {
         callbacks = Object.entries(constants)
@@ -137,7 +103,6 @@ async function generateGluecode(profile, version, flags, constants, imports) {
         case 'wasm':
           // Replace all properties with the corresponding WASM calls
           for (const prop of path.node.value.properties) {
-            const newNode = parse(`wasm.${prop.key.name}`)
             path.insertBefore(parseExpression(`{${prop.key.name}: wasm.${prop.key.name}}`).properties[0])
           }
 
@@ -171,9 +136,6 @@ async function generateGluecode(profile, version, flags, constants, imports) {
           break
         case 'version':
           path.insertBefore(parseExpression(`{ version: ${JSON.stringify(version)} }`).properties)
-          break
-        case 'imports':
-          path.insertBefore(imports)
           break
         default:
           throw new Error(`Unsupported placeholder type ${path.node.key.name}`)
@@ -286,8 +248,7 @@ async function main() {
   const flags = Object.fromEntries(process.argv[3].split(',').map(p => p.split(':').map(s => s.toLowerCase())))
 
   // Generate the required files and code
-  const imports = await generateImports(profile)
-  const glue = await generateGluecode(profile, version, flags, constants, imports)
+  const glue = await generateGluecode(profile, version, flags, constants)
   const readme = await generateReadme()
 
   // Copy the package.json by updating the version
@@ -301,15 +262,6 @@ async function main() {
 
   // Create the index file
   await writeFile(new URL(`../dist/wasm/${profile}/index.js`, import.meta.url), glue, 'utf-8')
-
-  // // Rename the WASM file
-  // await rename(
-  //   new URL(`../dist/wasm/${profile}/milo_bg.wasm`, import.meta.url),
-  //   new URL(`../dist/wasm/${profile}/milo.wasm`, import.meta.url)
-  // )
-
-  // // Drop the glue code from Rust toolchain
-  // await unlink(new URL(`../dist/wasm/${profile}/milo.js`, import.meta.url))
 
   // Create the README.md file
   await writeFile(new URL(`../dist/wasm/${profile}/README.md`, import.meta.url), readme, 'utf-8')

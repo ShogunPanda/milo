@@ -19,16 +19,13 @@ use milo_macros::{
   callback, callback_on_self, callback_on_self_no_return, generate_callbacks, generate_constants, generate_enums,
   init_constants,
 };
-use wasm_bindgen::prelude::{wasm_bindgen, JsValue};
 
 #[cfg(target_family = "wasm")]
-#[wasm_bindgen]
+#[link(wasm_import_module = "env")]
 extern "C" {
-  #[wasm_bindgen(js_name = runCallback)]
   fn run_callback(callback: usize, parser: *mut c_void, data: usize, limit: usize);
 
   #[cfg(debug_assertions)]
-  #[wasm_bindgen(js_name = log)]
   fn logger(message: u64);
 }
 

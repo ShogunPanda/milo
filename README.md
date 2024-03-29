@@ -45,7 +45,7 @@ milo.setOnData(parser, (p, from, size) => {
 })
 
 // Now perform the main parsing using milo.parse. The method returns the number of consumed characters.
-buffer.set(Buffer.from(message), 0)
+buffer.set(message, 0)
 const consumed = milo.parse(parser, ptr, message.length)
 
 // Cleanup used resources.

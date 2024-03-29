@@ -1,43 +1,71 @@
-[env]
-  TARGET          = { script = ["rustc -vV | sed -n 's|host: ||p'"] }
-  COMMON_OPTIONS  = "-Z unstable-options --target ${TARGET}"
-  RELEASE_OPTIONS = "-Z build-std=std,panic_abort -Z build-std-features=panic_immediate_abort"
-
 [config]
   skip_core_tasks = true
 
+[env]
+  TARGET = { script = ["rustc -vV | sed -n 's|host: ||p'"] }
+
 [tasks.default]
-  dependencies = ["all"]
+  dependencies = ["build"]
 
-[tasks.verify]
-  dependencies = ["clean", "all", "test"]
-
-[tasks.all]
-  dependencies = ["release", "debug"]
-
-[tasks.readme]
-  script = ["cargo run --bin readme"]
-
-[tasks.clean]
-  script = "rm -rf dist target"
+[tasks.build]
+  dependencies = ["prepare", "release", "debug"]
 
 [tasks.test]
-  dependencies = ["all"]
-  command      = "node"
-  args         = ["--test", "../reference.test.mjs"]
+  command = "node"
+  args    = ["--test", "../reference.test.mjs"]
 
-[tasks.release]
-  env      = { CONFIGURATION = "release", "EXTRA_OPTIONS" = "--release" }
-  run_task = "executable"
+[tasks.lint]
+  command = "cargo"
+  args    = ["clippy"]
 
-[tasks.debug]
-  env      = { CONFIGURATION = "debug", "EXTRA_OPTIONS" = "" }
-  run_task = "executable"
+[tasks."lint:fix"]
+  command = "cargo"
+  args    = ["clippy", "--fix", "--allow-dirty"]
 
+[tasks.format]
+  command = "cargo"
+  args    = ["fmt"]
 
-[tasks.executable]
+[tasks.clean]
+  command = "cargo"
+  args    = ["clean"]
+
+[tasks.verify]
+  dependencies = ["format", "lint", "clean", "build", "test", "readme"]
+
+[tasks.readme]
+  command = "cargo"
+  args    = ["run", "--bin", "readme"]
+
+[tasks.prepare]
   script = [
     "mkdir -p dist",
-    "cargo build ${COMMON_OPTIONS} ${EXTRA_OPTIONS} --out-dir target/${CONFIGURATION}",
-    "cp target/${CONFIGURATION}/reference dist/reference-${CONFIGURATION}",
+    "rm -rf dist/*",
+    "ln -s ../target/release/reference dist/reference-release",
+    "ln -s ../target/debug/reference dist/reference-debug",
+  ]
+
+[tasks.release]
+  command = "cargo"
+  args = [
+    "build",
+    "-Z",
+    "unstable-options",
+    "--target",
+    "${TARGET}",
+    "--release",
+    "--out-dir",
+    "target/release",
+  ]
+
+[tasks.debug]
+  command = "cargo"
+  args = [
+    "build",
+    "-Z",
+    "unstable-options",
+    "--target",
+    "${TARGET}",
+    "--out-dir",
+    "target/debug",
   ]

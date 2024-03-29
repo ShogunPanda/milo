@@ -7,6 +7,10 @@ pub struct Context {
   pub version: String,
 }
 
+impl Default for Context {
+  fn default() -> Self { Self::new() }
+}
+
 impl Context {
   #[allow(dead_code)]
   pub fn new() -> Context {

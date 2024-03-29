@@ -1,29 +1,26 @@
 use core::{ffi::c_uchar, slice, str};
 
-use crate::Parser;
+use crate::{context, Parser};
 
-#[path = "./context.rs"]
-mod context;
-
-pub fn extract_payload(parser: &Parser, from: usize, size: usize) -> (*const c_uchar, impl Fn() -> ()) {
+pub fn extract_payload(parser: &Parser, from: usize, size: usize) -> (*const c_uchar, impl Fn()) {
   let context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
   let (ptr, len, cap) = Vec::into_raw_parts(context.input.as_bytes().into());
   Box::into_raw(context);
 
-  return (
+  (
     if size > 0 {
-      unsafe { ptr.offset(from as isize) }
+      unsafe { ptr.add(from) }
     } else {
       std::ptr::null()
     },
     move || {
       unsafe { Vec::from_raw_parts(ptr, len, cap) };
     },
-  );
+  )
 }
 
 #[allow(dead_code)]
-pub fn format_event(name: &str) -> String { format!("{}", format!("\"{}\"", name)) }
+pub fn format_event(name: &str) -> String { format!("\"{}\"", name).to_string() }
 
 #[allow(dead_code)]
 pub fn append_output(parser: &Parser, message: String, from: usize, size: usize) {

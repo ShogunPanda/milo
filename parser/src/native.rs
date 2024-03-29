@@ -31,8 +31,10 @@ impl From<&str> for CStringWithLength {
   fn from(value: &str) -> Self { CStringWithLength::new(value) }
 }
 
-impl Into<&str> for CStringWithLength {
-  fn into(self) -> &'static str { unsafe { str::from_utf8_unchecked(slice::from_raw_parts(self.ptr, self.len)) } }
+impl From<CStringWithLength> for &str {
+  fn from(value: CStringWithLength) -> Self {
+    unsafe { str::from_utf8_unchecked(slice::from_raw_parts(value.ptr, value.len)) }
+  }
 }
 
 /// A callback that simply returns `0`.

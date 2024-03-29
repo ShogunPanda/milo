@@ -2,37 +2,40 @@
   skip_core_tasks = true
 
 [tasks.default]
-  dependencies = ["all"]
+  dependencies = ["build"]
+
+[tasks.test]
+  command = "node"
+  args    = ["--test", "../reference.test.mjs"]
+
+[tasks.lint]
+  command = "eslint"
+  args    = ["--cache", "--ext", ".mjs", "src"]
+
+[tasks."lint:fix"]
+  command = "eslint"
+  args    = ["--cache", "--fix", "--ext", ".mjs", "src"]
+
+[tasks.format]
+  command = "prettier"
+  args    = ["-w", "src"]
+
+[tasks.clean]
+  command = "rm"
+  args    = ["-r", "-f", "dist"]
 
 [tasks.verify]
-  dependencies = ["clean", "all", "test"]
+  dependencies = ["format", "lint", "clean", "prepare", "test", "readme"]
 
-[tasks.all]
-  dependencies = ["lib"]
+[tasks.readme]
+  command = "./dist/readme"
+
+[tasks.prepare]
   script = [
     "mkdir -p dist",
     "rm -rf dist/*",
     "echo '#!/bin/sh\nnode $(dirname $0)/../src/reference.mjs release' > dist/reference-release",
     "echo '#!/bin/sh\nnode $(dirname $0)/../src/reference.mjs debug' > dist/reference-debug",
+    "echo '#!/bin/sh\nnode $(dirname $0)/../src/readme.mjs' > dist/readme",
     "chmod a+x dist/*",
-  ]
-
-[tasks.readme]
-  dependencies = ["lib"]
-  script       = ["node src/readme.mjs"]
-
-[tasks.clean]
-  script = "rm -rf dist lib"
-
-[tasks.test]
-  dependencies = ["all"]
-  command      = "node"
-  args         = ["--test", "../reference.test.mjs"]
-
-[tasks.lib]
-  script = [
-    "rm -rf lib",
-    "cd ../../parser",
-    "makers wasm",
-    "cp -a dist/wasm ../references/wasm/lib",
   ]

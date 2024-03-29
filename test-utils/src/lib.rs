@@ -5,11 +5,9 @@ use std::{env, ffi::c_void};
 use milo::Parser;
 use regex::Regex;
 
+pub mod callbacks;
 pub mod context;
 mod output;
-
-#[path = "./callbacks.rs"]
-pub mod callbacks;
 
 pub fn create_parser() -> Parser {
   let mut parser = Parser::new();

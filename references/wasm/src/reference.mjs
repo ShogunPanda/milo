@@ -30,7 +30,7 @@ function event(name, position, context, parser, from, size) {
 }
 
 function showSpan(name, context, parser, from, size) {
-  if (name == 'method' || name == 'url' || name == 'protocol' || name == 'version') {
+  if (name === 'method' || name === 'url' || name === 'protocol' || name === 'version') {
     context[name] = extractPayload(context, from, size).toString('utf-8')
   }
 
@@ -160,13 +160,13 @@ function onHeaderValue(context, parser, from, size) {
 function onHeaders(context, parser, from, size) {
   const position = context.milo.getPosition(parser)
   const chunked = context.milo.hasChunkedTransferEncoding(parser)
-  const content_length = context.milo.getContentLength(parser)
-  let method = context.method
-  let url = context.url
-  let protocol = context.protocol
-  let version = context.version
+  const contentLength = context.milo.getContentLength(parser)
+  const method = context.method
+  const url = context.url
+  const protocol = context.protocol
+  const version = context.version
 
-  if (context.milo.getMessageType(parser) == context.milo.MESSAGE_TYPE_RESPONSE) {
+  if (context.milo.getMessageType(parser) === context.milo.MESSAGE_TYPE_RESPONSE) {
     const status = context.milo.getStatus(parser)
     const heading = sprintf('"pos": {}, "event": {}, "type": "response", ', position, formatEvent('headers'))
 
@@ -184,7 +184,7 @@ function onHeaders(context, parser, from, size) {
         from,
         size
       )
-    } else if (content_length > 0) {
+    } else if (contentLength > 0) {
       return appendOutput(
         sprintf(
           '{}"status": {}, "protocol": "{}", "version": "{}", "body": {}"',
@@ -192,7 +192,7 @@ function onHeaders(context, parser, from, size) {
           status,
           protocol,
           version,
-          content_length
+          contentLength
         ),
         context,
         parser,
@@ -226,7 +226,7 @@ function onHeaders(context, parser, from, size) {
         from,
         size
       )
-    } else if (content_length > 0) {
+    } else if (contentLength > 0) {
       return appendOutput(
         sprintf(
           '{}"method": "{}", "url": "{}", "protocol": "{}", "version": "{}", "body": {}',
@@ -235,7 +235,7 @@ function onHeaders(context, parser, from, size) {
           url,
           protocol,
           version,
-          content_length
+          contentLength
         ),
         context,
         parser,
@@ -302,7 +302,8 @@ function onTrailers(context, parser, from, size) {
 }
 
 async function main() {
-  const { milo } = await import(`../lib/${process.env.CONFIGURATION ?? process.argv[2]}/index.js`)
+  const configuration = process.env.CONFIGURATION ?? process.argv[2]
+  const { milo } = await import(`../../../parser/dist/wasm/${configuration}/index.js`)
   const parser = milo.create()
   const context = { milo }
 
@@ -334,8 +335,8 @@ async function main() {
   milo.setOnTrailerValue(parser, onTrailerValue.bind(null, context))
   milo.setOnTrailers(parser, onTrailers.bind(null, context))
 
-  let request1 = 'GET / HTTP/1.1\r\n\r\n'
-  let request2 =
+  const request1 = 'GET / HTTP/1.1\r\n\r\n'
+  const request2 =
     'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: x-trailer\r\n\r\nc;need=love\r\nhello world!\r\n0\r\nX-Trailer: value\r\n\r\n'
 
   const ptr = milo.alloc(1000)

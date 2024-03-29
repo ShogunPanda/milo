@@ -1,56 +1,79 @@
-[env]
-  COMMON_CC = "src/output.cc src/utils.cc"
-
 [config]
   skip_core_tasks = true
 
 [tasks.default]
-  dependencies = ["all"]
+  dependencies = ["build"]
 
-[tasks.verify]
-  dependencies = ["clean", "all", "test"]
+[tasks.build]
+  dependencies = ["prepare", "release", "debug"]
 
-[tasks.all]
-  dependencies = ["release", "debug"]
+[tasks.test]
+  command = "node"
+  args    = ["--test", "../reference.test.mjs"]
 
-[tasks.readme]
-  script = [
-    "mkdir -p lib/release",
-    "cd ../../parser",
-    "makers cpp-release",
-    "cp -a dist/cpp/release/libmilo.a dist/cpp/release/milo.h ../references/cpp/lib/release",
-    "cd ../references/cpp",
-    "mkdir -p dist",
-    "clang++ -std=c++11 -I lib/release -o dist/readme lib/release/libmilo.a src/readme.cc",
-    "./dist/readme",
+[tasks.format]
+  command = "clang-format"
+  args = [
+    "-i",
+    "src/output.h",
+    "src/output.cc",
+    "src/utils.h",
+    "src/utils.cc",
+    "src/reference.cc",
+    "src/readme.cc",
   ]
 
 [tasks.clean]
-  script = "rm -rf dist lib tmp"
+  command = "rm"
+  args    = ["-r", "-f", "dist"]
 
-[tasks.test]
-  dependencies = ["all"]
-  command      = "node"
-  args         = ["--test", "../reference.test.mjs"]
+[tasks.verify]
+  dependencies = ["format", "clean", "build", "test", "readme", "readme:run"]
 
-[tasks.release]
-  env      = { CONFIGURATION = "release" }
-  run_task = [{ name = ["lib", "executable"] }]
-
-[tasks.debug]
-  env      = { CONFIGURATION = "debug" }
-  run_task = [{ name = ["lib", "executable"] }]
-
-[tasks.executable]
-  script = [
-    "mkdir -p dist",
-    "clang++ -std=c++11 -I lib/${CONFIGURATION} -o dist/reference-${CONFIGURATION} lib/${CONFIGURATION}/libmilo.a ${COMMON_CC} src/main.cc",
+[tasks.readme]
+  command = "clang++"
+  args = [
+    "-std=c++11",
+    "-I",
+    "../../parser/dist/cpp/release",
+    "-o",
+    "dist/readme",
+    "../../parser/dist/cpp/release/libmilo.a",
+    "src/output.cc",
+    "src/utils.cc",
+    "src/readme.cc",
   ]
 
-[tasks.lib]
-  script = [
-    "mkdir -p lib/${CONFIGURATION}",
-    "cd ../../parser",
-    "makers cpp-${CONFIGURATION}",
-    "cp -a dist/cpp/${CONFIGURATION}/libmilo.a dist/cpp/${CONFIGURATION}/milo.h ../references/cpp/lib/${CONFIGURATION}",
+[tasks."readme:run"]
+  command = "./dist/readme"
+
+[tasks.prepare]
+  script = ["mkdir -p dist", "rm -rf dist/*"]
+
+[tasks.release]
+  command = "clang++"
+  args = [
+    "-std=c++11",
+    "-I",
+    "../../parser/dist/cpp/release",
+    "-o",
+    "dist/reference-release",
+    "../../parser/dist/cpp/release/libmilo.a",
+    "src/output.cc",
+    "src/utils.cc",
+    "src/reference.cc",
+  ]
+
+[tasks.debug]
+  command = "clang++"
+  args = [
+    "-std=c++11",
+    "-I",
+    "../../parser/dist/cpp/debug",
+    "-o",
+    "dist/reference-debug",
+    "../../parser/dist/cpp/debug/libmilo.a",
+    "src/output.cc",
+    "src/utils.cc",
+    "src/reference.cc",
   ]

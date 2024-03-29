@@ -75,7 +75,7 @@ mod tests {
         @
       "#,
     )
-    .replace("@", &format!("{:-<65535}", "-"));
+    .replace('@', &format!("{:-<65535}", "-"));
 
     // let parser = create_parser();
     // parse(&parser, &message);

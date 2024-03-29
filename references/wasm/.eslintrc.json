@@ -1,0 +1,3 @@
+{
+  "extends": ["@cowtech/eslint-config"]
+}

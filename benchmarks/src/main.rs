@@ -66,7 +66,7 @@ fn main() {
         @
       "#,
     )
-    .replace("@", &format!("{:-<65535}", "-")),
+    .replace('@', &format!("{:-<65535}", "-")),
   ));
 
   for (name, payload) in samples {
@@ -77,7 +77,7 @@ fn main() {
 
     let start = Instant::now();
 
-    for _i in 0..(iterations as usize) {
+    for _i in 0..iterations {
       parser.parse(payload.as_ptr(), payload.len());
     }
 

@@ -1,34 +1,65 @@
-[env]
-  TARGET         = { script = ["rustc -vV | sed -n 's|host: ||p'"] }
-  COMMON_OPTIONS = "-Z unstable-options --target ${TARGET}"
-
 [config]
   skip_core_tasks = true
 
+[env]
+  TARGET = { script = ["rustc -vV | sed -n 's|host: ||p'"] }
+
 [tasks.default]
-  dependencies = ["all"]
+  dependencies = ["build"]
 
-[tasks.verify]
-  dependencies = ["clean", "all"]
-
-[tasks.all]
+[tasks.build]
   dependencies = ["cpp", "wasm"]
+
+[tasks.test]
+  cwd     = "../test-utils"
+  command = "cargo"
+  args    = ["test"]
+
+[tasks.lint]
+  command = "cargo"
+  args    = ["clippy"]
+
+[tasks."lint:tools"]
+  cwd     = "./tools"
+  command = "eslint"
+  args    = ["--cache", "--ext", ".mjs", "."]
+
+[tasks."lint:tools:fix"]
+  cwd     = "./tools"
+  command = "eslint"
+  args    = ["--cache", "--fix", "--ext", ".mjs", "src"]
+
+[tasks."lint:fix"]
+  command = "cargo"
+  args    = ["clippy", "--fix", "--allow-dirty"]
+
+[tasks.format]
+  command = "cargo"
+  args    = ["fmt"]
+
+[tasks."format:tools"]
+  cwd     = "./tools"
+  command = "prettier"
+  args    = ["-w", "../src/wasm", "."]
 
 [tasks.clean]
   run_task = { name = ["cargo-clean", "dist-clean"] }
 
-[tasks.test]
-  script = ["cd ../test-utils", "cargo test"]
+[tasks.verify]
+  dependencies = [
+    "format",
+    "format:tools",
+    "lint",
+    "lint:tools",
+    "clean",
+    "build",
+    "test",
+  ]
 
-[tasks.format-tools]
-  script = ["cd tools", "prettier -w *.mjs **/*.mjs"]
-
-[tasks.cargo-clean]
-  command = "cargo"
-  args    = ["clean"]
-
-[tasks.dist-clean]
-  script = "rm -rf dist"
+[tasks.publish]
+  dependencies = ["wasm-release"]
+  command      = "node"
+  args         = ["./tools/publish.mjs"]
 
 [tasks.cpp]
   dependencies = ["cpp-headers", "cpp-libs"]
@@ -44,18 +75,18 @@
   env      = { CONFIGURATION = "debug", "CARGO_OPTIONS" = "", POSTBUILD_OPTIONS = "DEBUG:true" }
   run_task = "cpp-lib"
 
-
 [tasks.cpp-lib]
   script = [
     "mkdir -p dist/cpp/${CONFIGURATION}",
     "rm -rf dist/cpp/${CONFIGURATION}/*",
-    "cargo build ${COMMON_OPTIONS} ${CARGO_OPTIONS} --out-dir target/cpp/${CONFIGURATION}",
+    "cargo build -Z unstable-options --target ${TARGET} ${CARGO_OPTIONS} --out-dir target/cpp/${CONFIGURATION}",
     "cp target/cpp/${CONFIGURATION}/libmilo.a target/headers/milo.h dist/cpp/${CONFIGURATION}",
     "node ./tools/postbuild-cpp.mjs	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
   ]
 
 [tasks.cpp-headers]
-  script = ["cbindgen --quiet --output target/headers/milo.h"]
+  command = "cbindgen"
+  args    = ["--quiet", "--output", "target/headers/milo.h"]
 
 [tasks.wasm]
   dependencies = ["wasm-release", "wasm-debug"]
@@ -80,6 +111,10 @@
     "node ./tools/postbuild-wasm.mjs	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
   ]
 
-[tasks.publish]
-  dependencies = ["wasm-release"]
-  script       = ["node ./tools/publish.mjs"]
+[tasks.cargo-clean]
+  command = "cargo"
+  args    = ["clean"]
+
+[tasks.dist-clean]
+  command = "rm"
+  args    = ["-r", "-f", "dist"]

@@ -8,7 +8,8 @@
     "url": "git+https://github.com/ShogunPanda/milo.git"
   },
   "keywords": [
-    "http", "parser"
+    "http",
+    "parser"
   ],
   "bugs": {
     "url": "https://github.com/ShogunPanda/milo/issues"

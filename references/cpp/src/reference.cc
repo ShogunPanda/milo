@@ -6,7 +6,7 @@
 #include "utils.h"
 
 #define EXTRACT_PAYLOAD(name, parser, from, size)                                                                      \
-  auto name = size > 0 ? reinterpret_cast<context_t*>(parser->context) -> input + from : NULL;
+  auto name = size > 0 ? reinterpret_cast<context_t*>(parser->context)->input + from : NULL;
 
 uchar_t* copy_string(const char* source, usize_t size) {
   if (size == 0) {

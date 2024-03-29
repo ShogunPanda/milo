@@ -1,0 +1,7 @@
+{
+	"devDependencies": {
+		"eslint": "^8.57.0",
+		"@cowtech/eslint-config": "^9.0.3",
+		"prettier": "^3.2.5"
+	}
+}

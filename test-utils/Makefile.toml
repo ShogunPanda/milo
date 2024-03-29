@@ -2,19 +2,31 @@
   skip_core_tasks = true
 
 [tasks.default]
-  dependencies = ["all"]
+  dependencies = ["build"]
 
-[tasks.verify]
-  dependencies = ["clean", "all", "test"]
-
-[tasks.all]
+[tasks.build]
   command = "cargo"
   args    = ["build"]
+
+[tasks.test]
+  command = "cargo"
+  args    = ["test"]
+
+[tasks.lint]
+  command = "cargo"
+  args    = ["clippy"]
+
+[tasks."lint:fix"]
+  command = "cargo"
+  args    = ["clippy", "--fix", "--allow-dirty"]
+
+[tasks.format]
+  command = "cargo"
+  args    = ["fmt"]
 
 [tasks.clean]
   command = "cargo"
   args    = ["clean"]
 
-[tasks.test]
-  command = "cargo"
-  args    = ["test"]
+[tasks.verify]
+  dependencies = ["format", "lint", "clean", "build", "test"]

@@ -36,7 +36,7 @@ state!(start, {
 
 // If the parser has finished and it receives more data, error
 state!(finish, {
-  if data.len() > 0 {
+  if !data.is_empty() {
     fail!(UNEXPECTED_CHARACTER, "Unexpected data")
   } else {
     0

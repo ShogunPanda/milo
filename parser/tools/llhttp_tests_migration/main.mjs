@@ -26,16 +26,6 @@ async function serializeText(node) {
   return md.trim().replace(/^#+\s+/, '')
 }
 
-async function streamToString(stream) {
-  let buffer = ''
-
-  for await (const chunk of stream) {
-    buffer += chunk
-  }
-
-  return buffer
-}
-
 async function main() {
   if (process.argv.length < 3) {
     fatal(`Usage: ${process.argv[1]} [FILE]`)

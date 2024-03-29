@@ -480,7 +480,7 @@ mod test {
         @
       "#,
     )
-    .replace("@", &format!("{:-<65535}", "-"));
+    .replace('@', &format!("{:-<65535}", "-"));
 
     let mut parser = create_parser();
     parse(&mut parser, &message);

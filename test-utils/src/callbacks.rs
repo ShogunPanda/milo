@@ -1,14 +1,10 @@
 #![allow(unused_variables, unreachable_code, unused_imports)]
 
-#[path = "./context.rs"]
-mod context;
-mod output;
-
 use std::{os::unix::process, slice, str};
 
 use milo::{Parser, DEBUG, MESSAGE_TYPE_RESPONSE};
 
-use self::output::extract_payload;
+use crate::{context, output};
 
 pub fn before_state_change(parser: &mut Parser, from: usize, size: usize) {
   output::append_output(

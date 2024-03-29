@@ -101,6 +101,10 @@ pub struct Parser {
   pub unconsumed_len: usize,
 }
 
+impl Default for Parser {
+  fn default() -> Self { Self::new() }
+}
+
 impl Parser {
   /// Creates a new parser
   pub fn new() -> Parser {
@@ -286,7 +290,7 @@ impl Parser {
   pub fn error_description_str(&self) -> &str {
     unsafe {
       if self.error_description_len > 0 {
-        str::from_utf8_unchecked(from_raw_parts(self.error_description, self.error_description_len)).into()
+        str::from_utf8_unchecked(from_raw_parts(self.error_description, self.error_description_len))
       } else {
         ""
       }

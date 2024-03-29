@@ -355,9 +355,9 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl Into<&str> for MessageTypes {
-      fn into(self) -> &'static str {
-        match self {
+    impl From<MessageTypes> for &str {
+      fn from(value: MessageTypes) -> Self {
+        match value {
           MessageTypes::AUTODETECT => "AUTODETECT",
           MessageTypes::REQUEST => "REQUEST",
           MessageTypes::RESPONSE => "RESPONSE"
@@ -365,9 +365,9 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl Into<&str> for Connections {
-      fn into(self) -> &'static str {
-        match self {
+    impl From<Connections> for &str {
+      fn from(value: Connections) -> Self {
+        match value {
           Connections::KEEPALIVE => "KEEPALIVE",
           Connections::CLOSE => "CLOSE",
           Connections::UPGRADE => "UPGRADE"
@@ -375,33 +375,33 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl Into<&str> for Methods {
-      fn into(self) -> &'static str {
-        match self {
+    impl From<Methods> for &str {
+      fn from(value: Methods) -> Self {
+        match value {
           #(#methods_into),*
         }
       }
     }
 
-    impl Into<&str> for Errors {
-      fn into(self) -> &'static str {
-        match self {
+    impl From<Errors> for &str {
+      fn from(value: Errors) -> Self {
+        match value {
           #(#errors_into),*
         }
       }
     }
 
-    impl Into<&str> for Callbacks {
-      fn into(self) -> &'static str {
-        match self {
+    impl From<Callbacks> for &str {
+      fn from(value: Callbacks) -> Self {
+        match value {
           #(#callbacks_into),*
         }
       }
     }
 
-    impl Into<&str> for States {
-      fn into(self) -> &'static str {
-        match self {
+    impl From<States> for &str {
+      fn from(value: States) -> Self {
+        match value {
           #(#states_into),*
         }
       }

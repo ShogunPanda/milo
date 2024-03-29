@@ -1,3 +1,7 @@
+/* eslint-disable no-unused-vars */
+
+import { milo } from '../../../parser/dist/wasm/debug/index.js'
+
 function onMethodValid(parser, from, size) {
   console.log('CALLBACK: onMethodValid')
 }
@@ -9,11 +13,12 @@ function onMethodThrow(parser, from, size) {
 
 function onMethodJSError(parser, from, size) {
   console.log('CALLBACK: onMethodJSError')
+
+  // eslint-disable-next-line no-undef
   a = b
 }
 
 export async function main() {
-  const { milo } = await import(`../lib/${process.env.CONFIGURATION ?? process.argv[2]}/index.js`)
   const parser = milo.create()
 
   const ptr = milo.alloc(100)

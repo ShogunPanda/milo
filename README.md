@@ -195,6 +195,10 @@ Make sure you have the `nightly` toolchain installed locally:
 
 ```bash
 rustup toolchain install nightly
+cargo install --force cbindgen
+rustup target add wasm32-unknown-unknown
+cd parser/tools
+npm install
 ```
 
 After all the requirements are met, you can then run:

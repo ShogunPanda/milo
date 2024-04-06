@@ -486,4 +486,24 @@ mod test {
     parse(&mut parser, &message);
     assert!(!matches!(parser.state, STATE_ERROR));
   }
+
+  #[test]
+  fn basic_empty_fields() {
+    let mut parser = create_parser();
+
+    let message = http(
+      r#"
+        POST / HTTP/1.1\r\n
+        Transfer-Encoding: chunked\r\n
+        Content-Type: \r\n
+        Trailer: host\r\n
+        \r\n
+        0\r\n
+        Host:\r\n\r\n
+      "#,
+    );
+
+    parse(&mut parser, &message);
+    assert!(!matches!(parser.state, STATE_ERROR));
+  }
 }

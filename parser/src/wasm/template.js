@@ -1,7 +1,8 @@
 /* eslint-disable no-unused-vars,camelcase,no-undef */
 
-const { readFileSync } = require('node:fs')
-const { resolve } = require('node:path')
+function loadWASM() {
+  return require('node:fs').readFileSync(require('node:path').resolve(__dirname, 'milo.wasm'))
+}
 
 function logger(context, raw) {
   const len = Number(BigInt.asUintN(32, raw))
@@ -31,8 +32,9 @@ function create(state) {
   return parser
 }
 
-function destroy(state, parser) {
-  return this.create() >>> 0
+function destroy(context, state, parser) {
+  context.state[parser] = null
+  return this.destroy() >>> 0
 }
 
 function parse(parser, data, limit) {
@@ -75,7 +77,7 @@ function $milo_getter_hasUpgrade(bool) {}
 function $milo_getter_hasTrailers(bool) {}
 
 function getErrorDescription(parser) {
-  const raw = this.getErrorDescriptionRaw(parser)
+  const raw = this.get_error_description_raw(parser)
   const len = Number(BigInt.asUintN(32, raw))
   const ptr = Number(raw >> 32n)
 
@@ -85,6 +87,12 @@ function getErrorDescription(parser) {
 function getCallbackError(state, parser) {
   return state[parser][$milo_callback_error_index]
 }
+
+function $milo_setter_setContinueWithoutData() {}
+function $milo_setter_setIsConnect() {}
+function $milo_setter_setManageUnconsumed() {}
+function $milo_setter_setMode() {}
+function $milo_setter_setSkipBody() {}
 
 function $milo_callbacks() {}
 
@@ -102,10 +110,10 @@ function load() {
   // Avoid hidden classes
   const callbackContext = { memory: null, alloc: null, dealloc: null, fail: null, state }
 
-  const bytes = readFileSync(resolve(__dirname, 'milo.wasm'))
+  const bytes = loadWASM()
   const mod = new WebAssembly.Module(bytes)
   const instance = new WebAssembly.Instance(mod, {
-    env: { run_callback: runCallback.bind(null, callbackContext), logger }
+    env: { run_callback: runCallback.bind(null, callbackContext), logger: logger.bind(null, callbackContext) }
   })
   const wasm = instance.exports
 
@@ -117,7 +125,7 @@ function load() {
     state,
     alloc: alloc.bind(wasm),
     create: create.bind(wasm, state),
-    destroy: destroy.bind(wasm, state),
+    destroy: destroy.bind(wasm, callbackContext, state),
     parse: parse.bind(wasm),
     fail: fail.bind(wasm),
     $milo_wasm: {
@@ -131,14 +139,7 @@ function load() {
     $milo_getters,
     getErrorDescription: getErrorDescription.bind(wasm),
     getCallbackError: getCallbackError.bind(wasm, state),
-    // eslint-disable-next-line no-dupe-keys
-    $milo_wasm: {
-      setContinueWithoutData,
-      setIsConnect,
-      setManageUnconsumed,
-      setMode,
-      setSkipBody
-    },
+    $milo_setters,
     $milo_callbacks,
     $milo_enums,
     $milo_constants,
@@ -150,6 +151,7 @@ function load() {
   callbackContext.dealloc = milo.dealloc
   callbackContext.fail = milo.fail
 
+  $milo_start()
   return milo
 }
 

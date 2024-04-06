@@ -87,8 +87,10 @@
 { "pos": 97, "event": "before_state_change", "current_state": "TRAILER_NAME", "data": null }
 { "pos": 97, "event": "after_state_change", "current_state": "TRAILER_VALUE", "data": null }
 { "pos": 108, "event": "trailer_value", "data": "value" }
-{ "pos": 108, "event": "trailers", "data": null }
+{ "pos": 113, "event": "before_state_change", "current_state": "TRAILER_VALUE", "data": null }
+{ "pos": 113, "event": "after_state_change", "current_state": "TRAILERS", "data": null }
+{ "pos": 117, "event": "trailers", "data": null }
 { "pos": 117, "event": "complete", "data": null }
-{ "pos": 117, "event": "before_state_change", "current_state": "TRAILER_VALUE", "data": null }
+{ "pos": 117, "event": "before_state_change", "current_state": "TRAILERS", "data": null }
 { "pos": 117, "event": "after_state_change", "current_state": "START", "data": null }
 { "pos": 117, "consumed": 117, "state": "START" }

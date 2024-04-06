@@ -29,6 +29,14 @@ extern "C" {
   fn logger(message: u64);
 }
 
+#[cfg(all(debug_assertions, target_family = "wasm"))]
+#[no_mangle]
+pub fn __start() {
+  std::panic::set_hook(Box::new(|panic_info| {
+    debug(format!("WebAssembly panicked: {:#?}", panic_info));
+  }));
+}
+
 #[repr(C)]
 pub struct Flags {
   pub debug: bool,

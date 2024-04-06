@@ -18,9 +18,11 @@
   "license": "ISC",
   "private": false,
   "files": [
-    "milo.wasm",
     "index.js",
     "index.d.ts",
+    "index-with-wasm.js",
+    "index-with-wasm.d.ts",
+    "milo.wasm",
     "CODE_OF_CONDUCT.md",
     "LICENSE.md",
     "README.md"

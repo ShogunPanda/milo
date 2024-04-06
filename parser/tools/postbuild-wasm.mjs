@@ -14,6 +14,7 @@ function camelCase(source) {
 
 async function generateGluecode(profile, version, flags, constants) {
   const getters = []
+  const setters = []
   const enums = []
   let callbacks
 
@@ -54,6 +55,18 @@ async function generateGluecode(profile, version, flags, constants) {
           parseExpression(`
             function ${getter}(parser) {
               return ${converter.replace('$', `this.${wasmGetter}(parser)`)}
+            }
+          `)
+        )
+      } else if (cleanName.startsWith('setter_')) {
+        const setter = cleanName.slice(7)
+        const wasmSetter = setter.replace(/([A-Z])/g, t => '_' + t.toLowerCase())
+        setters.push(setter)
+
+        path.insertBefore(
+          parseExpression(`
+            function ${setter}(parser, value) {
+              this.${wasmSetter}(parser, value)
             }
           `)
         )
@@ -108,17 +121,32 @@ async function generateGluecode(profile, version, flags, constants) {
 
           break
         case 'getters':
-          for (const prop of parseExpression(`{ ${getters.map(g => `${g}: ${g}.bind(wasm)`).join(', ')} }`)
-            .properties) {
-            path.insertBefore(prop)
+          {
+            const expr = parseExpression(`{ ${getters.map(g => `${g}: ${g}.bind(wasm)`).join(', ')} }`)
+
+            for (const prop of expr.properties) {
+              path.insertBefore(prop)
+            }
+          }
+
+          break
+        case 'setters':
+          {
+            const expr = parseExpression(`{ ${setters.map(g => `${g}: ${g}.bind(wasm)`).join(', ')} }`)
+
+            for (const prop of expr.properties) {
+              path.insertBefore(prop)
+            }
           }
 
           break
         case 'callbacks':
-          for (const prop of parseExpression(
-            `{ ${callbacks.map(c => `${c[0]}: ${c[0]}.bind(wasm, state)`).join(', ')} }`
-          ).properties) {
-            path.insertBefore(prop)
+          {
+            const expr = parseExpression(`{ ${callbacks.map(c => `${c[0]}: ${c[0]}.bind(wasm, state)`).join(', ')} }`)
+
+            for (const prop of expr.properties) {
+              path.insertBefore(prop)
+            }
           }
 
           break
@@ -156,7 +184,41 @@ async function generateGluecode(profile, version, flags, constants) {
         case 'flag_debug':
           path.replaceWithSourceString(flags.debug)
           break
+        case 'start':
+          if (profile === 'debug') {
+            path.parentPath.replaceWith(parseExpression('wasm.__start()'))
+          } else {
+            path.parentPath.remove()
+          }
+          break
       }
+    }
+  })
+
+  return prettier.format(generate.default(ast).code, { ...prettierConfig, parser: 'babel' })
+}
+
+async function generateEmbedded(code, profile) {
+  const ast = parse(code, { sourceType: 'module' })
+  const payload = await readFile(new URL(`../dist/wasm/${profile}/milo.wasm`, import.meta.url), 'base64')
+
+  // Manipulate the AST
+  let replaced = false
+  traverse.default(ast, {
+    // Replace placeholder definitions
+    BlockStatement(path) {
+      if (replaced || !path.parentPath.node.id?.name.startsWith('loadWASM')) {
+        return
+      }
+
+      const replacement = parseExpression(`
+        function loadWASM() {
+          return Buffer.from('${payload}', 'base64');
+        }
+      `)
+
+      path.replaceWith(replacement.body)
+      replaced = true
     }
   })
 
@@ -249,6 +311,7 @@ async function main() {
 
   // Generate the required files and code
   const glue = await generateGluecode(profile, version, flags, constants)
+  const embedded = await generateEmbedded(glue, profile)
   const readme = await generateReadme()
 
   // Copy the package.json by updating the version
@@ -260,10 +323,9 @@ async function main() {
     'utf-8'
   )
 
-  // Create the index file
+  // Write files
   await writeFile(new URL(`../dist/wasm/${profile}/index.js`, import.meta.url), glue, 'utf-8')
-
-  // Create the README.md file
+  await writeFile(new URL(`../dist/wasm/${profile}/index-with-wasm.js`, import.meta.url), embedded, 'utf-8')
   await writeFile(new URL(`../dist/wasm/${profile}/README.md`, import.meta.url), readme, 'utf-8')
 
   // Copy other Markdown files from root

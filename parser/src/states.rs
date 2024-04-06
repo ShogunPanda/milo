@@ -448,7 +448,7 @@ state!(header_connection, {
 
 // RFC 9110 section 5.5 and 5.6
 state!(header_value, {
-  // Ignore trailing OWS
+  // Ignore leading OWS
   consume!(ws);
 
   parser.position += consumed;
@@ -456,14 +456,13 @@ state!(header_value, {
 
   consume!(token_value);
 
-  if consumed == 0 {
-    return fail!(UNEXPECTED_CHARACTER, "Invalid header field value character");
-  }
-
-  // Strip trailing OWS
-  let mut trimmed_consumed = consumed;
-  while let char!('\t') | char!(' ') = data[trimmed_consumed - 1] {
-    trimmed_consumed -= 1;
+  let mut trimmed_consumed = 0;
+  if consumed > 0 {
+    // Strip trailing OWS
+    trimmed_consumed = consumed;
+    while let char!('\t') | char!(' ') = data[trimmed_consumed - 1] {
+      trimmed_consumed -= 1;
+    }
   }
 
   match data[consumed..] {
@@ -540,6 +539,9 @@ state!(headers, {
       } else if !parser.has_chunked_transfer_encoding {
         return move_to!(body_with_no_length, 0);
       }
+    } else if status == 304 {
+      // RFC 9110 section 15.4.5
+      return complete_message(parser, 0);
     }
   }
 
@@ -808,8 +810,8 @@ state!(trailer_name, {
       move_to!(trailer_value, consumed + 1)
     }
     crlf!() => {
-      callback!(on_trailers);
-      complete_message(parser, 2)
+      parser.continue_without_data = true;
+      move_to!(trailers, 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid trailer field name character"),
     _ => suspend!(),
@@ -817,29 +819,41 @@ state!(trailer_name, {
 });
 
 state!(trailer_value, {
-  // Ignore trailing OWS
+  // Ignore leading OWS
   consume!(ws);
+
   parser.position += consumed;
   data = &data[consumed..];
 
   consume!(token_value);
 
-  if consumed == 0 {
-    return fail!(UNEXPECTED_CHARACTER, "Invalid trailer field value character");
+  let mut trimmed_consumed = 0;
+  if consumed > 0 {
+    // Strip trailing OWS
+    trimmed_consumed = consumed;
+    while let char!('\t') | char!(' ') = data[trimmed_consumed - 1] {
+      trimmed_consumed -= 1;
+    }
   }
 
   match data[consumed..] {
     double_crlf!() => {
-      callback!(on_trailer_value, consumed);
-      callback!(on_trailers);
-      complete_message(parser, consumed + 4)
+      callback!(on_trailer_value, trimmed_consumed);
+      parser.position += consumed;
+      parser.continue_without_data = true;
+      move_to!(trailers, 4)
     }
     crlf!() => {
-      callback!(on_trailer_value, consumed);
+      callback!(on_trailer_value, trimmed_consumed);
       move_to!(trailer_name, consumed + 2)
     }
     otherwise!(2) => fail!(UNEXPECTED_CHARACTER, "Invalid trailer field value character"),
     _ => suspend!(),
   }
+});
+
+state!(trailers, {
+  callback!(on_trailers);
+  complete_message(parser, 0)
 });
 // #endregion trailers

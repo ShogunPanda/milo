@@ -1,5 +1,6 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
+use regex::{Captures, Regex};
 use syn::{parse_macro_input, Ident};
 
 use crate::parsing::{IdentifiersWithExpr, Property};
@@ -23,14 +24,17 @@ pub fn callback_wasm(definition: &IdentifiersWithExpr, target: &Ident) -> proc_m
 
 // Generates a getter.
 pub fn wasm_getter(input: TokenStream) -> TokenStream {
+  let snake_matcher = Regex::new(r"([A-Z])").unwrap();
+
   let definition = parse_macro_input!(input as Property);
   let property = definition.property;
-  let property_string = property.to_string();
-  let fn_name = if property_string.starts_with("is_") || property_string.starts_with("has_") {
-    format_ident!("{}", property_string)
-  } else {
-    format_ident!("get_{}", property_string)
-  };
+  let fn_name = format_ident!(
+    "{}",
+    snake_matcher.replace_all(&definition.getter.to_string().as_str(), |captures: &Captures| {
+      format!("_{}", captures[1].to_lowercase())
+    })
+  );
+
   let return_type = definition.r#type;
 
   TokenStream::from(quote! {

@@ -31,6 +31,6 @@
 { "pos": 97, "event": "body", "data": null }
 { "pos": 97, "event": "trailer_name", "data": "X-Trailer" }
 { "pos": 108, "event": "trailer_value", "data": "value" }
-{ "pos": 108, "event": "trailers", "data": null }
+{ "pos": 117, "event": "trailers", "data": null }
 { "pos": 117, "event": "complete", "data": null }
 { "pos": 117, "consumed": 117, "state": "START" }

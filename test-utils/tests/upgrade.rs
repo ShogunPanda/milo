@@ -62,4 +62,34 @@ mod test {
     assert!(consumed2 == 0);
     assert!(matches!(parser.state, STATE_TUNNEL));
   }
+
+  #[test]
+  fn upgrade_http_101() {
+    let mut parser = create_parser();
+
+    let message1 = http(
+      r#"
+        HTTP/1.1 101 Switching Protocols\r\n
+        hello: world\r\n
+        connection: upgrade\r\n
+        upgrade: websocket\r\n
+        \r\n
+        Body
+      "#,
+    );
+
+    let message2 = http(
+      r#"
+        abc\r\n\r\n
+      "#,
+    );
+
+    let consumed1 = parse(&mut parser, &message1);
+    assert!(consumed1 == message1.len() - 4);
+    assert!(matches!(parser.state, STATE_TUNNEL));
+
+    let consumed2 = parse(&mut parser, &message2);
+    assert!(consumed2 == 0);
+    assert!(matches!(parser.state, STATE_TUNNEL));
+  }
 }

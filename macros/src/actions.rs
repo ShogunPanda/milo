@@ -3,9 +3,9 @@ use quote::{format_ident, quote};
 use syn::{parse_macro_input, parse_str, Arm, Expr, Ident};
 
 use crate::{
-  definitions::{init_constants, METHODS},
+  definitions::{init_constants, METHODS, STATES},
   native::callback_native,
-  parsing::{Failure, IdentifiersWithExpr, StringLength},
+  parsing::{Failure, IdentifierWithExpr, StringLength},
   wasm::callback_wasm,
 };
 
@@ -24,44 +24,22 @@ pub fn string_length(input: TokenStream) -> TokenStream {
 
 // Marks a certain number of characters as used.
 pub fn advance(input: TokenStream) -> TokenStream {
-  let name = parse_macro_input!(input as Ident);
+  let len = parse_macro_input!(input as Expr);
 
-  TokenStream::from(quote! { #name })
+  TokenStream::from(quote! { self.position += #len; })
 }
 
 /// Moves the parsers to a new state and marks a certain number of characters as
 /// used.
 pub fn move_to(input: TokenStream) -> TokenStream {
-  let definition = parse_macro_input!(input as IdentifiersWithExpr);
+  let definition = parse_macro_input!(input as IdentifierWithExpr);
   let state = format_state(&definition.identifier);
+  let expr = definition.expr.unwrap();
 
-  #[cfg(debug_assertions)]
-  {
-    if let Some(expr) = definition.expr {
-      TokenStream::from(quote! { parser.move_to(#state, #expr) })
-    } else {
-      TokenStream::from(quote! { parser.move_to(#state, 1) })
-    }
-  }
-
-  #[cfg(not(debug_assertions))]
-  {
-    if let Some(expr) = definition.expr {
-      TokenStream::from(quote! {
-        {
-          parser.state = #state;
-          #expr
-        }
-      })
-    } else {
-      TokenStream::from(quote! {
-        {
-          parser.state = #state;
-          1
-        }
-      })
-    }
-  }
+  TokenStream::from(quote! {
+    self.state = #state;
+    self.position += #expr;
+  })
 }
 
 /// Marks the parsing a failed, setting a error code and and error message.
@@ -70,7 +48,10 @@ pub fn fail(input: TokenStream) -> TokenStream {
   let error = format_ident!("ERROR_{}", definition.error);
   let message = definition.message;
 
-  TokenStream::from(quote! { parser.fail(#error, #message) })
+  TokenStream::from(quote! {
+    self.fail(#error, #message);
+    break 'parser;
+  })
 }
 
 /// Tries to detect the longest prefix of the data matching the provided
@@ -114,45 +95,32 @@ pub fn consume(input: TokenStream) -> TokenStream {
     }
 
     if(consumed == max) {
-      return SUSPEND;
+      break 'parser;
     }
   })
 }
 
 /// Invokes one of the user defined callbacks, eventually attaching some view of
-/// the data (via pointer and length). If the callback errors, the operation is
-/// NOT interrupted. This call will also append the location information to
-/// the offsets.
-pub fn callback(input: TokenStream, target: &str, return_on_fail: bool) -> TokenStream {
-  let definition = parse_macro_input!(input as IdentifiersWithExpr);
-  let target = format_ident!("{}", target);
-
-  let native = callback_native(&definition, &target);
-  let wasm = callback_wasm(&definition, &target);
-
-  let error_handling = if return_on_fail {
-    quote!({ if #target.state == STATE_ERROR { return 0 }; })
-  } else {
-    quote!()
-  };
+/// the data (via pointer and length).
+pub fn callback(input: TokenStream) -> TokenStream {
+  let definition = parse_macro_input!(input as IdentifierWithExpr);
+  let native = callback_native(&definition);
+  let wasm = callback_wasm(&definition);
 
   TokenStream::from(quote! {
     #[cfg(not(target_family = "wasm"))]
-    {
-      #native
-      #error_handling
-    }
+    #native
 
     #[cfg(target_family = "wasm")]
-    {
-      #wasm
-      #error_handling
-    }
+    #wasm
   })
 }
 
 /// Marks the parser as suspended, waiting for more data.
-pub fn suspend() -> TokenStream { TokenStream::from(quote! { SUSPEND }) }
+pub fn suspend() -> TokenStream { TokenStream::from(quote! { break 'parser; }) }
+
+/// Go to the next iteration of the parser
+pub fn next() -> TokenStream { TokenStream::from(quote! { continue 'parser; }) }
 
 /// Maps a string method to its integer value (which is the enum definition
 /// index).
@@ -173,19 +141,39 @@ pub fn find_method(input: TokenStream) -> TokenStream {
         .join(", ");
 
       if x == "CONNECT" {
-        parse_str::<Arm>(&format!("[{}] => {{ parser.is_connect = true; {} }}", matcher, i)).unwrap()
+        parse_str::<Arm>(&format!(
+          "[{}] => {{ self.is_connect = true; self.method = {}; }}",
+          matcher, i
+        ))
+        .unwrap()
       } else {
-        parse_str::<Arm>(&format!("[{}] => {{ {} }}", matcher, i)).unwrap()
+        parse_str::<Arm>(&format!("[{}] => {{ self.method = {}; }}", matcher, i)).unwrap()
       }
     })
     .collect();
 
   TokenStream::from(quote! {
-    let method = match #identifier {
+    match #identifier {
       #(#methods),*
       _ => {
-        return fail!(UNEXPECTED_CHARACTER, "Invalid method")
+        fail!(UNEXPECTED_CHARACTER, "Invalid method");
       }
     };
+  })
+}
+
+pub fn process_state() -> TokenStream {
+  let states: Vec<_> = unsafe { STATES.get().unwrap() }
+    .iter()
+    .map(|s| parse_str::<Arm>(&format!("STATE_{} => {{ {} }}", s.0, s.1)).unwrap())
+    .collect();
+
+  TokenStream::from(quote! {
+    match self.state {
+      #(#states),*
+      _ => {
+        fail!(UNEXPECTED_STATE, "Invalid state");
+      }
+    }
   })
 }

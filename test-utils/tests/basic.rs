@@ -6,7 +6,7 @@ mod test {
   use milo::{
     Parser, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE, STATE_ERROR, STATE_FINISH, STATE_HEADER_NAME, STATE_START,
   };
-  use milo_test_utils::{create_parser, http, parse};
+  use milo_test_utils::{context, create_parser, http, parse};
 
   #[test]
   fn basic_disable_autodetect() {
@@ -44,7 +44,7 @@ mod test {
   }
 
   #[test]
-  fn basic_incomplete_string() {
+  fn basic_incomplete_string_1() {
     let mut parser = create_parser();
 
     let sample1 = http(r#"GET / HTTP/1.1\r"#);
@@ -88,64 +88,78 @@ mod test {
   }
 
   #[test]
-  fn basic_incomplete_string_automanaged() {
+  fn basic_incomplete_string_automanaged_1() {
     let mut parser = create_parser();
     parser.manage_unconsumed = true;
 
-    let sample1 = http(r#"GET / HTTP/1.1\r"#);
-    let sample2 = http(r#"\n"#);
-    let sample3 = http(r#"Head"#);
-    let sample4 = http(r#"er:"#);
-    let sample5 = http(r#"Value"#);
-    let sample6 = http(r#"\r\n\r\n"#);
+    let message = http(r"GET / HTTP/1.1\r\nHeader: Value\r\n\r\n");
+    let sample1 = &message[0..15].to_string(); // GET / HTTP/1.1\r
+    let sample2 = &message[15..16].to_string(); // \n
+    let sample3 = &message[16..20].to_string(); // Head
+    let sample4 = &message[20..24].to_string(); // er:
+    let sample5 = &message[24..29].to_string(); // Value
+    let sample6 = &message[29..].to_string(); // \r\n\r\n
 
-    let consumed1 = parse(&mut parser, &sample1);
+    let mut context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
+    context.input = message.clone();
+    Box::into_raw(context);
+
+    let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
     assert!(consumed1 == sample1.len() - 4);
-    let consumed2 = parse(&mut parser, &sample2);
+    let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
     assert!(consumed2 == sample2.len() + 4);
-    let consumed3 = parse(&mut parser, &sample3);
+    let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
     assert!(consumed3 == 0);
-    let consumed4 = parse(&mut parser, &sample4);
-    assert!(consumed4 == sample3.len() + sample4.len());
-    let consumed5 = parse(&mut parser, &sample5);
-    assert!(consumed5 == 0);
-    let consumed6 = parse(&mut parser, &sample6);
+    let consumed4 = parser.parse(sample4.as_ptr(), sample4.len());
+    assert!(consumed4 == sample3.len() + sample4.len() - 1);
+    let consumed5 = parser.parse(sample5.as_ptr(), sample5.len());
+    assert!(consumed5 == 1);
+    let consumed6 = parser.parse(sample6.as_ptr(), sample6.len());
     assert!(consumed6 == sample5.len() + sample6.len());
 
     assert!(!matches!(parser.state, STATE_ERROR));
+    assert!(parser.parsed == message.len() as u64);
 
     // Verify the field is not reset
     parser.reset(true);
 
-    let consumed1 = parse(&mut parser, &sample1);
+    let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
     assert!(consumed1 == sample1.len() - 4);
-    let consumed2 = parse(&mut parser, &sample2);
+    let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
     assert!(consumed2 == sample2.len() + 4);
-    let consumed3 = parse(&mut parser, &sample3);
+    let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
     assert!(consumed3 == 0);
-    let consumed4 = parse(&mut parser, &sample4);
-    assert!(consumed4 == sample3.len() + sample4.len());
-    let consumed5 = parse(&mut parser, &sample5);
-    assert!(consumed5 == 0);
-    let consumed6 = parse(&mut parser, &sample6);
+    let consumed4 = parser.parse(sample4.as_ptr(), sample4.len());
+    assert!(consumed4 == sample3.len() + sample4.len() - 1);
+    let consumed5 = parser.parse(sample5.as_ptr(), sample5.len());
+    assert!(consumed5 == 1);
+    let consumed6 = parser.parse(sample6.as_ptr(), sample6.len());
     assert!(consumed6 == sample5.len() + sample6.len());
 
     assert!(!matches!(parser.state, STATE_ERROR));
+    assert!(parser.parsed == (message.len() * 2) as u64);
   }
 
   #[test]
-  fn basic_incomplete_string_2_automanaged() {
+  fn basic_incomplete_string_automanaged_2() {
     let mut parser = create_parser();
     parser.manage_unconsumed = true;
     parser.mode = MESSAGE_TYPE_REQUEST;
 
-    let sample1 = http(r#"GE"#);
-    let sample2 = http(r#"T / HTTP/1.1\r\nHost: foo\r\n\r\n"#);
+    let message = http(r#"GET / HTTP/1.1\r\nHost: foo\r\n\r\n"#);
 
-    parse(&mut parser, &sample1);
-    parse(&mut parser, &sample2);
+    let mut context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
+    context.input = message.clone();
+    Box::into_raw(context);
+
+    let sample1 = &message[0..2].to_string(); // GE
+    let sample2 = &message[2..].to_string(); // T / HTTP/1.1\r\nHost: foo\r\n\r\n
+
+    parser.parse(sample1.as_ptr(), sample1.len());
+    parser.parse(sample2.as_ptr(), sample2.len());
 
     assert!(!matches!(parser.state, STATE_ERROR));
+    assert!(parser.parsed == message.len() as u64);
   }
 
   #[test]
@@ -259,7 +273,7 @@ mod test {
   fn basic_incomplete_body() {
     let mut parser = create_parser();
 
-    let sample1 = http(r#"POST / HTTP/1.1\r\nContent-Length: 10\r\n\r\n12345"#);
+    let sample1 = http(r#"POST / HTTP/1.1\r\nContent-Length:10\r\n\r\n12345"#);
     let sample2 = http(r#"67"#);
     let sample3 = http(r#"890\r\n"#);
 
@@ -277,9 +291,9 @@ mod test {
   fn basic_incomplete_chunk() {
     let mut parser = create_parser();
 
-    let sample1 = http(r#"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nTrailer: x-foo\r\n\r\na\r\n12345"#);
+    let sample1 = http(r#"POST / HTTP/1.1\r\nTransfer-Encoding:chunked\r\nTrailer: x-foo\r\n\r\na\r\n12345"#);
     let sample2 = http(r#"67"#);
-    let sample3 = http(r#"890\r\n0\r\nx-foo: value\r\n\r\n"#);
+    let sample3 = http(r#"890\r\n0\r\nx-foo:value\r\n\r\n"#);
 
     let consumed1 = parse(&mut parser, &sample1);
     assert!(consumed1 == sample1.len());

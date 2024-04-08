@@ -20,46 +20,35 @@ pub fn generate_constants() -> TokenStream {
     .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const METHOD_{}: usize = {};", x.replace('-', "_"), i)).unwrap())
     .collect();
 
-  let errors_consts: Vec<_> = unsafe {
-    ERRORS
-      .get()
-      .unwrap()
-      .iter()
-      .enumerate()
-      .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const ERROR_{}: usize = {};", x, i)).unwrap())
-      .collect()
-  };
+  let errors_consts: Vec<_> = ERRORS
+    .get()
+    .unwrap()
+    .iter()
+    .enumerate()
+    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const ERROR_{}: usize = {};", x, i)).unwrap())
+    .collect();
 
-  let callbacks_consts: Vec<_> = unsafe {
-    CALLBACKS
-      .get()
+  let callbacks_consts: Vec<_> = CALLBACKS
+    .get()
+    .unwrap()
+    .iter()
+    .enumerate()
+    .map(|(i, x)| {
+      parse_str::<ItemConst>(&format!(
+        "pub const CALLBACK_{}: usize = {};",
+        x.replace('-', "_").to_uppercase(),
+        i
+      ))
       .unwrap()
-      .iter()
-      .enumerate()
-      .map(|(i, x)| {
-        parse_str::<ItemConst>(&format!(
-          "pub const CALLBACK_{}: usize = {};",
-          x.replace('-', "_").to_uppercase(),
-          i
-        ))
-        .unwrap()
-      })
-      .collect()
-  };
+    })
+    .collect();
 
   let states_ref = unsafe { STATES.get().unwrap() };
 
   let states_consts: Vec<_> = states_ref
     .iter()
     .enumerate()
-    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const STATE_{}: usize = {};", x, i)).unwrap())
-    .collect();
-
-  let states_len = states_ref.len();
-
-  let states_table: Vec<_> = unsafe { STATES.get().unwrap() }
-    .iter()
-    .map(|x| format_ident!("state_{}", x.to_lowercase()))
+    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const STATE_{}: usize = {};", x.0, i)).unwrap())
     .collect();
 
   let digit_table: Vec<_> = (0..=255).map(|i| (0x30..=0x39).contains(&i)).collect();
@@ -117,7 +106,7 @@ pub fn generate_constants() -> TokenStream {
   ws_table[32] = true;
 
   TokenStream::from(quote! {
-    type StateHandler = fn (parser: &mut Parser, data: &[c_uchar]) -> usize;
+    type StateHandler = fn (parser: &mut Parser, data: &[c_uchar], available: usize);
 
     #[no_mangle]
     pub type Callback = fn (&mut Parser, usize, usize);
@@ -162,9 +151,6 @@ pub fn generate_constants() -> TokenStream {
 
     /// cbindgen:ignore
     static WS_TABLE: [bool; 256] = [#(#ws_table),*];
-
-    /// cbindgen:ignore
-    static STATES_HANDLERS: [StateHandler; #states_len] = [#(#states_table),*];
   })
 }
 
@@ -173,8 +159,8 @@ pub fn generate_enums() -> TokenStream {
   let snake_matcher = Regex::new(r"_([a-z])").unwrap();
 
   let methods_ref = METHODS.get().unwrap();
-  let errors_ref = unsafe { ERRORS.get().unwrap() };
-  let callbacks_ref = unsafe { CALLBACKS.get().unwrap() };
+  let errors_ref = ERRORS.get().unwrap();
+  let callbacks_ref = CALLBACKS.get().unwrap();
   let states_ref = unsafe { STATES.get().unwrap() };
 
   let methods: Vec<_> = methods_ref
@@ -196,7 +182,7 @@ pub fn generate_enums() -> TokenStream {
     })
     .collect();
 
-  let states: Vec<_> = states_ref.iter().map(|x| format_ident!("{}", x)).collect();
+  let states: Vec<_> = states_ref.iter().map(|x| format_ident!("{}", x.0)).collect();
 
   let methods_from: Vec<_> = methods_ref
     .iter()
@@ -216,7 +202,7 @@ pub fn generate_enums() -> TokenStream {
     .map(|(x, i)| parse_str::<Arm>(&format!("{} => Ok(Callbacks::{})", x, i)).unwrap())
     .collect();
 
-  let states_from: Vec<_> = states_ref
+  let states_from: Vec<_> = states
     .iter()
     .enumerate()
     .map(|(x, i)| parse_str::<Arm>(&format!("{} => Ok(States::{})", x, i)).unwrap())
@@ -237,7 +223,7 @@ pub fn generate_enums() -> TokenStream {
     .map(|x| parse_str::<Arm>(&format!("Callbacks::{} => \"{}\"", x, x)).unwrap())
     .collect();
 
-  let states_into: Vec<_> = states_ref
+  let states_into: Vec<_> = states
     .iter()
     .map(|x| parse_str::<Arm>(&format!("States::{} => \"{}\"", x, x)).unwrap())
     .collect();

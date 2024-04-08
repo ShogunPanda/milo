@@ -61,8 +61,7 @@ If both offset and length are `0`, it means the callback has no payload associat
 
 A struct representing the callbacks for a parser. Here's the list of supported callbacks:
 
-- `before_state_change`: Invoked before the parser change its state. _Only invoked in debug mode_.
-- `after_state_change`: Invoked after the parser change its state. _Only invoked in debug mode_.
+- `on_state_change`: Invoked after the parser change its state. _Only invoked in debug mode_.
 - `on_error`: Invoked after the parsing fails.
 - `on_finish`: Invoked after the parser is marked as finished.
 - `on_message_start`: Invoked after a new message starts.
@@ -208,7 +207,7 @@ The following fields are not modified:
 - `continue_without_data`
 - `context`
 
-### `milo_clear(parser: *mut Parser)`
+### `void milo_clear(parser: *mut Parser)`
 
 Clears all values about the message in the parser.
 
@@ -226,7 +225,7 @@ Resumes the parser.
 
 Marks the parser as finished. Any new invocation of `milo::milo_parse` will put the parser in the error state.
 
-### `milo_fail(Parser *parser, uintptr_t code, CStringWithLength description)`
+### `void milo_fail(Parser *parser, uintptr_t code, CStringWithLength description)`
 
 Marks the parsing a failed, setting a error code and and error message.
 

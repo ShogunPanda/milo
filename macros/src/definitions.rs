@@ -3,21 +3,21 @@ use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use proc_macro::TokenStream;
-use quote::{format_ident, quote};
+use quote::quote;
 use semver::Version;
 use serde::Serialize;
 use syn::parse_macro_input;
 use toml::Table;
 
-use crate::parsing::IdentifiersWithStatements;
+use crate::parsing::IdentifierWithStatements;
 
 // Global state variables for later use
 pub static METHODS: OnceLock<Vec<String>> = OnceLock::new();
-pub static mut ERRORS: OnceLock<IndexSet<String>> = OnceLock::new();
-pub static mut CALLBACKS: OnceLock<IndexSet<String>> = OnceLock::new();
-pub static mut STATES: OnceLock<IndexSet<String>> = OnceLock::new();
+pub static ERRORS: OnceLock<Vec<String>> = OnceLock::new();
+pub static CALLBACKS: OnceLock<Vec<String>> = OnceLock::new();
+pub static mut STATES: OnceLock<Vec<(String, String)>> = OnceLock::new();
 
 // Global constants
 pub const MESSAGE_TYPE_AUTODETECT: usize = 0;
@@ -58,7 +58,7 @@ pub fn init_constants() {
     let _ = METHODS.set(methods);
     let _ = ERRORS.set(errors);
     let _ = CALLBACKS.set(callbacks);
-    let _ = STATES.set(IndexSet::new());
+    let _ = STATES.set(Vec::new());
   }
 }
 
@@ -93,16 +93,16 @@ pub fn save_constants() {
     consts.insert(format!("METHOD_{}", x.replace('-', "_")), i);
   }
 
-  for (i, x) in unsafe { CALLBACKS.get().unwrap() }.iter().enumerate() {
+  for (i, x) in CALLBACKS.get().unwrap().iter().enumerate() {
     consts.insert(format!("CALLBACK_{}", x.to_uppercase()), i);
   }
 
-  for (i, x) in unsafe { ERRORS.get().unwrap() }.iter().enumerate() {
+  for (i, x) in ERRORS.get().unwrap().iter().enumerate() {
     consts.insert(format!("ERROR_{}", x), i);
   }
 
   for (i, x) in unsafe { STATES.get().unwrap() }.iter().enumerate() {
-    consts.insert(format!("STATE_{}", x), i);
+    consts.insert(format!("STATE_{}", x.0), i);
   }
 
   // Prepare the data to save
@@ -127,7 +127,7 @@ pub fn save_constants() {
 
 /// Adds time measurement to a code block.
 pub fn measure(input: TokenStream) -> TokenStream {
-  let definition = parse_macro_input!(input as IdentifiersWithStatements);
+  let definition = parse_macro_input!(input as IdentifierWithStatements);
   let name = definition.name.to_string();
   let statements = definition.statements;
 
@@ -147,20 +147,11 @@ pub fn measure(input: TokenStream) -> TokenStream {
 
 /// Defines a new state.
 pub fn state(input: TokenStream) -> TokenStream {
-  let definition = parse_macro_input!(input as IdentifiersWithStatements);
-  let name = definition.name;
-  let function = format_ident!("state_{}", name);
+  let definition = parse_macro_input!(input as IdentifierWithStatements);
+  let name = definition.name.to_string();
   let statements = definition.statements;
 
-  unsafe {
-    STATES.get_mut().unwrap().insert(name.to_string().to_uppercase());
-  }
+  unsafe { STATES.get_mut().unwrap() }.push((name.to_string().to_uppercase(), quote! { #(#statements)* }.to_string()));
 
-  TokenStream::from(quote! {
-    #[inline(always)]
-    pub fn #function (parser: &mut Parser, data: &[c_uchar]) -> usize {
-      let mut data = data;
-      #(#statements)*
-    }
-  })
+  TokenStream::new()
 }

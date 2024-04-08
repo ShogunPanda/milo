@@ -248,13 +248,9 @@ Set if the parser should skip the body.
 
 Sets if the current request used the `CONNECT` method.
 
-## `setBeforeStateChange(parser, cb)`
+## `setOnStateChange(parser, cb)`
 
-Sets the parser `before_state_change` callback.
-
-## `setAfterStateChange(parser, cb)`
-
-Sets the parser `after_state_change` callback.
+Sets the parser `in_state_change` callback.
 
 ## `setOnError(parser, cb)`
 

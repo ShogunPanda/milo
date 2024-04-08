@@ -7,6 +7,9 @@
 [lib]
   crate_type = ["cdylib", "staticlib", "lib"]
 
+[features]
+  debug = []
+
 [dependencies]
   milo-macros = { path = "../macros" }
 

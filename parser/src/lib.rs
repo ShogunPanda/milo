@@ -15,10 +15,7 @@ use core::ptr;
 use core::str;
 use core::{slice, slice::from_raw_parts};
 
-use milo_macros::{
-  callback, callback_on_self, callback_on_self_no_return, generate_callbacks, generate_constants, generate_enums,
-  init_constants,
-};
+use milo_macros::{callback, generate_callbacks, generate_constants, generate_enums, init_constants, next};
 
 #[cfg(target_family = "wasm")]
 #[link(wasm_import_module = "env")]
@@ -200,7 +197,7 @@ impl Parser {
       self.unconsumed_len = 0;
     }
 
-    callback_on_self_no_return!(on_reset);
+    callback!(on_reset);
   }
 
   /// Clears all values about the message in the parser.
@@ -239,7 +236,7 @@ impl Parser {
       }
       STATE_BODY_WITH_NO_LENGTH => {
         // Notify that the message has been completed
-        callback_on_self_no_return!(on_message_complete);
+        callback!(on_message_complete);
 
         // Set the state to be finished
         self.state = STATE_FINISH;
@@ -247,7 +244,7 @@ impl Parser {
       STATE_ERROR => (),
       // In another other state, this is an error
       _ => {
-        let _ = self.fail(ERROR_UNEXPECTED_EOF, "Unexpected end of data");
+        self.fail(ERROR_UNEXPECTED_EOF, "Unexpected end of data");
       }
     }
   }
@@ -257,25 +254,16 @@ impl Parser {
   ///
   /// The allow annotation is needed when building in release mode.
   #[allow(dead_code)]
-  pub fn move_to(&mut self, state: usize, advance: usize) -> usize {
-    // Notify the end of the current state
-    #[cfg(debug_assertions)]
-    callback_on_self!(before_state_change);
-
+  pub fn move_to(&mut self, state: usize, advance: usize) {
     // Change the state
     self.state = state;
-
-    // Notify the start of the current state
-    #[cfg(debug_assertions)]
-    callback_on_self!(after_state_change);
-
-    advance
+    self.position += advance;
   }
 
   /// Marks the parsing a failed, setting a error code and and error message.
   ///
   /// It always returns zero for internal use.
-  pub fn fail(&mut self, code: usize, description: &str) -> usize {
+  pub fn fail(&mut self, code: usize, description: &str) {
     let description_copy = description.to_string();
     let (ptr, _, len) = description_copy.into_raw_parts();
 
@@ -283,9 +271,6 @@ impl Parser {
     self.error_code = code;
     self.error_description = ptr;
     self.error_description_len = len;
-
-    // Do not process any additional data
-    0
   }
 
   /// Returns the current parser's state as string.

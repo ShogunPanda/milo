@@ -1,6 +1,5 @@
 ---
-- before_state_change
-- after_state_change
+- on_state_change
 - on_error
 - on_finish
 - on_message_start

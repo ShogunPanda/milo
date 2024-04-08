@@ -206,7 +206,7 @@ makers
 
 The command above will produce debug and release builds for each language in the `dist` folder.
 
-The debug build will also enables the `before_state_change` and `after_state_change` callbacks and it's more verbose in case of WebAssembly errors.
+The debug build will also enables the `on_state_change` and callback and it's more verbose in case of WebAssembly errors.
 
 ## API
 

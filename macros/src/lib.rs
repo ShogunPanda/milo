@@ -53,6 +53,9 @@ pub fn url(_: TokenStream) -> TokenStream { matchers::url() }
 
 #[proc_macro]
 pub fn otherwise(input: TokenStream) -> TokenStream { matchers::otherwise(input) }
+
+#[proc_macro]
+pub fn process_state(_: TokenStream) -> TokenStream { actions::process_state() }
 // #endregion matchers
 
 // #region values access
@@ -77,16 +80,13 @@ pub fn fail(input: TokenStream) -> TokenStream { actions::fail(input) }
 pub fn consume(input: TokenStream) -> TokenStream { actions::consume(input) }
 
 #[proc_macro]
-pub fn callback(input: TokenStream) -> TokenStream { actions::callback(input, "parser", true) }
-
-#[proc_macro]
-pub fn callback_on_self(input: TokenStream) -> TokenStream { actions::callback(input, "self", true) }
-
-#[proc_macro]
-pub fn callback_on_self_no_return(input: TokenStream) -> TokenStream { actions::callback(input, "self", false) }
+pub fn callback(input: TokenStream) -> TokenStream { actions::callback(input) }
 
 #[proc_macro]
 pub fn suspend(_: TokenStream) -> TokenStream { actions::suspend() }
+
+#[proc_macro]
+pub fn next(_: TokenStream) -> TokenStream { actions::next() }
 
 #[proc_macro]
 pub fn find_method(input: TokenStream) -> TokenStream { actions::find_method(input) }

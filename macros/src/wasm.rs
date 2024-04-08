@@ -1,24 +1,20 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use regex::{Captures, Regex};
-use syn::{parse_macro_input, Ident};
+use syn::parse_macro_input;
 
-use crate::parsing::{IdentifiersWithExpr, Property};
+use crate::parsing::{IdentifierWithExpr, Property};
 
 // Handles a callback.
-pub fn callback_wasm(definition: &IdentifiersWithExpr, target: &Ident) -> proc_macro2::TokenStream {
+pub fn callback_wasm(definition: &IdentifierWithExpr) -> proc_macro2::TokenStream {
   let callback = &definition.identifier;
   let callback_name = callback.to_string();
   let callback_value = format_ident!("CALLBACK_{}", callback_name.to_uppercase());
 
-  let invocation = if let Some(length) = &definition.expr {
-    quote! { unsafe { run_callback(crate::#callback_value, #target.ptr, #target.position, #length) }; }
+  if let Some(length) = &definition.expr {
+    quote! { unsafe { run_callback(crate::#callback_value, self.ptr, self.position, #length) }; }
   } else {
-    quote! { unsafe { run_callback(crate::#callback_value, #target.ptr, 0, 0) }; }
-  };
-
-  quote! {
-    #invocation;
+    quote! { unsafe { run_callback(crate::#callback_value, self.ptr, 0, 0) }; }
   }
 }
 

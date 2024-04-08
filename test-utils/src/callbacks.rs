@@ -6,24 +6,11 @@ use milo::{Parser, DEBUG, MESSAGE_TYPE_RESPONSE};
 
 use crate::{context, output};
 
-pub fn before_state_change(parser: &mut Parser, from: usize, size: usize) {
+pub fn on_state_change(parser: &mut Parser, from: usize, size: usize) {
   output::append_output(
     parser,
     format!(
-      "\"pos\": {}, \"event\": \"before_state_change\", \"current_state\": \"{}\"",
-      parser.position,
-      parser.state_str()
-    ),
-    from,
-    size,
-  );
-}
-
-pub fn after_state_change(parser: &mut Parser, from: usize, size: usize) {
-  output::append_output(
-    parser,
-    format!(
-      "\"pos\": {}, \"event\": \"after_state_change\", \"current_state\": \"{}\"",
+      "\"pos\": {}, \"event\": \"state\", \"state\": \"{}\"",
       parser.position,
       parser.state_str()
     ),

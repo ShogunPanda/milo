@@ -40,8 +40,7 @@ A struct representing the callbacks for a parser.
 
 Here's the list of supported callbacks:
 
-- `before_state_change`: Invoked before the parser change its state. _Only invoked in debug mode_.
-- `after_state_change`: Invoked after the parser change its state. _Only invoked in debug mode_.
+- `on_state_change`: Invoked after the parser change its state. _Only invoked in debug mode_.
 - `on_error`: Invoked after the parsing fails.
 - `on_finish`: Invoked after the parser is marked as finished.
 - `on_message_start`: Invoked after a new message starts.
@@ -160,13 +159,13 @@ Resumes the parser.
 Marks the parser as finished. Any new data received via `parse` will
 put the parser in the error state.
 
-### `Parser::move_to(&mut self, state: usize, advance: usize) -> usize`
+### `Parser::move_to(&mut self, state: usize, advance: usize)`
 
 Moves the parsers to a new state and marks a certain number of characters as used.
 
 This is meant to internal use.
 
-### `Parser::fail(&mut self, code: usize, description: &str) -> usize`
+### `Parser::fail(&mut self, code: usize, description: &str)`
 
 Marks the parsing a failed, setting a error code and and error message.
 

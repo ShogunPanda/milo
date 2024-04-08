@@ -37,24 +37,10 @@ function showSpan(name, context, parser, from, size) {
   return event(name, context.milo.getPosition(parser), context, parser, from, size)
 }
 
-function beforeStateChange(context, parser, from, size) {
+function onStateChange(context, parser, from, size) {
   return appendOutput(
     sprintf(
-      '"pos": {}, "event": "before_state_change", "current_state": "{}"',
-      context.milo.getPosition(parser),
-      context.milo.States[context.milo.getState(parser)]
-    ),
-    context,
-    parser,
-    from,
-    size
-  )
-}
-
-function afterStateChange(context, parser, from, size) {
-  return appendOutput(
-    sprintf(
-      '"pos": {}, "event": "after_state_change", "current_state": "{}"',
+      '"pos": {}, "event": "state", "state": "{}"',
       context.milo.getPosition(parser),
       context.milo.States[context.milo.getState(parser)]
     ),
@@ -307,8 +293,7 @@ async function main() {
   const parser = milo.create()
   const context = { milo }
 
-  milo.setBeforeStateChange(parser, beforeStateChange.bind(null, context))
-  milo.setAfterStateChange(parser, afterStateChange.bind(null, context))
+  milo.setOnStateChange(parser, onStateChange.bind(null, context))
   milo.setOnError(parser, onError.bind(null, context))
   milo.setOnFinish(parser, onFinish.bind(null, context))
   milo.setOnRequest(parser, onRequest.bind(null, context))

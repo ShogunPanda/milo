@@ -12,8 +12,7 @@ fn main() {
   let request2 = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: x-trailer\r\n\r\nc;need=love\r\nhello \
                   world!\r\n0\r\nX-Trailer: value\r\n\r\n";
 
-  parser.callbacks.before_state_change = callbacks::before_state_change;
-  parser.callbacks.after_state_change = callbacks::after_state_change;
+  parser.callbacks.on_state_change = callbacks::on_state_change;
   parser.callbacks.on_error = callbacks::on_error;
   parser.callbacks.on_finish = callbacks::on_finish;
   parser.callbacks.on_request = callbacks::on_request;

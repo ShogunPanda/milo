@@ -1,22 +1,19 @@
 import generate from '@babel/generator'
 import { parse, parseExpression } from '@babel/parser'
 import traverse from '@babel/traverse'
-import { copyFile, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import prettier from 'prettier'
 import remarkParse from 'remark-parse'
 import remarkStringify from 'remark-stringify'
 import { unified } from 'unified'
-import prettierConfig from './prettier.config.cjs'
-
-function camelCase(source) {
-  return source.toLowerCase().replace(/_(.)/g, (...t) => t[1].toUpperCase().trim())
-}
+import prettierConfig from './prettier.config.js'
 
 async function generateGluecode(profile, version, flags, constants) {
   const getters = []
   const setters = []
   const enums = []
-  let callbacks
 
   // Open and parse the JS file
   const template = await readFile(new URL('../src/wasm/template.js', import.meta.url), 'utf-8')
@@ -70,20 +67,6 @@ async function generateGluecode(profile, version, flags, constants) {
             }
           `)
         )
-      } else if (cleanName === 'callbacks') {
-        callbacks = Object.entries(constants)
-          .map(c => (c[0].startsWith('CALLBACK_') ? [camelCase('set_' + c[0].replace('CALLBACK_', '')), c[1]] : null))
-          .filter(Boolean)
-
-        for (const [callback, index] of callbacks) {
-          path.insertBefore(
-            parseExpression(`
-              function ${callback}(state, parser, cb) {
-                state[parser][${index}] = cb
-              }
-            `)
-          )
-        }
       } else if (cleanName.startsWith('enum')) {
         const name = cleanName.slice(5)
         const selector = path.node.params[0].name
@@ -142,7 +125,27 @@ async function generateGluecode(profile, version, flags, constants) {
           break
         case 'callbacks':
           {
-            const expr = parseExpression(`{ ${callbacks.map(c => `${c[0]}: ${c[0]}.bind(wasm, state)`).join(', ')} }`)
+            const callbacks = Object.entries(constants)
+              .map(c => (c[0].startsWith('CALLBACK_') ? c[0].replace('CALLBACK_', '').toLowerCase() : null))
+              .filter(Boolean)
+
+            const expr = parseExpression(`{ ${callbacks.map(c => `${c}: noop`).join(', ')} }`)
+
+            for (const prop of expr.properties) {
+              path.insertBefore(prop)
+            }
+          }
+
+          break
+        case 'simple_callbacks':
+          {
+            const callbacks = Object.entries(constants)
+              .map(c => (c[0].startsWith('CALLBACK_') ? [c[0].replace('CALLBACK_', '').toLowerCase(), c[1]] : null))
+              .filter(Boolean)
+
+            const expr = parseExpression(
+              `{ ${callbacks.map(c => `${c[0]}: simpleCallback.bind(null, spans, ${c[1]})`).join(', ')} }`
+            )
 
             for (const prop of expr.properties) {
               path.insertBefore(prop)
@@ -178,9 +181,6 @@ async function generateGluecode(profile, version, flags, constants) {
       }
 
       switch (path.node.name.slice(6)) {
-        case 'callback_error_index':
-          path.replaceWithSourceString(Object.keys(constants).filter(c => c.startsWith('CALLBACK_')).length)
-          break
         case 'flag_debug':
           path.replaceWithSourceString(flags.debug)
           break
@@ -317,23 +317,20 @@ async function main() {
   // Copy the package.json by updating the version
   const packageJson = JSON.parse(await readFile(new URL('../src/wasm/package.json', import.meta.url), 'utf-8'))
   packageJson.version = Object.values(version).join('.')
-  await writeFile(
-    new URL(`../dist/wasm/${profile}/package.json`, import.meta.url),
-    JSON.stringify(packageJson, null, 2),
-    'utf-8'
-  )
+
+  const rootFolder = fileURLToPath(new URL(`../dist/wasm/${profile}/${packageJson.name}`, import.meta.url))
 
   // Write files
-  await writeFile(new URL(`../dist/wasm/${profile}/index.js`, import.meta.url), glue, 'utf-8')
-  await writeFile(new URL(`../dist/wasm/${profile}/index-with-wasm.js`, import.meta.url), embedded, 'utf-8')
-  await writeFile(new URL(`../dist/wasm/${profile}/README.md`, import.meta.url), readme, 'utf-8')
+  await mkdir(rootFolder, { recursive: true })
+  await writeFile(resolve(rootFolder, 'package.json'), JSON.stringify(packageJson, null, 2), 'utf-8')
+  await writeFile(resolve(rootFolder, 'index.js'), embedded, 'utf-8')
+  await writeFile(resolve(rootFolder, 'index-unbundled.js'), glue, 'utf-8')
+  await writeFile(resolve(rootFolder, 'README.md'), readme, 'utf-8')
+  await copyFile(new URL(`../dist/wasm/${profile}/milo.wasm`, import.meta.url), resolve(rootFolder, 'milo.wasm'))
 
   // Copy other Markdown files from root
   for (const file of ['CODE_OF_CONDUCT', 'LICENSE']) {
-    await copyFile(
-      new URL(`../../${file}.md`, import.meta.url),
-      new URL(`../dist/wasm/${profile}/${file}.md`, import.meta.url)
-    )
+    await copyFile(new URL(`../../${file}.md`, import.meta.url), resolve(rootFolder, `${file}.md`))
   }
 }
 

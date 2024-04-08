@@ -2,11 +2,14 @@
   skip_core_tasks = true
 
 [tasks.default]
-  dependencies = ["bench"]
+  dependencies = ["build"]
 
-[tasks.test]
+[tasks.build]
   command = "cargo"
-  args    = ["test"]
+  args    = ["build", "--release"]
+
+[tasks.benchmarks]
+  command = "./target/release/milo-benchmarks"
 
 [tasks.lint]
   command = "cargo"
@@ -25,12 +28,4 @@
   args    = ["clean"]
 
 [tasks.verify]
-  dependencies = ["format", "lint", "clean", "test", "bench", "run"]
-
-[tasks.run]
-  command = "cargo"
-  args    = ["run", "--release"]
-
-[tasks.bench]
-  command = "cargo"
-  args    = ["bench"]
+  dependencies = ["format", "lint", "clean", "build", "benchmarks"]

@@ -113,7 +113,7 @@ pub extern "C" fn milo_finish(parser: *mut Parser) { unsafe { (*parser).finish()
 
 /// Marks the parsing a failed, setting a error code and and error message.
 #[no_mangle]
-pub extern "C" fn milo_fail(parser: *mut Parser, code: usize, description: CStringWithLength) {
+pub extern "C" fn milo_fail(parser: *mut Parser, code: u8, description: CStringWithLength) {
   unsafe { (*parser).fail(code, description.into()) };
 }
 

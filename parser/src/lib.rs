@@ -16,14 +16,15 @@ use core::str;
 use core::{slice, slice::from_raw_parts};
 
 use milo_macros::{
-  callback, callback_on_self, callback_on_self_no_return, generate_callbacks, generate_constants, generate_enums,
-  init_constants,
+  callback, generate_callbacks, generate_constants, generate_enums, init_constants, link_callbacks, r#return,
 };
+
+init_constants!();
 
 #[cfg(target_family = "wasm")]
 #[link(wasm_import_module = "env")]
 extern "C" {
-  fn run_callback(callback: usize, parser: *mut c_void, data: usize, limit: usize);
+  link_callbacks!();
 
   #[cfg(debug_assertions)]
   fn logger(message: u64);
@@ -49,8 +50,6 @@ pub fn flags() -> Flags {
   }
 }
 
-init_constants!();
-
 mod states;
 
 use crate::states::*;
@@ -63,7 +62,7 @@ generate_callbacks!();
 #[derive(Clone, Debug)]
 pub struct Parser {
   // User writable
-  pub mode: usize,
+  pub mode: u8,
   pub manage_unconsumed: bool,
   pub continue_without_data: bool,
   pub is_connect: bool,
@@ -72,19 +71,19 @@ pub struct Parser {
   pub context: *mut c_void,
 
   // Generic state
-  pub state: usize,
+  pub state: u8,
   pub position: usize,
   pub parsed: u64,
   pub paused: bool,
-  pub error_code: usize,
+  pub error_code: u8,
 
   // Current message flags
-  pub message_type: usize,
-  pub method: usize,
-  pub status: usize,
-  pub version_major: usize,
-  pub version_minor: usize,
-  pub connection: usize,
+  pub message_type: u8,
+  pub method: u8,
+  pub status: u32,
+  pub version_major: u8,
+  pub version_minor: u8,
+  pub connection: u8,
   pub content_length: u64,
   pub chunk_size: u64,
   pub remaining_content_length: u64,
@@ -104,7 +103,7 @@ pub struct Parser {
 
   // Complex data types - We need to split them in order to be exportable to C++
   pub error_description: *const c_uchar,
-  pub error_description_len: usize,
+  pub error_description_len: u16,
   pub unconsumed: *const c_uchar,
   pub unconsumed_len: usize,
 }
@@ -171,7 +170,7 @@ impl Parser {
   ///   * continue_without_data
   ///   * context
   pub fn reset(&mut self, keep_parsed: bool) {
-    self.state = 0;
+    self.state = STATE_START;
     self.paused = false;
 
     if !keep_parsed {
@@ -184,7 +183,7 @@ impl Parser {
 
     if self.error_description_len > 0 {
       unsafe {
-        let _ = slice::from_raw_parts(self.error_description, self.error_description_len);
+        let _ = slice::from_raw_parts(self.error_description, self.error_description_len as usize);
       }
 
       self.error_description = ptr::null();
@@ -200,7 +199,7 @@ impl Parser {
       self.unconsumed_len = 0;
     }
 
-    callback_on_self_no_return!(on_reset);
+    callback!(on_reset);
   }
 
   /// Clears all values about the message in the parser.
@@ -239,7 +238,7 @@ impl Parser {
       }
       STATE_BODY_WITH_NO_LENGTH => {
         // Notify that the message has been completed
-        callback_on_self_no_return!(on_message_complete);
+        callback!(on_message_complete);
 
         // Set the state to be finished
         self.state = STATE_FINISH;
@@ -247,7 +246,7 @@ impl Parser {
       STATE_ERROR => (),
       // In another other state, this is an error
       _ => {
-        let _ = self.fail(ERROR_UNEXPECTED_EOF, "Unexpected end of data");
+        self.fail(ERROR_UNEXPECTED_EOF, "Unexpected end of data");
       }
     }
   }
@@ -257,35 +256,23 @@ impl Parser {
   ///
   /// The allow annotation is needed when building in release mode.
   #[allow(dead_code)]
-  pub fn move_to(&mut self, state: usize, advance: usize) -> usize {
-    // Notify the end of the current state
-    #[cfg(debug_assertions)]
-    callback_on_self!(before_state_change);
-
+  pub fn move_to(&mut self, state: u8, advance: usize) {
     // Change the state
     self.state = state;
-
-    // Notify the start of the current state
-    #[cfg(debug_assertions)]
-    callback_on_self!(after_state_change);
-
-    advance
+    self.position += advance;
   }
 
   /// Marks the parsing a failed, setting a error code and and error message.
   ///
   /// It always returns zero for internal use.
-  pub fn fail(&mut self, code: usize, description: &str) -> usize {
+  pub fn fail(&mut self, code: u8, description: &str) {
     let description_copy = description.to_string();
     let (ptr, _, len) = description_copy.into_raw_parts();
 
     self.state = STATE_ERROR;
     self.error_code = code;
     self.error_description = ptr;
-    self.error_description_len = len;
-
-    // Do not process any additional data
-    0
+    self.error_description_len = len as u16;
   }
 
   /// Returns the current parser's state as string.
@@ -298,7 +285,10 @@ impl Parser {
   pub fn error_description_str(&self) -> &str {
     unsafe {
       if self.error_description_len > 0 {
-        str::from_utf8_unchecked(from_raw_parts(self.error_description, self.error_description_len))
+        str::from_utf8_unchecked(from_raw_parts(
+          self.error_description,
+          self.error_description_len as usize,
+        ))
       } else {
         ""
       }

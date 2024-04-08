@@ -22,28 +22,14 @@ uchar_t* copy_string(uchar_t* source, usize_t size) {
   return copy_string(reinterpret_cast<const char*>(source), size);
 }
 
-void before_state_change(milo::Parser* parser, usize_t from, usize_t size) {
-  EXTRACT_PAYLOAD(data, parser, from, size);
-
-  usize_t position = parser->position;
-  auto state = milo::milo_state_string(parser);
-
-  auto message = create_string();
-  snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
-           "\"pos\": %lu, \"event\": \"before_state_change\", \"current_state\": \"%s\"", position, state.ptr);
-  milo::milo_free_string(state);
-
-  append_output(parser, message, data, size);
-}
-
-void after_state_change(milo::Parser* parser, usize_t from, usize_t size) {
+void on_state_change(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
   usize_t position = parser->position;
   auto state = milo::milo_state_string(parser);
 
   auto message = create_string();
-  snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
-           "\"pos\": %lu, \"event\": \"after_state_change\", \"current_state\": \"%s\"", position, state.ptr);
+  snprintf(reinterpret_cast<char*>(message), MAX_FORMAT, "\"pos\": %lu, \"event\": \"state\", \"state\": \"%s\"",
+           position, state.ptr);
   milo::milo_free_string(state);
 
   append_output(parser, message, data, size);
@@ -155,17 +141,17 @@ void on_headers(milo::Parser* parser, usize_t from, usize_t size) {
   if (parser->message_type == milo::MESSAGE_TYPE_RESPONSE) {
     if (chunked) {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
-               "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %lu, \"protocol\": \"%s\", "
+               "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %u, \"protocol\": \"%s\", "
                "\"version\": \"%s\", \"body\": \"chunked\"",
                position, parser->status, protocol, version);
     } else if (content_length > 0) {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
-               "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %lu, \"protocol\": \"%s\", "
+               "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %u, \"protocol\": \"%s\", "
                "\"version\": \"%s\", \"body\": %lu",
                position, parser->status, protocol, version, content_length);
     } else {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
-               "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %lu, \"protocol\": \"%s\", "
+               "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %u, \"protocol\": \"%s\", "
                "\"version\": \"%s\", \"body\": null",
                position, parser->status, protocol, version);
     }
@@ -250,8 +236,7 @@ int main() {
   const char* request2 = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: "
                          "x-trailer\r\n\r\nc;need=love\r\nhello world!\r\n0\r\nX-Trailer: value\r\n\r\n";
 
-  parser->callbacks.before_state_change = before_state_change;
-  parser->callbacks.after_state_change = after_state_change;
+  parser->callbacks.on_state_change = on_state_change;
   parser->callbacks.on_error = on_error;
   parser->callbacks.on_finish = on_finish;
   parser->callbacks.on_request = on_request;

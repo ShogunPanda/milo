@@ -10,13 +10,13 @@ pub struct Failure {
 
 /// An identifier associated to an expression - An example of this is used in
 /// `move!`.
-pub struct IdentifiersWithExpr {
+pub struct IdentifierWithExpr {
   pub identifier: Ident,
   pub expr: Option<Expr>,
 }
 
 /// An identifier associated to a list of statements.
-pub struct IdentifiersWithStatements {
+pub struct IdentifierWithStatements {
   pub name: Ident,
   pub statements: Vec<Stmt>,
 }
@@ -51,7 +51,7 @@ impl Parse for Failure {
   }
 }
 
-impl Parse for IdentifiersWithExpr {
+impl Parse for IdentifierWithExpr {
   // Parses a identifier and its optional expression
   fn parse(input: ParseStream) -> Result<Self> {
     let identifier = input.parse()?;
@@ -66,11 +66,11 @@ impl Parse for IdentifiersWithExpr {
       expr = Some(input.parse::<Expr>()?);
     }
 
-    Ok(IdentifiersWithExpr { identifier, expr })
+    Ok(IdentifierWithExpr { identifier, expr })
   }
 }
 
-impl Parse for IdentifiersWithStatements {
+impl Parse for IdentifierWithStatements {
   // Parses a state definition
   fn parse(input: ParseStream) -> Result<Self> {
     // Get the state name
@@ -82,7 +82,7 @@ impl Parse for IdentifiersWithStatements {
     // Get the body
     let body = input.parse::<Block>()?;
 
-    Ok(IdentifiersWithStatements {
+    Ok(IdentifierWithStatements {
       name,
       statements: body.stmts,
     })

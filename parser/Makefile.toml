@@ -106,8 +106,7 @@
     "mkdir -p dist/wasm/${CONFIGURATION}",
     "cargo build -Z unstable-options --target wasm32-unknown-unknown ${CARGO_OPTIONS}",
     "cp -a target/wasm32-unknown-unknown/${CONFIGURATION}/milo.wasm dist/wasm/${CONFIGURATION}",
-    # "wasm-pack build -d target/wasm/${CONFIGURATION} -t no-modules --no-typescript ${WASMPACK_OPTIONS}",
-    #"rm -rf dist/wasm/${CONFIGURATION}/.gitignore dist/wasm/${CONFIGURATION}/README.md",
+    "wasm-opt -O3 -o dist/wasm/${CONFIGURATION}/milo.wasm dist/wasm/${CONFIGURATION}/milo.wasm",
     "node ./tools/postbuild-wasm.mjs	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
   ]
 

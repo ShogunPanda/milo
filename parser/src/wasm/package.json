@@ -20,8 +20,8 @@
   "files": [
     "index.js",
     "index.d.ts",
-    "index-with-wasm.js",
-    "index-with-wasm.d.ts",
+    "index-unbundled.js",
+    "index-unbundled.d.ts",
     "milo.wasm",
     "CODE_OF_CONDUCT.md",
     "LICENSE.md",
@@ -29,7 +29,19 @@
   ],
   "main": "index.js",
   "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "require": "./index.js",
+      "types": "./index.d.ts"
+    },
+    "./unbundled": {
+      "import": "./index-unbundled.js",
+      "require": "./index-unbundled.js",
+      "types": "./index-unbundled.d.ts"
+    }
+  },
   "engines": {
-    "node": ">= 18.18.0"
+    "node": ">= 20.18.0"
   }
 }

@@ -61,8 +61,7 @@ If both offset and length are `0`, it means the callback has no payload associat
 
 A struct representing the callbacks for a parser. Here's the list of supported callbacks:
 
-- `before_state_change`: Invoked before the parser change its state. _Only invoked in debug mode_.
-- `after_state_change`: Invoked after the parser change its state. _Only invoked in debug mode_.
+- `on_state_change`: Invoked after the parser change its state. _Only invoked in debug mode_.
 - `on_error`: Invoked after the parsing fails.
 - `on_finish`: Invoked after the parser is marked as finished.
 - `on_message_start`: Invoked after a new message starts.
@@ -97,23 +96,23 @@ If you want to remove a previously set callback, you can use `milo::milo_noop`.
 
 A struct representing a parser. It has the following fields:
 
-- `mode` (`uintptr_t`): The current parser mode. Can be `MESSAGE_TYPE_AUTODETECT`, `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`,
+- `mode` (`uint8_t`): The current parser mode. Can be `MESSAGE_TYPE_AUTODETECT`, `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`,
 - `paused` (`bool`): If the parser is paused.
 - `manage_unconsumed` (`bool`): If the parser should automatically copy and prepend unconsumed data.
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
 - `is_connect` (`bool`): If the current request used `CONNECT` method.
 - `skip_body` (`bool`): If the parser should skip the body.
 - `owner` (`void*`): The context of this parser. Use is reserved to the developer.
-- `state` (`uintptr_t`): The current parser state.
+- `state` (`uint8_t`): The current parser state.
 - `position` (`uintptr_t`): The current parser position in the slice in the current execution of `milo_parse`.
 - `parsed` (`uint64_t`): The total bytes consumed from this parser.
-- `error_code` (`uintptr_t`): The parser error. By default is `ERROR_NONE`.
-- `message_type` (`uintptr_t`): The current message type. Can be `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`.
-- `method` (`uintptr_t`): The current request method.
-- `status` (`uintptr_t`): The current response status.
-- `version_major` (`uintptr_t`): The current message HTTP version major version.
-- `version_minor` (`uintptr_t`): The current message HTTP version minor version.
-- `connection` (`uintptr_t`): The value for the connection header. Can be `CONNECTION_CLOSE`, `CONNECTION_UPGRADE` or `CONNECTION_KEEPALIVE` (which is the default when no header is set).
+- `error_code` (`uint8_t`): The parser error. By default is `ERROR_NONE`.
+- `message_type` (`uint8_t`): The current message type. Can be `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`.
+- `method` (`uint8_t`): The current request method.
+- `status` (`uint32_t`): The current response status.
+- `version_major` (`uint8_t`): The current message HTTP version major version.
+- `version_minor` (`uint8_t`): The current message HTTP version minor version.
+- `connection` (`uint8_t`): The value for the connection header. Can be `CONNECTION_CLOSE`, `CONNECTION_UPGRADE` or `CONNECTION_KEEPALIVE` (which is the default when no header is set).
 - `content_length` (`uint64_t`): The value of the `Content-Length` header.
 - `chunk_size` (`uint64_t`): The expected length of the next chunk.
 - `remaining_content_length` (`uint64_t`): The missing data length of the body according to the `content_length` field.
@@ -124,7 +123,7 @@ A struct representing a parser. It has the following fields:
 - `has_trailers` (`bool`): If the current message has a `Trailers` header.
 - `callbacks` (`ParserCallbacks`): The callbacks for the current parser.
 - `error_description` (`const unsigned char*`): The parser error description.
-- `error_description_len` (`uintptr_t`): The parser error description length.
+- `error_description_len` (`uint16_t`): The parser error description length.
 - `unconsumed` (`const unsigned char*`): The unconsumed data from the previous execution of `parse` when `manage_unconsumed` is `true`.
 - `unconsumed_len` (`uintptr_t`): The unconsumed data length from the previous execution of `parse` when `manage_unconsumed` is `true`.
 
@@ -208,7 +207,7 @@ The following fields are not modified:
 - `continue_without_data`
 - `context`
 
-### `milo_clear(parser: *mut Parser)`
+### `void milo_clear(parser: *mut Parser)`
 
 Clears all values about the message in the parser.
 
@@ -226,7 +225,7 @@ Resumes the parser.
 
 Marks the parser as finished. Any new invocation of `milo::milo_parse` will put the parser in the error state.
 
-### `milo_fail(Parser *parser, uintptr_t code, CStringWithLength description)`
+### `void milo_fail(Parser *parser, uintptr_t code, CStringWithLength description)`
 
 Marks the parsing a failed, setting a error code and and error message.
 

@@ -15,8 +15,7 @@ pub fn create_parser() -> Parser {
   parser.context = Box::into_raw(context) as *mut c_void;
 
   if env::var_os("DEBUG_TESTS").unwrap_or("false".into()) == "true" {
-    parser.callbacks.before_state_change = callbacks::before_state_change;
-    parser.callbacks.after_state_change = callbacks::after_state_change;
+    parser.callbacks.on_state_change = callbacks::on_state_change;
   }
 
   parser.callbacks.on_error = callbacks::on_error;

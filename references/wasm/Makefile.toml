@@ -2,7 +2,7 @@
   skip_core_tasks = true
 
 [tasks.default]
-  dependencies = ["build"]
+  dependencies = ["test"]
 
 [tasks.test]
   command = "node"
@@ -34,8 +34,8 @@
   script = [
     "mkdir -p dist",
     "rm -rf dist/*",
-    "echo '#!/bin/sh\nnode $(dirname $0)/../src/reference.mjs release' > dist/reference-release",
-    "echo '#!/bin/sh\nnode $(dirname $0)/../src/reference.mjs debug' > dist/reference-debug",
-    "echo '#!/bin/sh\nnode $(dirname $0)/../src/readme.mjs' > dist/readme",
+    "cat ./templates/reference.sh | sed -e 's#CONFIGURATION#release#' > dist/reference-release",
+    "cat ./templates/reference.sh | sed -e 's#CONFIGURATION#debug#' > dist/reference-debug",
+    "cat ./templates/readme.sh | sed -e 's#CONFIGURATION#release#' > dist/readme",
     "chmod a+x dist/*",
   ]

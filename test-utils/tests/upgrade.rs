@@ -55,7 +55,7 @@ mod test {
     );
 
     let consumed1 = parse(&mut parser, &message1);
-    assert!(consumed1 == 97);
+    assert!(consumed1 == message1.len() - message2.len());
     assert!(matches!(parser.state, STATE_TUNNEL));
 
     let consumed2 = parse(&mut parser, &message2);

@@ -83,7 +83,7 @@ pub fn finish(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).finish(
 
 /// Marks the parser as failed.
 #[no_mangle]
-pub fn fail(parser: *mut c_void, code: usize, description_ptr: *const c_uchar, description_len: usize) {
+pub fn fail(parser: *mut c_void, code: u8, description_ptr: *const c_uchar, description_len: usize) {
   unsafe {
     (*(parser as *mut Parser)).fail(
       code,
@@ -94,24 +94,24 @@ pub fn fail(parser: *mut c_void, code: usize, description_ptr: *const c_uchar, d
 
 // Getters
 // User writable
-wasm_getter!(mode, getMode, usize);
+wasm_getter!(mode, getMode, u8);
 wasm_getter!(paused, isPaused, bool);
 wasm_getter!(manage_unconsumed, manageUnconsumed, bool);
 wasm_getter!(continue_without_data, continueWithoutData, bool);
 wasm_getter!(is_connect, isConnect, bool);
 wasm_getter!(skip_body, skipBody, bool);
 // Generic state
-wasm_getter!(state, getState, usize);
+wasm_getter!(state, getState, u8);
 wasm_getter!(position, getPosition, usize);
 wasm_getter!(parsed, getParsed, u64);
-wasm_getter!(error_code, getErrorCode, usize);
+wasm_getter!(error_code, getErrorCode, u8);
 // Current message flags
-wasm_getter!(message_type, getMessageType, usize);
-wasm_getter!(method, getMethod, usize);
-wasm_getter!(status, getStatus, usize);
-wasm_getter!(version_major, getVersionMajor, usize);
-wasm_getter!(version_minor, getVersionMinor, usize);
-wasm_getter!(connection, getConnection, usize);
+wasm_getter!(message_type, getMessageType, u8);
+wasm_getter!(method, getMethod, u8);
+wasm_getter!(status, getStatus, u32);
+wasm_getter!(version_major, getVersionMajor, u8);
+wasm_getter!(version_minor, getVersionMinor, u8);
+wasm_getter!(connection, getConnection, u8);
 wasm_getter!(content_length, getContentLength, u64);
 wasm_getter!(chunk_size, getChunkSize, u64);
 wasm_getter!(remaining_content_length, getRemainingContentLength, u64);
@@ -134,7 +134,7 @@ pub fn get_error_description_raw(parser: *mut c_void) -> u64 {
 }
 
 #[no_mangle]
-pub fn set_mode(parser: *mut c_void, value: usize) {
+pub fn set_mode(parser: *mut c_void, value: u8) {
   unsafe {
     (*(parser as *mut Parser)).mode = value;
   }

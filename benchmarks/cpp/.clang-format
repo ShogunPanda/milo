@@ -1,0 +1,9 @@
+---
+Language: Cpp
+ColumnLimit: 120
+IndentWidth: 2
+ContinuationIndentWidth: 2
+#AlignAfterOpenBrackets: BlockIndent
+PointerAlignment: Left
+SpaceAfterCStyleCast: true
+AllowShortFunctionsOnASingleLine: false

@@ -2,6 +2,7 @@
 #define MILO_UTILS_H
 
 #include "stdio.h"
+#include <cstdint>
 #include <cstdlib>
 #define MAX_FORMAT 1000
 

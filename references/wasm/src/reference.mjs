@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { setup } from '@perseveranza-pets/milo'
 import { isMainThread } from 'node:worker_threads'
 
 export const info = isMainThread ? console.log : () => {}
@@ -37,24 +38,10 @@ function showSpan(name, context, parser, from, size) {
   return event(name, context.milo.getPosition(parser), context, parser, from, size)
 }
 
-function beforeStateChange(context, parser, from, size) {
+function onStateChange(context, parser, from, size) {
   return appendOutput(
     sprintf(
-      '"pos": {}, "event": "before_state_change", "current_state": "{}"',
-      context.milo.getPosition(parser),
-      context.milo.States[context.milo.getState(parser)]
-    ),
-    context,
-    parser,
-    from,
-    size
-  )
-}
-
-function afterStateChange(context, parser, from, size) {
-  return appendOutput(
-    sprintf(
-      '"pos": {}, "event": "after_state_change", "current_state": "{}"',
+      '"pos": {}, "event": "state", "state": "{}"',
       context.milo.getPosition(parser),
       context.milo.States[context.milo.getState(parser)]
     ),
@@ -302,38 +289,40 @@ function onTrailers(context, parser, from, size) {
 }
 
 async function main() {
-  const configuration = process.env.CONFIGURATION ?? process.argv[2]
-  const { milo } = await import(`../../../parser/dist/wasm/${configuration}/index.js`)
-  const parser = milo.create()
-  const context = { milo }
+  const context = {}
 
-  milo.setBeforeStateChange(parser, beforeStateChange.bind(null, context))
-  milo.setAfterStateChange(parser, afterStateChange.bind(null, context))
-  milo.setOnError(parser, onError.bind(null, context))
-  milo.setOnFinish(parser, onFinish.bind(null, context))
-  milo.setOnRequest(parser, onRequest.bind(null, context))
-  milo.setOnResponse(parser, onResponse.bind(null, context))
-  milo.setOnMessageStart(parser, onMessageStart.bind(null, context))
-  milo.setOnMessageComplete(parser, onMessageComplete.bind(null, context))
-  milo.setOnMethod(parser, onMethod.bind(null, context))
-  milo.setOnUrl(parser, onUrl.bind(null, context))
-  milo.setOnProtocol(parser, onProtocol.bind(null, context))
-  milo.setOnVersion(parser, onVersion.bind(null, context))
-  milo.setOnStatus(parser, onStatus.bind(null, context))
-  milo.setOnReason(parser, onReason.bind(null, context))
-  milo.setOnHeaderName(parser, onHeaderName.bind(null, context))
-  milo.setOnHeaderValue(parser, onHeaderValue.bind(null, context))
-  milo.setOnHeaders(parser, onHeaders.bind(null, context))
-  milo.setOnUpgrade(parser, onUpgrade.bind(null, context))
-  milo.setOnChunkLength(parser, onChunkLength.bind(null, context))
-  milo.setOnChunkExtensionName(parser, onChunkExtensionName.bind(null, context))
-  milo.setOnChunkExtensionValue(parser, onChunkExtensionValue.bind(null, context))
-  milo.setOnChunk(parser, onChunk.bind(null, context))
-  milo.setOnBody(parser, onBody.bind(null, context))
-  milo.setOnData(parser, onData.bind(null, context))
-  milo.setOnTrailerName(parser, onTrailerName.bind(null, context))
-  milo.setOnTrailerValue(parser, onTrailerValue.bind(null, context))
-  milo.setOnTrailers(parser, onTrailers.bind(null, context))
+  const milo = setup({
+    on_state_change: onStateChange.bind(null, context),
+    on_error: onError.bind(null, context),
+    on_finish: onFinish.bind(null, context),
+    on_request: onRequest.bind(null, context),
+    on_response: onResponse.bind(null, context),
+    on_message_start: onMessageStart.bind(null, context),
+    on_message_complete: onMessageComplete.bind(null, context),
+    on_method: onMethod.bind(null, context),
+    on_url: onUrl.bind(null, context),
+    on_protocol: onProtocol.bind(null, context),
+    on_version: onVersion.bind(null, context),
+    on_status: onStatus.bind(null, context),
+    on_reason: onReason.bind(null, context),
+    on_header_name: onHeaderName.bind(null, context),
+    on_header_value: onHeaderValue.bind(null, context),
+    on_headers: onHeaders.bind(null, context),
+    on_upgrade: onUpgrade.bind(null, context),
+    on_chunk_length: onChunkLength.bind(null, context),
+    on_chunk_extension_name: onChunkExtensionName.bind(null, context),
+    on_chunk_extension_value: onChunkExtensionValue.bind(null, context),
+    on_chunk: onChunk.bind(null, context),
+    on_body: onBody.bind(null, context),
+    on_data: onData.bind(null, context),
+    on_trailer_name: onTrailerName.bind(null, context),
+    on_trailer_value: onTrailerValue.bind(null, context),
+    on_trailers: onTrailers.bind(null, context)
+  })
+
+  context.milo = milo
+
+  const parser = milo.create()
 
   const request1 = 'GET / HTTP/1.1\r\n\r\n'
   const request2 =
@@ -358,6 +347,7 @@ async function main() {
   )
 
   milo.destroy(parser)
+  milo.dealloc(ptr)
 }
 
 await main()

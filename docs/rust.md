@@ -40,8 +40,7 @@ A struct representing the callbacks for a parser.
 
 Here's the list of supported callbacks:
 
-- `before_state_change`: Invoked before the parser change its state. _Only invoked in debug mode_.
-- `after_state_change`: Invoked after the parser change its state. _Only invoked in debug mode_.
+- `on_state_change`: Invoked after the parser change its state. _Only invoked in debug mode_.
 - `on_error`: Invoked after the parsing fails.
 - `on_finish`: Invoked after the parser is marked as finished.
 - `on_message_start`: Invoked after a new message starts.
@@ -76,23 +75,23 @@ If you want to remove a previously set callback, you can use the `milo_noop` fun
 
 A struct representing a parser. It has the following fields:
 
-- `mode` (`usize`): The current parser mode. Can be `MESSAGE_TYPE_AUTODETECT`, `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`,
+- `mode` (`u8`): The current parser mode. Can be `MESSAGE_TYPE_AUTODETECT`, `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`,
 - `paused` (`bool`): If the parser is paused.
 - `manage_unconsumed` (`bool`): If the parser should automatically copy and prepend unconsumed data.
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
 - `is_connect` (`bool`): If the current request used `CONNECT` method.
 - `skip_body` (`bool`): If the parser should skip the body.
 - `owner` (`*mut c_void`): The context of this parser. Use is reserved to the developer.
-- `state` (`usize`): The current parser state.
+- `state` (`u8`): The current parser state.
 - `position` (`usize`): The current parser position in the slice in the current execution of `milo_parse`.
 - `parsed` (`u64`): The total bytes consumed from this parser.
-- `error_code` (`usize`): The parser error. By default is `ERROR_NONE`.
-- `message_type` (`usize`): The current message type. Can be `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`.
-- `method` (`usize`): The current request method.
-- `status` (`usize`): The current response status.
-- `version_major` (`usize`): The current message HTTP version major version.
-- `version_minor` (`usize`): The current message HTTP version minor version.
-- `connection` (`usize`): The value for the connection header. Can be `CONNECTION_CLOSE`, `CONNECTION_UPGRADE` or `CONNECTION_KEEPALIVE` (which is the default when no header is set).
+- `error_code` (`u8`): The parser error. By default is `ERROR_NONE`.
+- `message_type` (`u8`): The current message type. Can be `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`.
+- `method` (`u8`): The current request method.
+- `status` (`u32`): The current response status.
+- `version_major` (`u8`): The current message HTTP version major version.
+- `version_minor` (`u8`): The current message HTTP version minor version.
+- `connection` (`u8`): The value for the connection header. Can be `CONNECTION_CLOSE`, `CONNECTION_UPGRADE` or `CONNECTION_KEEPALIVE` (which is the default when no header is set).
 - `content_length` (`u64`): The value of the `Content-Length` header.
 - `chunk_size` (`u64`): The expected length of the next chunk.
 - `remaining_content_length` (`u64`): The missing data length of the body according to the `content_length` field.
@@ -103,7 +102,7 @@ A struct representing a parser. It has the following fields:
 - `has_trailers` (`bool`): If the current message has a `Trailers` header.
 - `callbacks` (`ParserCallbacks`): The callbacks for the current parser.
 - `error_description` (`*const c_uchar`): The parser error description.
-- `error_description_len` (`usize`): The parser error description length.
+- `error_description_len` (`u16`): The parser error description length.
 - `unconsumed` (`*const c_uchar`): The unconsumed data from the previous execution of `parse` when `manage_unconsumed` is `true`.
 - `unconsumed_len` (`usize`): The unconsumed data length from the previous execution of `parse` when `manage_unconsumed` is `true`.
 
@@ -160,13 +159,13 @@ Resumes the parser.
 Marks the parser as finished. Any new data received via `parse` will
 put the parser in the error state.
 
-### `Parser::move_to(&mut self, state: usize, advance: usize) -> usize`
+### `Parser::move_to(&mut self, state: usize, advance: usize)`
 
 Moves the parsers to a new state and marks a certain number of characters as used.
 
 This is meant to internal use.
 
-### `Parser::fail(&mut self, code: usize, description: &str) -> usize`
+### `Parser::fail(&mut self, code: usize, description: &str)`
 
 Marks the parsing a failed, setting a error code and and error message.
 

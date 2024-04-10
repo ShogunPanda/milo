@@ -86,7 +86,7 @@ pub fn callback(input: TokenStream) -> TokenStream { actions::callback(input) }
 pub fn suspend(_: TokenStream) -> TokenStream { actions::suspend() }
 
 #[proc_macro]
-pub fn next(_: TokenStream) -> TokenStream { actions::next() }
+pub fn r#return(_: TokenStream) -> TokenStream { actions::r#return() }
 
 #[proc_macro]
 pub fn find_method(input: TokenStream) -> TokenStream { actions::find_method(input) }

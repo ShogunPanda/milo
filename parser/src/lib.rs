@@ -15,7 +15,7 @@ use core::ptr;
 use core::str;
 use core::{slice, slice::from_raw_parts};
 
-use milo_macros::{callback, generate_callbacks, generate_constants, generate_enums, init_constants, next};
+use milo_macros::{callback, generate_callbacks, generate_constants, generate_enums, init_constants, r#return};
 
 #[cfg(target_family = "wasm")]
 #[link(wasm_import_module = "env")]

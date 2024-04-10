@@ -1,6 +1,6 @@
 use std::fs::{read_to_string, File, OpenOptions};
 use std::io::BufWriter;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::OnceLock;
 
 use indexmap::IndexMap;
@@ -35,8 +35,13 @@ struct BuildInfo {
 }
 
 pub fn init_constants() {
-  let mut absolute_path = PathBuf::from(file!());
-  absolute_path.push("../../../parser/constants");
+  let mut absolute_path = Path::new(file!())
+    .canonicalize()
+    .unwrap()
+    .parent()
+    .unwrap()
+    .to_path_buf();
+  absolute_path.push("../../parser/constants");
   absolute_path = absolute_path.canonicalize().unwrap();
 
   unsafe {

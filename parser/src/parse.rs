@@ -66,52 +66,82 @@ impl Parser {
     // States will advance position manually, the parser has to explicitly
     // track it
     self.position = 0;
-    let mut last_position = 0;
+    let mut previous_position = 0;
     let initial_available = available;
+    let mut not_suspended = true;
+
+    #[cfg(all(debug_assertions, feature = "debug"))]
+    eprintln!("[milo::debug] loop enter");
 
     // Until there is data or there is a request to continue
-    'parser: loop {
-      #[cfg(debug_assertions)]
-      if previous_state != self.state {
-        callback!(on_state_change);
-      }
-
-      if self.paused || (available == 0 && !self.continue_without_data) {
-        break;
-      }
-
-      // Show the duration of the operation if asked to
+    'parser: while not_suspended
+      && (!self.paused || self.state == STATE_COMPLETE)
+      && (available != 0 || self.continue_without_data)
+    {
       #[cfg(all(debug_assertions, feature = "debug"))]
       {
-        let duration = Instant::now().duration_since(last).as_nanos();
-
-        if duration > 0 {
-          println!(
-            "[milo::debug] loop iteration ({:?} -> {:?}) completed in {} ns",
-            previous_state, self.state, duration
-          );
-        }
-
-        last = Instant::now();
-      }
-
-      #[cfg(debug_assertions)]
-      {
-        previous_state = self.state;
+        eprintln!(
+          "[milo::debug] loop before processing: previous_position={}, position={}, available={}, \
+           continue_without_data={}",
+          previous_position, self.position, available, self.continue_without_data
+        );
       }
 
       // Reset the continue_without_data flag
       self.continue_without_data = false;
 
-      // Advance the data
-      if last_position != self.position {
-        let difference = self.position - last_position;
-        data = &data[difference..];
-        available -= difference;
-        last_position += difference;
+      'state: {
+        process_state!();
       }
 
-      process_state!();
+      // Update the parser position
+      if previous_position != self.position {
+        let difference = self.position - previous_position;
+        data = &data[difference..];
+        available -= difference;
+
+        #[cfg(all(debug_assertions, feature = "debug"))]
+        {
+          eprintln!(
+            "[milo::debug] loop before processing: previous_position={}, position={}, difference={}, available={}, \
+             continue_without_data={}",
+            previous_position, self.position, difference, available, self.continue_without_data
+          );
+        }
+
+        previous_position += difference;
+      }
+
+      // Notify the status change
+      #[cfg(debug_assertions)]
+      if previous_state != self.state {
+        callback!(on_state_change);
+        previous_state = self.state;
+      }
+
+      // Show the duration of the operation
+      #[cfg(all(debug_assertions, feature = "debug"))]
+      {
+        let duration = Instant::now().duration_since(last).as_nanos();
+
+        if duration > 0 {
+          eprintln!(
+            "[milo::debug] loop iteration ({:?}) completed in {} ns",
+            self.state_str(),
+            duration
+          );
+        }
+
+        last = Instant::now();
+      }
+    }
+
+    #[cfg(all(debug_assertions, feature = "debug"))]
+    eprintln!("[milo::debug] loop exit");
+
+    if previous_position != self.position {
+      let difference = self.position - previous_position;
+      available -= difference;
     }
 
     let consumed = initial_available - available;
@@ -143,9 +173,12 @@ impl Parser {
       let duration = Instant::now().duration_since(start).as_nanos();
 
       if duration > 0 {
-        println!(
+        eprintln!(
           "[milo::debug] parse ({:?}, consumed {} of {}) completed in {} ns",
-          self.state, consumed, limit, duration
+          self.state_str(),
+          consumed,
+          limit,
+          duration
         );
       }
     }

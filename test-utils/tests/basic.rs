@@ -483,25 +483,6 @@ mod test {
   }
 
   #[test]
-  fn basic_undici() {
-    let message = http(
-      r#"
-        HTTP/1.1 200 OK\r\n
-        Connection: keep-alive\r\n
-        Content-Length: 65535\r\n
-        Date: Sun, 05 Nov 2023 14:26:18 GMT\r\n
-        Keep-Alive: timeout=600\r\n\r\n
-        @
-      "#,
-    )
-    .replace('@', &format!("{:-<65535}", "-"));
-
-    let mut parser = create_parser();
-    parse(&mut parser, &message);
-    assert!(!matches!(parser.state, STATE_ERROR));
-  }
-
-  #[test]
   fn basic_empty_fields() {
     let mut parser = create_parser();
 

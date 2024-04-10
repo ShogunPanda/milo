@@ -117,10 +117,15 @@ pub fn callback(input: TokenStream) -> TokenStream {
 }
 
 /// Marks the parser as suspended, waiting for more data.
-pub fn suspend() -> TokenStream { TokenStream::from(quote! { break 'parser; }) }
+pub fn suspend() -> TokenStream {
+  TokenStream::from(quote! {
+    not_suspended = false;
+    break 'state;
+  })
+}
 
 /// Go to the next iteration of the parser
-pub fn next() -> TokenStream { TokenStream::from(quote! { continue 'parser; }) }
+pub fn r#return() -> TokenStream { TokenStream::from(quote! { break 'state; }) }
 
 /// Maps a string method to its integer value (which is the enum definition
 /// index).

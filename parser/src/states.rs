@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use milo_macros::{
   advance, callback, case_insensitive_string, char, consume, crlf, digit, double_crlf, fail, find_method, method,
-  move_to, next, otherwise, state, string, string_length, suspend, token,
+  move_to, otherwise, r#return, state, string, string_length, suspend, token,
 };
 
 use crate::*;
@@ -60,16 +60,11 @@ state!(autodetect, {
       callback!(on_message_start);
       move_to!(response, 0);
     }
-    method!() => {
+    // For performance reason, we assume it's a request so we don't lookup the method twice
+    _ => {
       self.message_type = MESSAGE_TYPE_REQUEST;
       callback!(on_message_start);
       move_to!(request, 0);
-    }
-    otherwise!(5) => {
-      fail!(UNEXPECTED_CHARACTER, "Unexpected data");
-    }
-    _ => {
-      suspend!();
     }
   }
 });
@@ -307,7 +302,7 @@ state!(header_name, {
       self.has_content_length = true;
       callback!(on_header_name, string_length!("content-length"));
       move_to!(header_content_length, string_length!("content-length", 1));
-      next!();
+      r#return!();
     }
     case_insensitive_string!("transfer-encoding:") => {
       let status = self.status;
@@ -327,26 +322,26 @@ state!(header_name, {
 
       callback!(on_header_name, string_length!("transfer-encoding"));
       move_to!(header_transfer_encoding, string_length!("transfer-encoding", 1));
-      next!();
+      r#return!();
     }
     case_insensitive_string!("connection:") => {
       callback!(on_header_name, string_length!("connection"));
       move_to!(header_connection, string_length!("connection", 1));
-      next!();
+      r#return!();
     }
     // RFC 9110 section 9.5
     case_insensitive_string!("trailer:") => {
       self.has_trailers = true;
       callback!(on_header_name, string_length!("trailer"));
       move_to!(header_value, string_length!("trailer", 1));
-      next!();
+      r#return!();
     }
     // RFC 9110 section 7.8
     case_insensitive_string!("upgrade:") => {
       self.has_upgrade = true;
       callback!(on_header_name, string_length!("upgrade"));
       move_to!(header_value, string_length!("upgrade", 1));
-      next!();
+      r#return!();
     }
     _ => {}
   }
@@ -378,7 +373,7 @@ state!(header_transfer_encoding, {
 
   if consumed > 0 {
     advance!(consumed);
-    next!();
+    r#return!();
   }
 
   if let case_insensitive_string!("chunked\r\n")
@@ -438,7 +433,7 @@ state!(header_content_length, {
 
   if consumed > 0 {
     advance!(consumed);
-    next!();
+    r#return!();
   }
 
   consume!(digit);
@@ -474,7 +469,7 @@ state!(header_connection, {
 
   if consumed > 0 {
     advance!(consumed);
-    next!();
+    r#return!();
   }
 
   match data {
@@ -482,19 +477,19 @@ state!(header_connection, {
       self.connection = CONNECTION_CLOSE;
       callback!(on_header_value, string_length!("close"));
       move_to!(header_name, string_length!("close", 2));
-      next!();
+      r#return!();
     }
     case_insensitive_string!("keep-alive\r\n") => {
       self.connection = CONNECTION_KEEPALIVE;
       callback!(on_header_value, string_length!("keep-alive"));
       move_to!(header_name, string_length!("keep-alive", 2));
-      next!();
+      r#return!();
     }
     case_insensitive_string!("upgrade\r\n") => {
       self.connection = CONNECTION_UPGRADE;
       callback!(on_header_value, string_length!("upgrade"));
       move_to!(header_name, string_length!("upgrade", 2));
-      next!();
+      r#return!();
     }
     _ => {}
   }
@@ -532,7 +527,7 @@ state!(header_value, {
 
   if consumed > 0 {
     advance!(consumed);
-    next!();
+    r#return!();
   }
 
   consume!(token_value);
@@ -592,14 +587,14 @@ state!(headers, {
 
     callback!(on_upgrade);
     move_to!(tunnel, 0);
-    next!();
+    r#return!();
   }
 
   // In case of CONNECT method
   if self.is_connect {
     callback!(on_connect);
     move_to!(tunnel, 0);
-    next!();
+    r#return!();
   }
 
   if (method == METHOD_GET || method == METHOD_HEAD) && self.content_length > 0 {
@@ -612,40 +607,40 @@ state!(headers, {
       if self.content_length == 0 {
         self.continue_without_data = true;
         move_to!(complete, 0);
-        next!();
+        r#return!();
       }
     } else if !self.has_chunked_transfer_encoding {
       self.continue_without_data = true;
       move_to!(complete, 0);
-      next!();
+      r#return!();
     }
   } else {
     if (status < 200 && status != 101) || method == METHOD_HEAD || self.skip_body {
       self.continue_without_data = true;
       move_to!(complete, 0);
-      next!();
+      r#return!();
     }
 
     if self.content_length == 0 {
       if self.has_content_length {
         self.continue_without_data = true;
         move_to!(complete, 0);
-        next!();
+        r#return!();
       } else if !self.has_chunked_transfer_encoding {
         move_to!(body_with_no_length, 0);
-        next!();
+        r#return!();
       }
     } else if status == 304 {
       // RFC 9110 section 15.4.5
       self.continue_without_data = true;
       move_to!(complete, 0);
-      next!();
+      r#return!();
     }
   }
 
   if self.content_length > 0 {
     move_to!(body_via_content_length, 0);
-    next!();
+    r#return!();
   }
 
   if self.has_trailers && !self.has_chunked_transfer_encoding {
@@ -693,12 +688,13 @@ state!(body_via_content_length, {
     callback!(on_data, available);
 
     advance!(available);
-    next!();
+    r#return!();
   }
 
-  callback!(on_data, expected as usize);
   self.remaining_content_length = 0;
+  callback!(on_data, expected as usize);
   callback!(on_body);
+
   self.continue_without_data = true;
   move_to!(complete, expected as usize);
 });
@@ -786,7 +782,7 @@ state!(chunk_extension_name, {
 state!(chunk_extension_value, {
   if data[0] == char!('"') {
     move_to!(chunk_extension_quoted_value, 1);
-    next!();
+    r#return!();
   }
 
   consume!(token);
@@ -869,7 +865,7 @@ state!(chunk_data, {
       move_to!(crlf_after_last_chunk, 0);
     }
 
-    next!();
+    r#return!();
   }
 
   let expected = self.remaining_chunk_size;
@@ -883,7 +879,7 @@ state!(chunk_data, {
     callback!(on_data, available);
 
     advance!(available);
-    next!();
+    r#return!();
   }
 
   self.remaining_chunk_size = 0;
@@ -956,7 +952,7 @@ state!(trailer_value, {
 
   if consumed > 0 {
     advance!(consumed);
-    next!();
+    r#return!();
   }
 
   consume!(token_value);

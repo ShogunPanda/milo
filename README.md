@@ -190,11 +190,24 @@ If you want to build it locally, you need the following tools:
 
 - [cargo-make][cargo-make]
 - Rust toolchain - You can install it via [rustup].
+- [rust-cbindgen](https://github.com/mozilla/cbindgen)
 
 Make sure you have the `nightly` toolchain installed locally:
 
 ```bash
 rustup toolchain install nightly
+```
+
+Make sure you have the `wasm32-unknown-unknown` target:
+
+```bash
+rustup target add wasm32-unknown-unknown
+```
+
+Install npm deps inside parser/tools:
+
+```bash
+(cd parser/tools && npm i)
 ```
 
 After all the requirements are met, you can then run:

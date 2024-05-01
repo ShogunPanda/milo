@@ -213,7 +213,7 @@ async function generateEmbedded(code, profile) {
 
       const replacement = parseExpression(`
         function loadWASM() {
-          return Buffer.from('${payload}', 'base64');
+          return Uint8Array.from(globalThis.atob('${payload}'), c => c.codePointAt(0))
         }
       `)
 

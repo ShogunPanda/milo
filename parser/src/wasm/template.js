@@ -1,5 +1,8 @@
 /* eslint-disable no-unused-vars,camelcase,no-undef */
 
+const textEncoder = new TextEncoder()
+const textDecoder = new TextDecoder()
+
 function loadWASM() {
   return require('node:fs').readFileSync(require('node:path').resolve(__dirname, 'milo.wasm'))
 }
@@ -8,7 +11,7 @@ function logger(context, raw) {
   const len = Number(BigInt.asUintN(32, raw))
   const ptr = Number(raw >> 32n)
 
-  console.error(Buffer.from(context.memory.buffer, ptr, len).toString('utf-8'))
+  console.error(textDecoder.decode(context.memory.buffer.subarray(ptr, ptr + len)))
 }
 
 function runCallback(context, type, parser, at, len) {
@@ -44,8 +47,8 @@ function parse(parser, data, limit) {
 function fail(parser, code, description) {
   const len = description.length
   const ptr = this.alloc(len)
-  const buffer = Buffer.from(this.memory.buffer, ptr, len)
-  buffer.set(Buffer.from(description, 'utf-8'))
+  const buffer = this.memory.buffer.subarray(ptr, ptr + len)
+  textEncoder.encodeInto(description, buffer)
 
   this.fail(parser, code, ptr, len)
   this.dealloc(ptr, len)
@@ -81,7 +84,7 @@ function getErrorDescription(parser) {
   const len = Number(BigInt.asUintN(32, raw))
   const ptr = Number(raw >> 32n)
 
-  return Buffer.from(this.memory.buffer, ptr, len).toString('utf-8')
+  return textDecoder.decode(this.memory.buffer.subarray(ptr, ptr + len))
 }
 
 function getCallbackError(state, parser) {

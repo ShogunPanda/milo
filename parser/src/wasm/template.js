@@ -11,7 +11,7 @@ function logger(context, raw) {
   const len = Number(BigInt.asUintN(32, raw))
   const ptr = Number(raw >> 32n)
 
-  console.error(textDecoder.decode(context.memory.buffer.subarray(ptr, ptr + len)))
+  console.error(textDecoder.decode(new Uint8Array(context.memory.buffer, ptr, len)))
 }
 
 function runCallback(context, type, parser, at, len) {
@@ -47,7 +47,7 @@ function parse(parser, data, limit) {
 function fail(parser, code, description) {
   const len = description.length
   const ptr = this.alloc(len)
-  const buffer = this.memory.buffer.subarray(ptr, ptr + len)
+  const buffer = new Uint8Array(this.memory.buffer, ptr, len)
   textEncoder.encodeInto(description, buffer)
 
   this.fail(parser, code, ptr, len)
@@ -84,7 +84,7 @@ function getErrorDescription(parser) {
   const len = Number(BigInt.asUintN(32, raw))
   const ptr = Number(raw >> 32n)
 
-  return textDecoder.decode(this.memory.buffer.subarray(ptr, ptr + len))
+  return textDecoder.decode(new Uint8Array(this.memory.buffer, ptr, len))
 }
 
 function getCallbackError(state, parser) {

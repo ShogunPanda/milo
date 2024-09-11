@@ -2,24 +2,16 @@
 
 This folder contains a simple reference Javascript file that uses milo (via WebAssembly).
 
-In order to build it you need [make].
+In order to build it you need [cargo-make].
 
 To build it simply execute:
 
 ```bash
-make
+cargo make
 ```
 
-This will compile milo as WebAssembly in `dist/debug` and `dist/release`.
+This will generate two executables in the `dist` directory `reference-debug` and `reference-release`.
 
 The debug version will also show the parser state changes.
 
-To execute the sample executable you can run:
-
-```bash
-node index.mjs [--debug|--release]
-```
-
-By default, it executes in release mode.
-
-[make]: https://www.gnu.org/software/make/
+[cargo-make]: https://sagiegurari.github.io/cargo-make/

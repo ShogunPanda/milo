@@ -1,21 +1,21 @@
+{ "pos": 0, "event": "request", "data": null }
 { "pos": 0, "event": "begin", "configuration": { "debug": false }, "data": null }
 { "pos": 0, "event": "method", "data": "GET" }
 { "pos": 4, "event": "url", "data": "/" }
 { "pos": 6, "event": "protocol", "data": "HTTP" }
 { "pos": 11, "event": "version", "data": "1.1" }
-{ "pos": 16, "event": "request", "data": null }
 { "pos": 18, "event": "headers", "type": "request", "method": "GET", "url": "/", "protocol": "HTTP", "version": "1.1", "body": null, "data": null }
 { "pos": 18, "event": "complete", "data": null }
 { "pos": 18, "consumed": 18, "state": "START" }
 
 ------------------------------------------------------------------------------------------
 
+{ "pos": 0, "event": "response", "data": null }
 { "pos": 0, "event": "begin", "configuration": { "debug": false }, "data": null }
 { "pos": 0, "event": "protocol", "data": "HTTP" }
 { "pos": 5, "event": "version", "data": "1.1" }
 { "pos": 9, "event": "status", "data": "200" }
 { "pos": 13, "event": "reason", "data": "OK" }
-{ "pos": 17, "event": "response", "data": null }
 { "pos": 17, "event": "header_name", "data": "Transfer-Encoding" }
 { "pos": 36, "event": "header_value", "data": "chunked" }
 { "pos": 45, "event": "header_name", "data": "Trailer" }

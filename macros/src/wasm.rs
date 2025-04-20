@@ -1,24 +1,21 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use regex::{Captures, Regex};
-use syn::{parse_macro_input, Ident};
+use syn::parse_macro_input;
 
-use crate::parsing::{IdentifiersWithExpr, Property};
+use crate::{
+  definitions::CALLBACKS,
+  parsing::{IdentifierWithExpr, Property},
+};
 
 // Handles a callback.
-pub fn callback_wasm(definition: &IdentifiersWithExpr, target: &Ident) -> proc_macro2::TokenStream {
+pub fn callback_wasm(definition: &IdentifierWithExpr) -> proc_macro2::TokenStream {
   let callback = &definition.identifier;
-  let callback_name = callback.to_string();
-  let callback_value = format_ident!("CALLBACK_{}", callback_name.to_uppercase());
 
-  let invocation = if let Some(length) = &definition.expr {
-    quote! { unsafe { run_callback(crate::#callback_value, #target.ptr, #target.position, #length) }; }
+  if let Some(length) = &definition.expr {
+    quote! { unsafe { #callback(self.ptr, self.position, #length) }; }
   } else {
-    quote! { unsafe { run_callback(crate::#callback_value, #target.ptr, 0, 0) }; }
-  };
-
-  quote! {
-    #invocation;
+    quote! { unsafe { #callback(self.ptr, 0, 0) }; }
   }
 }
 
@@ -41,5 +38,19 @@ pub fn wasm_getter(input: TokenStream) -> TokenStream {
     /// Gets the parser #property.
     #[no_mangle]
     pub fn #fn_name(parser: *const c_void) -> #return_type { unsafe { (*(parser as *const Parser)).#property } }
+  })
+}
+
+/// Generates all parser callbacks.
+pub fn link_callbacks() -> TokenStream {
+  let callbacks: Vec<_> = CALLBACKS
+    .get()
+    .unwrap()
+    .iter()
+    .map(|x| format_ident!("{}", x))
+    .collect();
+
+  TokenStream::from(quote! {
+    #(fn #callbacks(parser: *mut c_void, _at: usize, _len: usize);)*
   })
 }

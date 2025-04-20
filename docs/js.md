@@ -62,33 +62,72 @@ An enum listing all possible parser states.
 
 Access is supported from string constant or numeric value.
 
-## `alloc`
+## `setup`
+
+Create a new milo module instance. Note that this is not a parser yet.
+
+The method accepts a single object containing one or more of the following callbacks:
+
+- `on_state_change`
+- `on_error`
+- `on_finish`
+- `on_message_start`
+- `on_message_complete`
+- `on_request`
+- `on_response`
+- `on_reset`
+- `on_method`
+- `on_url`
+- `on_protocol`
+- `on_version`
+- `on_status`
+- `on_reason`
+- `on_header_name`
+- `on_header_value`
+- `on_headers`
+- `on_connect`
+- `on_upgrade`
+- `on_chunk_length`
+- `on_chunk_extension_name`
+- `on_chunk_extension_value`
+- `on_chunk`
+- `on_body`
+- `on_data`
+- `on_trailer_name`
+- `on_trailer_value`
+- `on_trailers`
+
+The return object will be a milo module instance which can be use to create and manage parsers.
+
+The object supports the methods below.
+
+### `alloc`
 
 Allocates a shared memory area with the WebAssembly instance which can be used to pass data to the parser.
 
 **The returned value MUST be destroyed later using `dealloc`.**
 
-## `dealloc(ptr)`
+### `dealloc(ptr)`
 
 Deallocates a shared memory area created with `alloc`.
 
-## `create`
+### `create`
 
 Creates a new parser.
 
 **The returned value MUST be destroyed later using `destroy`.**
 
-## `destroy(parser)`
+### `destroy(parser)`
 
 Destroys a parser.
 
-## `parse(parser, data, limit)`
+### `parse(parser, data, limit)`
 
 Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
-## `reset(parser)`
+### `reset(parser)`
 
 Resets a parser. The second parameters specifies if to also reset the
 parsed counter.
@@ -102,264 +141,148 @@ The following fields are not modified:
 - `continue_without_data`
 - `context`
 
-## `clear(parser)`
+### `clear(parser)`
 
 Clears all values about the message in the parser.
 
 The connection and message type fields are not cleared.
 
-## `pause(parser)`
+### `pause(parser)`
 
 Pauses the parser. The parser will have to be resumed via `resume`.
 
-## `resume(parser)`
+### `resume(parser)`
 
 Resumes the parser.
 
-## `finish(parser)`
+### `finish(parser)`
 
 Marks the parser as finished. Any new invocation of `milo::milo_parse` will put the parser in the error state.
 
-## `fail(parser, code, description)`
+### `fail(parser, code, description)`
 
 Marks the parsing a failed, setting a error code and and error message.
 
-## `getMode(parser)`
+### `getMode(parser)`
 
 Returns the parser mode.
 
-## `isPaused(parser)`
+### `isPaused(parser)`
 
 Returns `true` if the parser is paused.
 
-## `manageUnconsumed(parser)`
+### `manageUnconsumed(parser)`
 
 Returns `true` if the parser should automatically copy and prepend unconsumed data.
 
-## `continueWithoutData(parser)`
+### `continueWithoutData(parser)`
 
 Returns `true` if the next execution of the parse loop should execute even if there is no more data.
 
-## `isConnect(parser)`
+### `isConnect(parser)`
 
 Returns `true` if the current request used `CONNECT` method.
 
-## `skipBody(parser)`
+### `skipBody(parser)`
 
 Returns `true` if the parser should skip the body.
 
-## `getState(parser)`
+### `getState(parser)`
 
 Returns the parser state.
 
-## `getPosition(parser)`
+### `getPosition(parser)`
 
 Returns the parser position.
 
-## `getParsed(parser)`
+### `getParsed(parser)`
 
 Returns the total bytes consumed from this parser.
 
-## `getErrorCode(parser)`
+### `getErrorCode(parser)`
 
 Returns the parser error.
 
-## `getMessageType(parser)`
+### `getMessageType(parser)`
 
 Returns the parser current message type.
 
-## `getMethod(parser)`
+### `getMethod(parser)`
 
 Returns the parser current request method.
 
-## `getStatus(parser)`
+### `getStatus(parser)`
 
 Returns the parser current response status.
 
-## `getVersionMajor(parser)`
+### `getVersionMajor(parser)`
 
 Returns the parser current message HTTP version major version.
 
-## `getVersionMinor(parser)`
+### `getVersionMinor(parser)`
 
 Returns the parser current message HTTP version minor version.
 
-## `getConnection(parser)`
+### `getConnection(parser)`
 
 Returns the parser value for the connection header.
 
-## `getContentLength(parser)`
+### `getContentLength(parser)`
 
 Returns the parser value of the `Content-Length` header.
 
-## `getChunkSize(parser)`
+### `getChunkSize(parser)`
 
 Returns the parser expected length of the next chunk.
 
-## `getRemainingContentLength(parser)`
+### `getRemainingContentLength(parser)`
 
 Returns the parser missing data length of the body according to the `content_length` field.
 
-## `getRemainingChunkSize(parser)`
+### `getRemainingChunkSize(parser)`
 
 Returns the parser missing data length of the next chunk according to to the `chunk_size` field.
 
-## `hasContentLength(parser)`
+### `hasContentLength(parser)`
 
 Returns `true` if the parser the current message has a `Content-Length` header.
 
-## `hasChunkedTransferEncoding(parser)`
+### `hasChunkedTransferEncoding(parser)`
 
 Returns `true` if the parser the current message has a `Transfer-Encoding: chunked` header.
 
-## `hasUpgrade(parser)`
+### `hasUpgrade(parser)`
 
 Returns `true` if the parser the current message has a `Connection: upgrade` header.
 
-## `hasTrailers(parser)`
+### `hasTrailers(parser)`
 
 Returns `true` if the parser the current message has a `Trailers` header.
 
-## `getErrorDescription(parser)`
+### `getErrorDescription(parser)`
 
 Returns the parser error description or `null`.
 
-## `getCallbackError(parser)`
+### `getCallbackError(parser)`
 
 Returns the parser callback error or `null`.
 
-## `setMode(parser, value)`
+### `setMode(parser, value)`
 
 Sets the parser mode.
 
-## `setManageUnconsumed(parser, value)`
+### `setManageUnconsumed(parser, value)`
 
 Sets if the parser should automatically copy and prepend unconsumed data.
 
-## `setContinueWithoutData(parser, value)`
+### `setContinueWithoutData(parser, value)`
 
 Sets if the next execution of the parse loop should execute even if there is no more data.
 
-## `setSkipBody(parser, value)`
+### `setSkipBody(parser, value)`
 
 Set if the parser should skip the body.
 
-## `setIsConnect(parser, value)`
+### `setIsConnect(parser, value)`
 
 Sets if the current request used the `CONNECT` method.
-
-## `setBeforeStateChange(parser, cb)`
-
-Sets the parser `before_state_change` callback.
-
-## `setAfterStateChange(parser, cb)`
-
-Sets the parser `after_state_change` callback.
-
-## `setOnError(parser, cb)`
-
-Sets the parser `on_error` callback.
-
-## `setOnFinish(parser, cb)`
-
-Sets the parser `on_finish` callback.
-
-## `setOnMessageStart(parser, cb)`
-
-Sets the parser `on_message_start` callback.
-
-## `setOnMessageComplete(parser, cb)`
-
-Sets the parser `on_message_complete` callback.
-
-## `setOnRequest(parser, cb)`
-
-Sets the parser `on_request` callback.
-
-## `setOnResponse(parser, cb)`
-
-Sets the parser `on_response` callback.
-
-## `setOnReset(parser, cb)`
-
-Sets the parser `on_reset` callback.
-
-## `setOnMethod(parser, cb)`
-
-Sets the parser `on_method` callback.
-
-## `setOnUrl(parser, cb)`
-
-Sets the parser `on_url` callback.
-
-## `setOnProtocol(parser, cb)`
-
-Sets the parser `on_protocol` callback.
-
-## `setOnVersion(parser, cb)`
-
-Sets the parser `on_version` callback.
-
-## `setOnStatus(parser, cb)`
-
-Sets the parser `on_status` callback.
-
-## `setOnReason(parser, cb)`
-
-Sets the parser `on_reason` callback.
-
-## `setOnHeaderName(parser, cb)`
-
-Sets the parser `on_header_name` callback.
-
-## `setOnHeaderValue(parser, cb)`
-
-Sets the parser `on_header_value` callback.
-
-## `setOnHeaders(parser, cb)`
-
-Sets the parser `on_headers` callback.
-
-## `setOnConnect(parser, cb)`
-
-Sets the parser `on_connect` callback.
-
-## `setOnUpgrade(parser, cb)`
-
-Sets the parser `on_upgrade` callback.
-
-## `setOnChunkLength(parser, cb)`
-
-Sets the parser `on_chunk_length` callback.
-
-## `setOnChunkExtensionName(parser, cb)`
-
-Sets the parser `on_chunk_extension_name` callback.
-
-## `setOnChunkExtensionValue(parser, cb)`
-
-Sets the parser `on_chunk_extension_value` callback.
-
-## `setOnChunk(parser, cb)`
-
-Sets the parser `on_chunk` callback.
-
-## `setOnBody(parser, cb)`
-
-Sets the parser `on_body` callback.
-
-## `setOnData(parser, cb)`
-
-Sets the parser `on_data` callback.
-
-## `setOnTrailerName(parser, cb)`
-
-Sets the parser `on_trailer_name` callback.
-
-## `setOnTrailerValue(parser, cb)`
-
-Sets the parser `on_trailer_value` callback.
-
-## `setOnTrailers(parser, cb)`
-
-Sets the parser `on_trailers` callback.

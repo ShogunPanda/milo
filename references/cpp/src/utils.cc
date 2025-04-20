@@ -28,5 +28,5 @@ void clear_context(context_t* context) {
 }
 
 uchar_t* create_string() {
-  return reinterpret_cast<uchar_t*>(malloc(sizeof(uchar_t) * MAX_FORMAT));
+  return reinterpret_cast<uchar_t*>(calloc(MAX_FORMAT, sizeof(uchar_t)));
 }

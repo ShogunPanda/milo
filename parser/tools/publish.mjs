@@ -54,12 +54,11 @@ function execute(title, command, ...args) {
 }
 
 async function main() {
-  // TODO@PI: Check if the tree is not clean and eventually abort
+  // Check if the tree is not clean and eventually abort
   const status = await execute('Verifying GIT status', 'git', 'status', '-s')
 
   if (status.stdout.toString('utf-8').trim().length > 0 && process.env.ALLOW_DIRTY_TREE !== 'true') {
     fatal('Cannot publish if the working directory is not clean.')
-    process.exit(1)
   }
 
   // Get the latest version
@@ -71,15 +70,15 @@ async function main() {
 
   // Get the new version
   const newVersion = JSON.parse(
-    await readFile(new URL('../dist/wasm/release/package.json', import.meta.url), 'utf-8')
+    await readFile(new URL('../dist/wasm/release/@perseveranza-pets/milo/package.json', import.meta.url), 'utf-8')
   ).version
   info(`Publishing version ${newVersion} (from ${latestVersion})`)
 
   // Publish on Cargo
 
   // Publish on NPM
-  process.chdir(fileURLToPath(new URL('../dist/wasm/release', import.meta.url)))
-  await execute('Publishing on NPM', 'npm', 'publish', '--access', 'public')
+  process.chdir(fileURLToPath(new URL('../dist/wasm/release/@perseveranza-pets/milo/', import.meta.url)))
+  await execute('Publishing on NPM', 'npm', 'publish', '--access', 'public1')
 
   // Save tags
   process.chdir(fileURLToPath(new URL('..', import.meta.url)))

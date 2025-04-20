@@ -54,7 +54,7 @@
     "--target",
     "${TARGET}",
     "--release",
-    "--out-dir",
+    "--artifact-dir",
     "target/release",
   ]
 
@@ -66,6 +66,6 @@
     "unstable-options",
     "--target",
     "${TARGET}",
-    "--out-dir",
+    "--artifact-dir",
     "target/debug",
   ]

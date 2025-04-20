@@ -9,11 +9,12 @@
     "unified": "^11.0.4"
   },
   "devDependencies": {
-    "@cowtech/eslint-config": "^9.0.3",
-    "eslint": "^8.57.0"
+    "@cowtech/eslint-config": "^10.0.0",
+    "eslint": "^9.13.0",
+    "prettier": "^3.3.3"
   },
   "scripts": {
     "format": "prettier -w *.mjs ../src/wasm/template.js",
-    "lint": "eslint -c .eslintrc.json --cache *.mjs ../src/wasm/template.js"
+    "lint": "eslint --cache"
   }
 }

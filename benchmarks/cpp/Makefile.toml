@@ -1,0 +1,35 @@
+[config]
+  skip_core_tasks = true
+
+[tasks.default]
+  dependencies = ["build"]
+
+[tasks.build]
+  dependencies = ["prepare"]
+  command = "clang++"
+  args = [
+    "-std=c++11",
+    "-I",
+    "../../parser/dist/cpp/release",
+    "-o",
+    "./dist/milo-benchmarks",
+    "../../parser/dist/cpp/release/libmilo.a",
+    "src/main.cc",
+  ]
+
+[tasks.benchmarks]
+  command = "./dist/milo-benchmarks"
+
+[tasks.format]
+  command = "clang-format"
+  args    = ["-i", "src/main.cc"]
+
+[tasks.clean]
+  command = "rm"
+  args    = ["-r", "-f", "dist"]
+
+[tasks.verify]
+  dependencies = ["format", "clean", "build", "benchmarks"]
+
+[tasks.prepare]
+  script = ["mkdir -p dist", "rm -rf dist/*"]

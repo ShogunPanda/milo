@@ -13,7 +13,28 @@ npm install @perseveranza-pets/milo
 Then create a sample source file:
 
 ```javascript
-const milo = require('@perseveranza-pets/milo')
+import { setup } from '@perseveranza-pets/milo'
+
+/*
+  Milo works using callbacks.
+
+  All callbacks have the same signature, which characterizes the payload:
+
+    * The current parser
+    * from: The payload offset.
+    * size: The payload length.
+
+  The payload parameters above are relative to the last data sent to the milo.parse method.
+
+  If the current callback has no payload, both values are set to 0.
+
+  The callbacks must be provided using setup and are named in snake case.
+*/
+const milo = setup({
+  on_data(p, from, size) {
+    console.log(`Pos=${milo.getPosition(p)} Body: ${message.slice(from, from + size).toString()}`)
+  }
+})
 
 // Prepare a message to parse.
 const message = Buffer.from('HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc')
@@ -27,26 +48,9 @@ const buffer = Buffer.from(milo.memory.buffer, ptr, message.length)
 // Create the parser.
 const parser = milo.create()
 
-/*
-  Milo works using callbacks.
-
-  All callbacks have the same signature, which characterizes the payload:
-  
-    * The current parent
-    * from: The payload offset.
-    * size: The payload length.
-    
-  The payload parameters above are relative to the last data sent to the milo.parse method.
-
-  If the current callback has no payload, both values are set to 0.
-*/
-milo.setOnData(parser, (p, from, size) => {
-  console.log(`Pos=${milo.getPosition(p)} Body: ${message.slice(from, from + size).toString()}`)
-})
-
 // Now perform the main parsing using milo.parse. The method returns the number of consumed characters.
 buffer.set(message, 0)
-const consumed = milo.parse(parser, ptr, message.length)
+milo.parse(parser, ptr, message.length)
 
 // Cleanup used resources.
 milo.destroy(parser)
@@ -219,7 +223,7 @@ makers
 
 The command above will produce debug and release builds for each language in the `dist` folder.
 
-The debug build will also enables the `before_state_change` and `after_state_change` callbacks and it's more verbose in case of WebAssembly errors.
+The debug build will also enables the `on_state_change` callback and it's more verbose in case of WebAssembly errors.
 
 ## API
 

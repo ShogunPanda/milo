@@ -1,0 +1,10 @@
+{
+	"devDependencies": {
+		"eslint": "^8.57.0",
+		"@cowtech/eslint-config": "^9.0.3",
+		"prettier": "^3.2.5"
+	},
+	"scripts": {
+		"prepare": "rm -rf node_modules/@perseveranza-pets; ln -s ../../../parser/dist/wasm/release/@perseveranza-pets node_modules/@perseveranza-pets"
+	}
+}

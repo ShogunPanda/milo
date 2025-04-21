@@ -7,11 +7,11 @@ function loadWASM() {
   return require('node:fs').readFileSync(require('node:path').resolve(__dirname, 'milo.wasm'))
 }
 
-function logger(context, raw) {
+function log(logger, raw) {
   const len = Number(BigInt.asUintN(32, raw))
   const ptr = Number(raw >> 32n)
 
-  console.error(textDecoder.decode(new Uint8Array(context.memory.buffer, ptr, len)))
+  logger(textDecoder.decode(new Uint8Array(this.memory.buffer, ptr, len)))
 }
 
 function alloc(len) {
@@ -26,7 +26,7 @@ function create() {
   return this.create() >>> 0
 }
 
-function destroy(context, parser) {
+function destroy(parser) {
   this.destroy(parser)
 }
 
@@ -99,15 +99,29 @@ function noop() { }
 const wasmModule = new WebAssembly.Module(loadWASM())
 
 function setup(env = {}) {
+  let { logger: logOption, ...instanceEnvironment } = env
+  let logger = noop
+  let context = {}
+
+  if (logOption) {
+    if (typeof logOption !== 'function') {
+      logOption = console.log
+    }
+
+    logger = log.bind(context, logOption)
+  }
+
   // Create the WASM instance
   const instance = new WebAssembly.Instance(wasmModule, {
     env: {
-      logger: noop,
+      logger,
       $milo_callbacks,
-      ...env
+      ...instanceEnvironment
     }
   })
+
   const wasm = instance.exports
+  context.memory = wasm.memory
 
   const milo = {
     $milo_version,
@@ -167,4 +181,4 @@ function simpleParser() {
   return milo
 }
 
-module.exports = { wasmModule, logger, setup, simple: simpleParser() }
+module.exports = { wasmModule, setup, simple: simpleParser() }

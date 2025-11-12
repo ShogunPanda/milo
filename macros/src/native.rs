@@ -1,10 +1,10 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 
-use crate::{definitions::CALLBACKS, parsing::IdentifierWithExpr};
+use crate::structs::IdentifierWithExpr;
 
 // Handles a callback.
-pub fn callback_native(definition: &IdentifierWithExpr) -> proc_macro2::TokenStream {
+pub fn callback(definition: &IdentifierWithExpr) -> proc_macro2::TokenStream {
   let callback = &definition.identifier;
 
   if let Some(length) = &definition.expr {
@@ -15,13 +15,8 @@ pub fn callback_native(definition: &IdentifierWithExpr) -> proc_macro2::TokenStr
 }
 
 /// Generates all parser callbacks.
-pub fn generate_callbacks_native() -> TokenStream {
-  let callbacks: Vec<_> = CALLBACKS
-    .get()
-    .unwrap()
-    .iter()
-    .map(|x| format_ident!("{}", x))
-    .collect();
+pub fn generate_callbacks(callbacks: &Vec<String>) -> TokenStream {
+  let callbacks: Vec<_> = callbacks.iter().map(|x| format_ident!("{}", x)).collect();
 
   TokenStream::from(quote! {
     #[cfg(not(target_family = "wasm"))]

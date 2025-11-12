@@ -1,11 +1,13 @@
 use core::{ffi::c_uchar, slice, str};
 
-use crate::{context, Parser};
+use milo::Parser;
+
+use crate::helpers::context;
 
 pub fn extract_payload(parser: &Parser, from: usize, size: usize) -> (*const c_uchar, impl Fn()) {
   let context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
   let (ptr, len, cap) = Vec::into_raw_parts(context.input.as_bytes().into());
-  Box::into_raw(context);
+  let _ = Box::into_raw(context);
 
   (
     if size > 0 {
@@ -42,7 +44,7 @@ pub fn append_output(parser: &Parser, message: String, from: usize, size: usize)
 
   let mut context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
   context.output.push_str(formatted.as_str());
-  Box::into_raw(context);
+  let _ = Box::into_raw(context);
   cleanup();
 }
 
@@ -80,7 +82,7 @@ pub fn show_span(parser: &Parser, name: &str, from: usize, size: usize) {
       _ => {}
     }
 
-    Box::into_raw(context);
+    let _ = Box::into_raw(context);
   }
 
   event(parser, name, parser.position, from, size);

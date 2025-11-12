@@ -1,6 +1,3 @@
-#![feature(vec_into_raw_parts)]
-#![feature(cell_update)]
-#![feature(exposed_provenance)]
 #![allow(unused_imports)]
 
 extern crate alloc;
@@ -15,48 +12,7 @@ use core::ptr;
 use core::str;
 use core::{slice, slice::from_raw_parts};
 
-use milo_macros::{
-  callback, generate_callbacks, generate_constants, generate_enums, init_constants, link_callbacks, r#return,
-};
-
-init_constants!();
-
-#[cfg(target_family = "wasm")]
-#[link(wasm_import_module = "env")]
-extern "C" {
-  link_callbacks!();
-
-  #[cfg(debug_assertions)]
-  fn logger(message: u64);
-}
-
-#[cfg(all(debug_assertions, target_family = "wasm"))]
-#[no_mangle]
-pub fn __start() {
-  std::panic::set_hook(Box::new(|panic_info| {
-    debug(format!("WebAssembly panicked: {:#?}", panic_info));
-  }));
-}
-
-#[repr(C)]
-pub struct Flags {
-  pub debug: bool,
-}
-
-#[no_mangle]
-pub fn flags() -> Flags {
-  Flags {
-    debug: cfg!(debug_assertions),
-  }
-}
-
-mod states;
-
-use crate::states::*;
-
-generate_constants!();
-generate_enums!();
-generate_callbacks!();
+use milo_macros::{callback, generate, parse_next};
 
 #[repr(C)]
 #[derive(Clone, Debug)]
@@ -108,9 +64,23 @@ pub struct Parser {
   pub unconsumed_len: usize,
 }
 
-impl Default for Parser {
-  fn default() -> Self { Self::new() }
-}
+// #region native
+#[cfg(not(target_family = "wasm"))]
+mod native;
+
+#[cfg(not(target_family = "wasm"))]
+pub use crate::native::*;
+// #endregion native
+
+// #region wasm
+#[cfg(target_family = "wasm")]
+mod wasm;
+
+#[cfg(target_family = "wasm")]
+pub use crate::wasm::*;
+// #endregion wasm
+
+generate!();
 
 impl Parser {
   /// Creates a new parser
@@ -296,16 +266,8 @@ impl Parser {
   }
 }
 
+impl Default for Parser {
+  fn default() -> Self { Self::new() }
+}
+
 mod parse;
-
-#[cfg(not(target_family = "wasm"))]
-mod native;
-
-#[cfg(not(target_family = "wasm"))]
-pub use crate::native::*;
-
-#[cfg(target_family = "wasm")]
-mod wasm;
-
-#[cfg(target_family = "wasm")]
-pub use crate::wasm::*;

@@ -9,7 +9,6 @@ namespace     = "milo"
   include = [
     "Parser",
     "ParserCallbacks",
-    "Flags",
     "CStringWithLength",
     "Callback",
     "MessageTypes",

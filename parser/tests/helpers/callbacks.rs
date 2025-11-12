@@ -2,9 +2,9 @@
 
 use std::{os::unix::process, slice, str};
 
-use milo::{Parser, DEBUG, MESSAGE_TYPE_RESPONSE};
+use milo::{DEBUG, MESSAGE_TYPE_RESPONSE, Parser};
 
-use crate::{context, output};
+use crate::helpers::{context, output};
 
 pub fn on_state_change(parser: &mut Parser, from: usize, size: usize) {
   output::append_output(
@@ -94,7 +94,7 @@ pub fn on_headers(parser: &mut Parser, from: usize, size: usize) {
   let url: String = context.url.clone();
   let protocol: String = context.protocol.clone();
   let version: String = context.version.clone();
-  Box::into_raw(context);
+  let _ = Box::into_raw(context);
 
   if parser.message_type == MESSAGE_TYPE_RESPONSE {
     let heading = format!(

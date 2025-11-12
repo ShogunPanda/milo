@@ -41,6 +41,8 @@ fn load_message(name: &str) -> String {
 fn main() {
   let samples = vec!["seanmonstar_httparse", "nodejs_http_parser", "undici"];
 
+  println!("");
+
   for name in samples {
     let payload = load_message(name);
     let len = payload.len();
@@ -58,13 +60,16 @@ fn main() {
     let bw = (total as f64) / time;
 
     println!(
-      "{:>21} | {:>12} samples | {:>8} MB | {:>10} MB/s | {:>10} ops/sec | {:>6} s",
+      // "{:>21} | {:>12} | {:>8} MB | {:>10} MB/s | {:>10} ops/sec | {:>6} s",
+      "{:>21} | {:>12} | {:>8} MB | {:>10} MB/s | {:>10} ops/sec",
       name,
       format_number(iterations as f64, true),
       format_number(total as f64 / (1024.0 * 1024.0), false),
       format_number(bw / (1024 * 1024) as f64, false),
       format_number((iterations as f64) / time, false),
-      format_number(time, false)
+      // format_number(time, false)
     );
   }
+
+  println!("");
 }

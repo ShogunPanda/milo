@@ -1,55 +1,96 @@
+use std::fs::{File, OpenOptions, read_to_string};
+use std::io::BufWriter;
+use std::path::Path;
+
+use indexmap::IndexMap;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use regex::{Captures, Regex};
-use syn::{parse_str, Arm, ItemConst};
+use semver::Version;
+use serde::Serialize;
+use syn::{Arm, ItemConst, ItemStatic, parse_str};
+use toml::Table;
 
-use crate::definitions::{
-  save_constants, CALLBACKS, CONNECTION_CLOSE, CONNECTION_KEEPALIVE, CONNECTION_UPGRADE, ERRORS,
-  MESSAGE_TYPE_AUTODETECT, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE, METHODS, STATES,
-};
+use crate::{native, wasm};
+
+#[derive(Serialize)]
+struct BuildInfo {
+  version: IndexMap<String, u8>,
+  constants: IndexMap<String, u8>,
+}
+
+fn init_constants() -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
+  // Load from YAML files
+  let mut absolute_path = Path::new(file!())
+    .canonicalize()
+    .unwrap()
+    .parent()
+    .unwrap()
+    .to_path_buf();
+  absolute_path.push("../../parser/constants");
+  absolute_path = absolute_path.canonicalize().unwrap();
+
+  absolute_path.push("methods.yml");
+  let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+  absolute_path.pop();
+  let methods: Vec<String> = serde_yaml::from_reader(f).unwrap();
+
+  absolute_path.push("errors.yml");
+  let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+  absolute_path.pop();
+  let errors: Vec<String> = serde_yaml::from_reader(f).unwrap();
+
+  absolute_path.push("callbacks.yml");
+  let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+  absolute_path.pop();
+  let callbacks: Vec<String> = serde_yaml::from_reader(f).unwrap();
+
+  absolute_path.push("states.yml");
+  let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+  absolute_path.pop();
+  let states: Vec<String> = serde_yaml::from_reader(f).unwrap();
+
+  (methods, errors, callbacks, states)
+}
+
+fn generate_constants_and_phfs(items: &Vec<String>, prefix: &str) -> (Vec<ItemConst>, ItemStatic) {
+  let mut consts: Vec<ItemConst> = Vec::new();
+  let mut builder = phf_codegen::Map::new();
+  let mut bytes: Vec<&[u8]> = vec![];
+
+  for (i, x) in items.iter().enumerate() {
+    let uppercased = x.to_uppercase();
+    let name = uppercased.replace('-', "_");
+    bytes.push(x.as_bytes());
+
+    consts.push(parse_str::<ItemConst>(&format!("pub const {}_{}: u8 = {};", prefix, name, i)).unwrap());
+    builder.entry(bytes[i], format!("{}", i));
+  }
+
+  let phf_map = builder.build();
+
+  (
+    consts,
+    parse_str::<ItemStatic>(&format!(
+      "pub static {}S: phf::Map<&'static [u8], u8> = {};",
+      prefix,
+      phf_map.to_string()
+    ))
+    .unwrap(),
+  )
+}
 
 /// Generates all parser constants.
-pub fn generate_constants() -> TokenStream {
-  save_constants();
-
-  let methods_consts: Vec<_> = METHODS
-    .get()
-    .unwrap()
-    .iter()
-    .enumerate()
-    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const METHOD_{}: u8 = {};", x.replace('-', "_"), i)).unwrap())
-    .collect();
-
-  let errors_consts: Vec<_> = ERRORS
-    .get()
-    .unwrap()
-    .iter()
-    .enumerate()
-    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const ERROR_{}: u8 = {};", x, i)).unwrap())
-    .collect();
-
-  let callbacks_consts: Vec<_> = CALLBACKS
-    .get()
-    .unwrap()
-    .iter()
-    .enumerate()
-    .map(|(i, x)| {
-      parse_str::<ItemConst>(&format!(
-        "pub const CALLBACK_{}: u8 = {};",
-        x.replace('-', "_").to_uppercase(),
-        i
-      ))
-      .unwrap()
-    })
-    .collect();
-
-  let states_ref = unsafe { STATES.get().unwrap() };
-
-  let states_consts: Vec<_> = states_ref
-    .iter()
-    .enumerate()
-    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const STATE_{}: u8 = {};", x.0, i)).unwrap())
-    .collect();
+pub fn generate_constants(
+  methods: &Vec<String>,
+  errors: &Vec<String>,
+  callbacks: &Vec<String>,
+  states: &Vec<String>,
+) -> TokenStream {
+  let (methods_consts, methods_hash) = generate_constants_and_phfs(&methods, "METHOD");
+  let (states_consts, states_hash) = generate_constants_and_phfs(&states, "STATE");
+  let (errors_consts, errors_hash) = generate_constants_and_phfs(&errors, "ERROR");
+  let (callbacks_consts, callbacks_hash) = generate_constants_and_phfs(&callbacks, "CALLBACK");
 
   let digit_table: Vec<_> = (0..=255).map(|i| (0x30..=0x39).contains(&i)).collect();
 
@@ -108,26 +149,30 @@ pub fn generate_constants() -> TokenStream {
   TokenStream::from(quote! {
     type StateHandler = fn (parser: &mut Parser, data: &[c_uchar], available: usize);
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub type Callback = fn (&mut Parser, usize, usize);
 
     pub const DEBUG: bool = cfg!(debug_assertions);
 
-    pub const MESSAGE_TYPE_AUTODETECT: u8 = #MESSAGE_TYPE_AUTODETECT;
-    pub const MESSAGE_TYPE_REQUEST: u8 = #MESSAGE_TYPE_REQUEST;
-    pub const MESSAGE_TYPE_RESPONSE: u8 = #MESSAGE_TYPE_RESPONSE;
+    pub const MESSAGE_TYPE_AUTODETECT: u8 = 0;
+    pub const MESSAGE_TYPE_REQUEST: u8 = 1;
+    pub const MESSAGE_TYPE_RESPONSE: u8 = 2;
 
-    pub const CONNECTION_KEEPALIVE: u8 = #CONNECTION_KEEPALIVE;
-    pub const CONNECTION_CLOSE: u8 = #CONNECTION_CLOSE;
-    pub const CONNECTION_UPGRADE: u8 = #CONNECTION_UPGRADE;
+    pub const CONNECTION_KEEPALIVE: u8 = 0;
+    pub const CONNECTION_CLOSE: u8 = 1;
+    pub const CONNECTION_UPGRADE: u8 = 2;
 
     #(#methods_consts)*
+    #methods_hash
 
     #(#errors_consts)*
+    #errors_hash
 
     #(#callbacks_consts)*
+    #callbacks_hash
 
     #(#states_consts)*
+    #states_hash
 
     /// cbindgen:ignore
     static DIGIT_TABLE: [bool; 256] = [#(#digit_table),*];
@@ -153,13 +198,18 @@ pub fn generate_constants() -> TokenStream {
 }
 
 /// Generates all parser enums.
-pub fn generate_enums() -> TokenStream {
+pub fn generate_enums(
+  methods: &Vec<String>,
+  errors: &Vec<String>,
+  callbacks: &Vec<String>,
+  states: &Vec<String>,
+) -> TokenStream {
   let snake_matcher = Regex::new(r"_([a-z])").unwrap();
 
-  let methods_ref = METHODS.get().unwrap();
-  let errors_ref = ERRORS.get().unwrap();
-  let callbacks_ref = CALLBACKS.get().unwrap();
-  let states_ref = unsafe { STATES.get().unwrap() };
+  let methods_ref = methods;
+  let errors_ref = errors;
+  let callbacks_ref = callbacks;
+  let states_ref = states;
 
   let methods: Vec<_> = methods_ref
     .iter()
@@ -180,7 +230,10 @@ pub fn generate_enums() -> TokenStream {
     })
     .collect();
 
-  let states: Vec<_> = states_ref.iter().map(|x| format_ident!("{}", x.0)).collect();
+  let states: Vec<_> = states_ref
+    .iter()
+    .map(|x| format_ident!("{}", x.to_uppercase()))
+    .collect();
 
   let methods_from: Vec<_> = methods_ref
     .iter()
@@ -427,4 +480,86 @@ pub fn generate_enums() -> TokenStream {
       }
     }
   })
+}
+
+pub fn generate_callbacks(callbacks: &Vec<String>) -> TokenStream {
+  let native = native::generate_callbacks(callbacks);
+  let wasm = wasm::generate_callbacks(callbacks);
+
+  TokenStream::from_iter([native, wasm])
+}
+
+// Export all build info to a file for the scripts to re-use it
+pub fn save_constants(methods: &Vec<String>, errors: &Vec<String>, callbacks: &Vec<String>, states: &Vec<String>) {
+  let mut milo_cargo_toml_path = Path::new(file!()).parent().unwrap().to_path_buf();
+  milo_cargo_toml_path.push("../../parser/Cargo.toml");
+
+  // Get milo version
+  let milo_cargo_toml = read_to_string(milo_cargo_toml_path).unwrap().parse::<Table>().unwrap();
+  let milo_version = Version::parse(
+    milo_cargo_toml["package"].as_table().unwrap()["version"]
+      .as_str()
+      .unwrap(),
+  )
+  .unwrap();
+  let mut version: IndexMap<String, u8> = IndexMap::new();
+  version.insert("major".into(), milo_version.major as u8);
+  version.insert("minor".into(), milo_version.minor as u8);
+  version.insert("patch".into(), milo_version.patch as u8);
+
+  // Serialize constants
+  let mut consts: IndexMap<String, u8> = IndexMap::new();
+  consts.insert("MESSAGE_TYPE_AUTODETECT".into(), 0);
+  consts.insert("MESSAGE_TYPE_REQUEST".into(), 1);
+  consts.insert("MESSAGE_TYPE_RESPONSE".into(), 2);
+  consts.insert("CONNECTION_KEEPALIVE".into(), 0);
+  consts.insert("CONNECTION_CLOSE".into(), 1);
+  consts.insert("CONNECTION_UPGRADE".into(), 2);
+
+  for (i, x) in methods.iter().enumerate() {
+    consts.insert(format!("METHOD_{}", x.replace('-', "_")), i as u8);
+  }
+
+  for (i, x) in callbacks.iter().enumerate() {
+    consts.insert(format!("CALLBACK_{}", x.to_uppercase()), i as u8);
+  }
+
+  for (i, x) in errors.iter().enumerate() {
+    consts.insert(format!("ERROR_{}", x), i as u8);
+  }
+
+  for (i, x) in states.iter().enumerate() {
+    consts.insert(format!("STATE_{}", x), i as u8);
+  }
+
+  // Prepare the data to save
+  let data = BuildInfo {
+    version,
+    constants: consts,
+  };
+
+  // Write information in the file
+  let mut json_path = Path::new(file!()).parent().unwrap().to_path_buf();
+  json_path.push("../../parser/target/buildinfo.json");
+
+  let file = OpenOptions::new()
+    .write(true)
+    .create(true)
+    .truncate(true)
+    .open(json_path.as_path());
+
+  let writer = BufWriter::new(file.unwrap());
+  serde_json::to_writer_pretty(writer, &data).unwrap();
+}
+
+/// Generates the complete parser.
+pub fn generate() -> TokenStream {
+  let (methods, errors, callbacks, states) = init_constants();
+
+  let constants_code = generate_constants(&methods, &errors, &callbacks, &states);
+  let enums_code = generate_enums(&methods, &errors, &callbacks, &states);
+  let callbacks_code = generate_callbacks(&callbacks);
+  save_constants(&methods, &errors, &callbacks, &states);
+
+  TokenStream::from_iter([constants_code, enums_code, callbacks_code])
 }

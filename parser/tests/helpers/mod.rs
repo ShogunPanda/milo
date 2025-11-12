@@ -1,11 +1,9 @@
-#![feature(vec_into_raw_parts)]
-
 use std::{env, ffi::c_void};
 
 use milo::Parser;
 use regex::Regex;
 
-pub mod callbacks;
+mod callbacks;
 pub mod context;
 mod output;
 
@@ -58,12 +56,10 @@ pub fn http(input: &str) -> String {
     .replace("\\s", " ")
 }
 
-pub fn output(input: &str) -> String { String::from(input.trim()) + "\n" }
-
 pub fn parse(parser: &mut Parser, content: &str) -> usize {
   let mut context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
   context.input = String::from(content);
-  Box::into_raw(context);
+  let _ = Box::into_raw(context);
 
   parser.parse(content.as_ptr(), content.len())
 }

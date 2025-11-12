@@ -1,12 +1,12 @@
-#[cfg(test)]
-mod test {
-  use milo::STATE_ERROR;
-  use milo_test_utils::{create_parser, http, parse};
+mod helpers;
 
-  #[test]
-  fn benchmark_seanmonstar_httparse() {
-    let message = http(
-      r#"
+use helpers::{create_parser, http, parse};
+use milo::STATE_ERROR;
+
+#[test]
+fn benchmark_seanmonstar_httparse() {
+  let message = http(
+    r#"
         GET /wp-content/uploads/2010/03/hello-kitty-darth-vader-pink.jpg HTTP/1.1\r\n
         Host: www.kittyhell.com\r\n
         User-Agent: Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.6; ja-JP-mac; rv:1.9.2.3) Gecko/20100401 Firefox/3.6.3 Pathtraq/0.9\r\n
@@ -18,18 +18,18 @@ mod test {
         Connection: keep-alive\r\n
         Cookie: wp_ozh_wsa_visits=2; wp_ozh_wsa_visit_lasttime=xxxxxxxxxx; __utma=xxxxxxxxx.xxxxxxxxxx.xxxxxxxxxx.xxxxxxxxxx.xxxxxxxxxx.x; __utmz=xxxxxxxxx.xxxxxxxxxx.x.x.utmccn=(referral)|utmcsr=reader.livedoor.com|utmcct=/reader/|utmcmd=referral\r\n\r\n
       "#,
-    );
+  );
 
-    let mut parser = create_parser();
-    let consumed = parse(&mut parser, &message);
-    assert!(consumed == message.len());
-    assert!(!matches!(parser.state, STATE_ERROR));
-  }
+  let mut parser = create_parser();
+  let consumed = parse(&mut parser, &message);
+  assert!(consumed == message.len());
+  assert!(!matches!(parser.state, STATE_ERROR));
+}
 
-  #[test]
-  fn benchmark_nodejs_http_parser() {
-    let message = http(
-      r#"
+#[test]
+fn benchmark_nodejs_http_parser() {
+  let message = http(
+    r#"
         POST /joyent/http-parser HTTP/1.1\r\n
         Host: github.com\r\n
         DNT: 1\r\n
@@ -45,11 +45,10 @@ mod test {
         Transfer-Encoding: chunked\r\n
         Cache-Control: max-age=0\r\n\r\nb\r\nhello world\r\n0\r\n\r\n
       "#,
-    );
+  );
 
-    let mut parser = create_parser();
-    let consumed = parse(&mut parser, &message);
-    assert!(consumed == message.len());
-    assert!(!matches!(parser.state, STATE_ERROR));
-  }
+  let mut parser = create_parser();
+  let consumed = parse(&mut parser, &message);
+  assert!(consumed == message.len());
+  assert!(!matches!(parser.state, STATE_ERROR));
 }

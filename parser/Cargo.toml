@@ -1,7 +1,7 @@
 [package]
   name    = "milo"
-  version = "0.3.0"
-  edition = "2021"
+  version = "0.4.0"
+  edition = "2024"
   publish = false
 
 [lib]
@@ -12,17 +12,10 @@
 
 [dependencies]
   milo-macros = { path = "../macros" }
+  phf         = { version = "0.13.1", default-features = false }
 
-[profile.bench]
-  opt-level        = 3
-  debug            = false
-  debug-assertions = false
-  overflow-checks  = false
-  lto              = false
-  incremental      = false
-  codegen-units    = 16
-  rpath            = false
-  strip            = true
+[dev-dependencies]
+  regex = "1.12.3"
 
 [profile.release]
   opt-level        = 3

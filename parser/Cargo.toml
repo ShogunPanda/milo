@@ -12,6 +12,7 @@
 
 [dependencies]
   milo-macros = { path = "../macros" }
+  memchr      = "2.8.0"
   phf         = { version = "0.13.1", default-features = false }
 
 [dev-dependencies]
@@ -25,6 +26,6 @@
   lto              = true
   panic            = 'abort'
   incremental      = false
-  codegen-units    = 16
+  codegen-units    = 1
   rpath            = false
   strip            = true

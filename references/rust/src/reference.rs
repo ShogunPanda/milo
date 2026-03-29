@@ -1,7 +1,10 @@
 use std::os::raw::c_void;
 
-use milo::Parser;
-use milo_test_utils::{callbacks, context::Context, parse};
+#[path = "../../../parser/tests/helpers/mod.rs"]
+mod helpers;
+
+use helpers::{callbacks, context::Context, parse};
+use milo::{Parser, CALLBACK_ACTIVE_ALL};
 
 fn main() {
   let mut parser = Parser::new();
@@ -38,6 +41,7 @@ fn main() {
   parser.callbacks.on_trailer_name = callbacks::on_trailer_name;
   parser.callbacks.on_trailer_value = callbacks::on_trailer_value;
   parser.callbacks.on_trailers = callbacks::on_trailers;
+  parser.callbacks_active |= CALLBACK_ACTIVE_ALL;
 
   let mut consumed = parse(&mut parser, request1);
 

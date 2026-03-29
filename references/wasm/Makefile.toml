@@ -4,6 +4,9 @@
 [tasks.default]
   dependencies = ["test"]
 
+[tasks.build]
+  dependencies = ["prepare"]
+
 [tasks.test]
   command = "node"
   args    = ["--test", "../reference.test.mjs"]

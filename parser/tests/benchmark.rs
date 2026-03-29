@@ -22,8 +22,8 @@ fn benchmark_seanmonstar_httparse() {
 
   let mut parser = create_parser();
   let consumed = parse(&mut parser, &message);
-  assert!(consumed == message.len());
-  assert!(!matches!(parser.state, STATE_ERROR));
+  assert_eq!(consumed, message.len());
+  assert_ne!(parser.state, STATE_ERROR);
 }
 
 #[test]
@@ -49,6 +49,6 @@ fn benchmark_nodejs_http_parser() {
 
   let mut parser = create_parser();
   let consumed = parse(&mut parser, &message);
-  assert!(consumed == message.len());
-  assert!(!matches!(parser.state, STATE_ERROR));
+  assert_eq!(consumed, message.len());
+  assert_ne!(parser.state, STATE_ERROR);
 }

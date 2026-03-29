@@ -20,6 +20,8 @@ function formatNumber(num, precision) {
 const samples = ['seanmonstar_httparse', 'nodejs_http_parser', 'undici']
 const milo = setup()
 
+console.log('')
+
 for (const name of samples) {
   const payload = await loadMessage(name)
   const len = payload.length
@@ -45,9 +47,11 @@ for (const name of samples) {
   const label = name.padStart(21, ' ')
   const samples = formatNumber(iterations, 0).padStart(12)
   const size = formatNumber(total / (1024 * 1024), 2).padStart(8)
-  const speed = formatNumber(bw / (1024 * 1024), 2).padStart(10)
-  const throughtput = formatNumber(iterations / time, 2).padStart(10)
+  const speed = formatNumber(bw / (1024 * 1024), 2).padStart(12)
+  const throughtput = formatNumber(iterations / time, 2).padStart(13)
   const duration = formatNumber(time, 2).padStart(6)
 
   console.log(`${label} | ${samples} samples | ${size} MB | ${speed} MB/s | ${throughtput} ops/sec | ${duration} s`)
 }
+
+console.log('')

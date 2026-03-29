@@ -32,7 +32,7 @@ pub fn on_message_start(parser: &mut Parser, from: usize, size: usize) {
 }
 
 pub fn on_message_complete(parser: &mut Parser, from: usize, size: usize) {
-  output::event(parser, "complete", parser.position, from, size);
+  output::event(parser, "complete", from, size);
 }
 
 pub fn on_error(parser: &mut Parser, from: usize, size: usize) {
@@ -51,17 +51,11 @@ pub fn on_error(parser: &mut Parser, from: usize, size: usize) {
   );
 }
 
-pub fn on_finish(parser: &mut Parser, from: usize, size: usize) {
-  output::event(parser, "finish", parser.position, from, size);
-}
+pub fn on_finish(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "finish", from, size); }
 
-pub fn on_request(parser: &mut Parser, from: usize, size: usize) {
-  output::event(parser, "request", parser.position, from, size);
-}
+pub fn on_request(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "request", from, size); }
 
-pub fn on_response(parser: &mut Parser, from: usize, size: usize) {
-  output::event(parser, "response", parser.position, from, size);
-}
+pub fn on_response(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "response", from, size); }
 
 pub fn on_method(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "method", from, size); }
 
@@ -175,9 +169,7 @@ pub fn on_headers(parser: &mut Parser, from: usize, size: usize) {
   }
 }
 
-pub fn on_upgrade(parser: &mut Parser, from: usize, size: usize) {
-  output::event(parser, "upgrade", parser.position, from, size);
-}
+pub fn on_upgrade(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "upgrade", from, size); }
 
 pub fn on_chunk_length(parser: &mut Parser, from: usize, size: usize) {
   output::show_span(parser, "chunk_length", from, size);
@@ -191,15 +183,11 @@ pub fn on_chunk_extension_value(parser: &mut Parser, from: usize, size: usize) {
   output::show_span(parser, "chunk_extension_value", from, size);
 }
 
-pub fn on_chunk(parser: &mut Parser, from: usize, size: usize) {
-  output::event(parser, "chunk", parser.position, from, size);
-}
+pub fn on_chunk(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "chunk", from, size); }
 
 pub fn on_data(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "data", from, size); }
 
-pub fn on_body(parser: &mut Parser, from: usize, size: usize) {
-  output::event(parser, "body", parser.position, from, size);
-}
+pub fn on_body(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "body", from, size); }
 
 pub fn on_trailer_name(parser: &mut Parser, from: usize, size: usize) {
   output::show_span(parser, "trailer_name", from, size);
@@ -209,6 +197,4 @@ pub fn on_trailer_value(parser: &mut Parser, from: usize, size: usize) {
   output::show_span(parser, "trailer_value", from, size);
 }
 
-pub fn on_trailers(parser: &mut Parser, from: usize, size: usize) {
-  output::event(parser, "trailers", parser.position, from, size);
-}
+pub fn on_trailers(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "trailers", from, size); }

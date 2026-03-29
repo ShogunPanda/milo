@@ -32,7 +32,7 @@ pub fn create() -> *mut c_void {
   // Recreate the parser from the box to assign the reference to itself
   let mut parser = unsafe { Box::from_raw(ptr as *mut Parser) };
   parser.ptr = ptr;
-  Box::into_raw(parser);
+  let _ = Box::into_raw(parser);
 
   ptr
 }
@@ -261,5 +261,12 @@ pub fn set_skip_body(parser: *mut c_void, value: bool) {
 pub fn set_is_connect(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).is_connect = value;
+  }
+}
+
+#[unsafe(no_mangle)]
+pub fn set_callbacks_active(parser: *mut c_void, value: u64) {
+  unsafe {
+    (*(parser as *mut Parser)).callbacks_active = value;
   }
 }

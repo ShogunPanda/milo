@@ -52,49 +52,49 @@ function getErrorDescription(parser) {
   return textDecoder.decode(new Uint8Array(this.memory.buffer, ptr, len))
 }
 
-function getCallbackError(state, parser) {
-  return state[parser][$milo_callback_error_index]
+function $milo_getter_getMode(number) {}
+function $milo_getter_isPaused(bool) {}
+function $milo_getter_manageUnconsumed(bool) {}
+function $milo_getter_continueWithoutData(bool) {}
+function $milo_getter_isConnect(bool) {}
+function $milo_getter_skipBody(bool) {}
+function $milo_getter_getState(number) {}
+function $milo_getter_getPosition(number) {}
+function $milo_getter_getParsed(bigint) {}
+function $milo_getter_getErrorCode(number) {}
+function $milo_getter_getMessageType(number) {}
+function $milo_getter_getMethod(number) {}
+function $milo_getter_getStatus(number) {}
+function $milo_getter_getVersionMajor(number) {}
+function $milo_getter_getVersionMinor(number) {}
+function $milo_getter_getConnection(number) {}
+function $milo_getter_getContentLength(bigint) {}
+function $milo_getter_getChunkSize(bigint) {}
+function $milo_getter_getRemainingContentLength(bigint) {}
+function $milo_getter_getRemainingChunkSize(bigint) {}
+function $milo_getter_hasContentLength(bool) {}
+function $milo_getter_hasChunkedTransferEncoding(bool) {}
+function $milo_getter_hasUpgrade(bool) {}
+function $milo_getter_hasTrailers(bool) {}
+
+function $milo_setter_setContinueWithoutData() {}
+function $milo_setter_setIsConnect() {}
+function $milo_setter_setManageUnconsumed() {}
+function $milo_setter_setMode() {}
+function $milo_setter_setSkipBody() {}
+
+function setCallbacksActive(parser, value) {
+  this.set_callbacks_active(parser, value)
 }
 
-function $milo_getter_getMode(number) { }
-function $milo_getter_isPaused(bool) { }
-function $milo_getter_manageUnconsumed(bool) { }
-function $milo_getter_continueWithoutData(bool) { }
-function $milo_getter_isConnect(bool) { }
-function $milo_getter_skipBody(bool) { }
-function $milo_getter_getState(number) { }
-function $milo_getter_getPosition(number) { }
-function $milo_getter_getParsed(bigint) { }
-function $milo_getter_getErrorCode(number) { }
-function $milo_getter_getMessageType(number) { }
-function $milo_getter_getMethod(number) { }
-function $milo_getter_getStatus(number) { }
-function $milo_getter_getVersionMajor(number) { }
-function $milo_getter_getVersionMinor(number) { }
-function $milo_getter_getConnection(number) { }
-function $milo_getter_getContentLength(bigint) { }
-function $milo_getter_getChunkSize(bigint) { }
-function $milo_getter_getRemainingContentLength(bigint) { }
-function $milo_getter_getRemainingChunkSize(bigint) { }
-function $milo_getter_hasContentLength(bool) { }
-function $milo_getter_hasChunkedTransferEncoding(bool) { }
-function $milo_getter_hasUpgrade(bool) { }
-function $milo_getter_hasTrailers(bool) { }
+function $milo_enum_MessageTypes(MESSAGE_TYPE_) {}
+function $milo_enum_Errors(ERROR_) {}
+function $milo_enum_Methods(METHOD_) {}
+function $milo_enum_Connections(CONNECTION_) {}
+function $milo_enum_Callbacks(CALLBACK_) {}
+function $milo_enum_States(STATE_) {}
 
-function $milo_setter_setContinueWithoutData() { }
-function $milo_setter_setIsConnect() { }
-function $milo_setter_setManageUnconsumed() { }
-function $milo_setter_setMode() { }
-function $milo_setter_setSkipBody() { }
-
-function $milo_enum_MessageTypes(MESSAGE_TYPE_) { }
-function $milo_enum_Errors(ERROR_) { }
-function $milo_enum_Methods(METHOD_) { }
-function $milo_enum_Connections(CONNECTION_) { }
-function $milo_enum_Callbacks(CALLBACK_) { }
-function $milo_enum_States(STATE_) { }
-
-function noop() { }
+function noop() {}
 
 const wasmModule = new WebAssembly.Module(loadWASM())
 
@@ -143,9 +143,10 @@ function setup(env = {}) {
     $milo_getters,
     getErrorDescription: getErrorDescription.bind(wasm),
     $milo_setters,
+    setCallbacksActive: setCallbacksActive.bind(wasm),
     $milo_enums,
     $milo_constants,
-    FLAG_DEBUG: $milo_flag_debug
+    DEBUG: $milo_flag_debug
   }
 
   $milo_start()
@@ -155,10 +156,11 @@ function setup(env = {}) {
 function simpleCreate(spans, create) {
   const parser = create()
   spans[parser] = []
+  this.setCallbacksActive(parser, this.CALLBACK_ACTIVE_ALL)
   return parser
 }
 
-function simpleDestroy(spans, destroy) {
+function simpleDestroy(spans, destroy, parser) {
   spans[parser] = undefined
   destroy(parser)
 }
@@ -175,8 +177,8 @@ function simpleParser() {
   })
 
   milo.spans = spans
-  milo.create = simpleCreate.bind(null, spans, milo.create)
-  milo.destroy = simpleDestroy.bind(null, spans, milo.destroy)
+  milo.create = simpleCreate.bind(milo, spans, milo.create)
+  milo.destroy = simpleDestroy.bind(milo, spans, milo.destroy)
 
   return milo
 }

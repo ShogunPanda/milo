@@ -16,8 +16,8 @@ import { setup } from '@perseveranza-pets/milo'
   The callbacks must be provided using setup and are named in snake case.
 */
 const milo = setup({
-  on_data(p, from, size) {
-    console.log(`Pos=${milo.getPosition(p)} Body: ${message.slice(from, from + size).toString()}`)
+  on_data(_, from, size) {
+    console.log(`Pos=${from} Body: ${message.slice(from, from + size).toString()}`)
   }
 })
 
@@ -32,6 +32,7 @@ const buffer = Buffer.from(milo.memory.buffer, ptr, message.length)
 
 // Create the parser.
 const parser = milo.create()
+milo.setCallbacksActive(parser, milo.CALLBACK_ACTIVE_ON_DATA)
 
 // Now perform the main parsing using milo.parse. The method returns the number of consumed characters.
 buffer.set(message, 0)

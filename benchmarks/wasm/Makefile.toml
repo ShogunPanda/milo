@@ -2,7 +2,11 @@
   skip_core_tasks = true
 
 [tasks.default]
-  dependencies = ["benchmarks"]
+  dependencies = ["build"]
+
+[tasks.build]
+  command = "npm"
+  args    = ["run", "prepare"]
 
 [tasks.benchmarks]
   command = "node"

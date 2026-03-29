@@ -12,7 +12,7 @@ use core::ptr;
 use core::str;
 use core::{slice, slice::from_raw_parts};
 
-use milo_macros::{callback, generate, parse_next};
+use milo_macros::{callback, generate, next};
 
 #[repr(C)]
 #[derive(Clone, Debug)]
@@ -23,8 +23,12 @@ pub struct Parser {
   pub continue_without_data: bool,
   pub is_connect: bool,
   pub skip_body: bool,
+  pub max_start_line_length: usize,
+  pub max_header_length: usize,
   #[cfg(not(target_family = "wasm"))]
   pub context: *mut c_void,
+  #[cfg(any(debug_assertions, feature = "debug"))]
+  pub debug: bool,
 
   // Generic state
   pub state: u8,
@@ -50,6 +54,7 @@ pub struct Parser {
   pub has_trailers: bool,
 
   // Callback handling
+  pub callbacks_active: u64,
   #[cfg(not(target_family = "wasm"))]
   pub callbacks: ParserCallbacks,
 
@@ -64,21 +69,17 @@ pub struct Parser {
   pub unconsumed_len: usize,
 }
 
-// #region native
 #[cfg(not(target_family = "wasm"))]
 mod native;
 
 #[cfg(not(target_family = "wasm"))]
 pub use crate::native::*;
-// #endregion native
 
-// #region wasm
 #[cfg(target_family = "wasm")]
 mod wasm;
 
 #[cfg(target_family = "wasm")]
 pub use crate::wasm::*;
-// #endregion wasm
 
 generate!();
 
@@ -92,6 +93,10 @@ impl Parser {
       continue_without_data: false,
       is_connect: false,
       skip_body: false,
+      max_start_line_length: 8192,
+      max_header_length: 8192,
+      #[cfg(any(debug_assertions, feature = "debug"))]
+      debug: false,
       #[cfg(not(target_family = "wasm"))]
       context: ptr::null_mut(),
       // Generic state
@@ -116,6 +121,7 @@ impl Parser {
       has_upgrade: false,
       has_trailers: false,
       // Callbacks handling
+      callbacks_active: 0,
       #[cfg(not(target_family = "wasm"))]
       callbacks: ParserCallbacks::new(),
       // WASM Specific
@@ -169,6 +175,7 @@ impl Parser {
       self.unconsumed_len = 0;
     }
 
+    self.clear();
     callback!(on_reset);
   }
 
@@ -203,7 +210,7 @@ impl Parser {
   pub fn finish(&mut self) {
     match self.state {
       // If the parser is one of the initial states, simply jump to finish
-      STATE_START | STATE_AUTODETECT | STATE_REQUEST | STATE_RESPONSE | STATE_FINISH => {
+      STATE_START | STATE_AUTODETECT | STATE_REQUEST_LINE | STATE_STATUS_LINE | STATE_FINISH => {
         self.state = STATE_FINISH;
       }
       STATE_BODY_WITH_NO_LENGTH => {
@@ -235,6 +242,7 @@ impl Parser {
   /// Marks the parsing a failed, setting a error code and and error message.
   ///
   /// It always returns zero for internal use.
+  #[inline(always)]
   pub fn fail(&mut self, code: u8, description: &str) {
     let description_copy = description.to_string();
     let (ptr, _, len) = description_copy.into_raw_parts();

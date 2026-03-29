@@ -8,6 +8,7 @@ use quote::{format_ident, quote};
 use regex::{Captures, Regex};
 use semver::Version;
 use serde::Serialize;
+use serde_json::Value;
 use syn::{Arm, ItemConst, ItemStatic, parse_str};
 use toml::Table;
 
@@ -16,7 +17,7 @@ use crate::{native, wasm};
 #[derive(Serialize)]
 struct BuildInfo {
   version: IndexMap<String, u8>,
-  constants: IndexMap<String, u8>,
+  constants: IndexMap<String, Value>,
 }
 
 fn init_constants() -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
@@ -80,6 +81,26 @@ fn generate_constants_and_phfs(items: &Vec<String>, prefix: &str) -> (Vec<ItemCo
   )
 }
 
+fn generate_bitmask(items: &Vec<String>, prefix: &str) -> Vec<ItemConst> {
+  let mut consts: Vec<ItemConst> = Vec::new();
+  let mut all = 0u64;
+
+  consts.push(parse_str::<ItemConst>(&format!("pub const {}_NONE: u64 = 0;", prefix)).unwrap());
+
+  for (i, x) in items.iter().enumerate() {
+    let uppercased = x.to_uppercase();
+    let name = uppercased.replace('-', "_");
+    let bit = 1 << i;
+    all |= bit;
+
+    consts.push(parse_str::<ItemConst>(&format!("pub const {}_{}: u64 = {};", prefix, name, bit)).unwrap());
+  }
+
+  consts.push(parse_str::<ItemConst>(&format!("pub const {}_ALL: u64 = {};", prefix, all)).unwrap());
+
+  consts
+}
+
 /// Generates all parser constants.
 pub fn generate_constants(
   methods: &Vec<String>,
@@ -91,12 +112,9 @@ pub fn generate_constants(
   let (states_consts, states_hash) = generate_constants_and_phfs(&states, "STATE");
   let (errors_consts, errors_hash) = generate_constants_and_phfs(&errors, "ERROR");
   let (callbacks_consts, callbacks_hash) = generate_constants_and_phfs(&callbacks, "CALLBACK");
+  let callbacks_bitmask = generate_bitmask(&callbacks, "CALLBACK_ACTIVE");
 
   let digit_table: Vec<_> = (0..=255).map(|i| (0x30..=0x39).contains(&i)).collect();
-
-  let hex_digit_table: Vec<_> = (0..=255)
-    .map(|i| (0x30..=0x39).contains(&i) || (0x41..=0x46).contains(&i) || (0x61..=0x66).contains(&i))
-    .collect();
 
   let token_other_characters = [
     b'!', b'#', b'$', b'%', b'&', b'\'', b'*', b'+', b'-', b'.', b'^', b'_', b'`', b',', b'~',
@@ -125,7 +143,9 @@ pub fn generate_constants(
   token_value_quoted_table[9] = true;
   token_value_quoted_table[32] = true;
 
-  for i in 0x21..=0x7e {
+  // Note that " is permitted as we validate that is preceded by a \, so we can
+  // allow it in the table
+  for i in 0x22..=0x7e {
     token_value_quoted_table[i] = true;
   }
 
@@ -147,7 +167,7 @@ pub fn generate_constants(
   ws_table[32] = true;
 
   TokenStream::from(quote! {
-    type StateHandler = fn (parser: &mut Parser, data: &[c_uchar], available: usize);
+    pub type StateHandler = fn (parser: &mut Parser, data: &[c_uchar], available: usize);
 
     #[unsafe(no_mangle)]
     pub type Callback = fn (&mut Parser, usize, usize);
@@ -169,6 +189,7 @@ pub fn generate_constants(
     #errors_hash
 
     #(#callbacks_consts)*
+    #(#callbacks_bitmask)*
     #callbacks_hash
 
     #(#states_consts)*
@@ -176,9 +197,6 @@ pub fn generate_constants(
 
     /// cbindgen:ignore
     static DIGIT_TABLE: [bool; 256] = [#(#digit_table),*];
-
-    /// cbindgen:ignore
-    static HEX_DIGIT_TABLE: [bool; 256] = [#(#hex_digit_table),*];
 
     /// cbindgen:ignore
     static TOKEN_TABLE: [bool; 256] = [#(#token_table),*];
@@ -508,28 +526,45 @@ pub fn save_constants(methods: &Vec<String>, errors: &Vec<String>, callbacks: &V
   version.insert("patch".into(), milo_version.patch as u8);
 
   // Serialize constants
-  let mut consts: IndexMap<String, u8> = IndexMap::new();
-  consts.insert("MESSAGE_TYPE_AUTODETECT".into(), 0);
-  consts.insert("MESSAGE_TYPE_REQUEST".into(), 1);
-  consts.insert("MESSAGE_TYPE_RESPONSE".into(), 2);
-  consts.insert("CONNECTION_KEEPALIVE".into(), 0);
-  consts.insert("CONNECTION_CLOSE".into(), 1);
-  consts.insert("CONNECTION_UPGRADE".into(), 2);
+  let mut consts: IndexMap<String, Value> = IndexMap::new();
+  consts.insert(
+    "DEBUG".into(),
+    if cfg!(debug_assertions) {
+      Value::Bool(true)
+    } else {
+      Value::Bool(false)
+    },
+  );
+  consts.insert("MESSAGE_TYPE_AUTODETECT".into(), 0.into());
+  consts.insert("MESSAGE_TYPE_REQUEST".into(), 1.into());
+  consts.insert("MESSAGE_TYPE_RESPONSE".into(), 2.into());
+  consts.insert("CONNECTION_KEEPALIVE".into(), 0.into());
+  consts.insert("CONNECTION_CLOSE".into(), 1.into());
+  consts.insert("CONNECTION_UPGRADE".into(), 2.into());
 
   for (i, x) in methods.iter().enumerate() {
-    consts.insert(format!("METHOD_{}", x.replace('-', "_")), i as u8);
+    consts.insert(format!("METHOD_{}", x.replace('-', "_")), i.into());
   }
 
   for (i, x) in callbacks.iter().enumerate() {
-    consts.insert(format!("CALLBACK_{}", x.to_uppercase()), i as u8);
+    consts.insert(format!("CALLBACK_{}", x.to_uppercase()), i.into());
   }
 
+  let mut all = 0u64;
+  consts.insert("CALLBACK_ACTIVE_NONE".into(), 0.into());
+  for (i, x) in callbacks.iter().enumerate() {
+    let bit = 1 << i;
+    consts.insert(format!("CALLBACK_ACTIVE_{}", x.to_uppercase()), bit.into());
+    all |= bit;
+  }
+  consts.insert("CALLBACK_ACTIVE_ALL".into(), all.into());
+
   for (i, x) in errors.iter().enumerate() {
-    consts.insert(format!("ERROR_{}", x), i as u8);
+    consts.insert(format!("ERROR_{}", x), i.into());
   }
 
   for (i, x) in states.iter().enumerate() {
-    consts.insert(format!("STATE_{}", x), i as u8);
+    consts.insert(format!("STATE_{}", x.to_uppercase()), i.into());
   }
 
   // Prepare the data to save

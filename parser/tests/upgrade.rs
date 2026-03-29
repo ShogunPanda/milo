@@ -24,12 +24,12 @@ fn upgrade_connect_request() {
   );
 
   let consumed1 = parse(&mut parser, &message1);
-  assert!(consumed1 == 70);
-  assert!(matches!(parser.state, STATE_TUNNEL));
+  assert_eq!(consumed1, 70);
+  assert_eq!(parser.state, STATE_TUNNEL);
 
   let consumed2 = parse(&mut parser, &message2);
-  assert!(consumed2 == 0);
-  assert!(matches!(parser.state, STATE_TUNNEL));
+  assert_eq!(consumed2, 0);
+  assert_eq!(parser.state, STATE_TUNNEL);
 }
 
 #[test]
@@ -55,12 +55,12 @@ fn upgrade_connection_upgrade() {
   );
 
   let consumed1 = parse(&mut parser, &message1);
-  assert!(consumed1 == message1.len() - message2.len());
-  assert!(matches!(parser.state, STATE_TUNNEL));
+  assert_eq!(consumed1, message1.len() - message2.len());
+  assert_eq!(parser.state, STATE_TUNNEL);
 
   let consumed2 = parse(&mut parser, &message2);
-  assert!(consumed2 == 0);
-  assert!(matches!(parser.state, STATE_TUNNEL));
+  assert_eq!(consumed2, 0);
+  assert_eq!(parser.state, STATE_TUNNEL);
 }
 
 #[test]
@@ -85,10 +85,10 @@ fn upgrade_http_101() {
   );
 
   let consumed1 = parse(&mut parser, &message1);
-  assert!(consumed1 == message1.len() - 4);
-  assert!(matches!(parser.state, STATE_TUNNEL));
+  assert_eq!(consumed1, message1.len() - 4);
+  assert_eq!(parser.state, STATE_TUNNEL);
 
   let consumed2 = parse(&mut parser, &message2);
-  assert!(consumed2 == 0);
-  assert!(matches!(parser.state, STATE_TUNNEL));
+  assert_eq!(consumed2, 0);
+  assert_eq!(parser.state, STATE_TUNNEL);
 }

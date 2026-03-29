@@ -71,18 +71,42 @@ async function generateGluecode(profile, version, flags, constants) {
         const name = cleanName.slice(5)
         const selector = path.node.params[0].name
 
-        const values = Object.entries(constants)
+        let values = Object.entries(constants)
           .map(([k, v]) => (k.startsWith(selector) ? [k.replace(selector, ''), v] : null))
           .filter(Boolean)
 
-        path.insertBefore(
-          parse(`
+        if (name === 'Callbacks') {
+          const active_values = values.filter(v => v[0].startsWith('ACTIVE_'))
+
+          values = values.filter(v => !v[0].startsWith('ACTIVE_'))
+
+          path.insertBefore(
+            parse(`
             const ${name} = Object.freeze({
               ${values.map(([k, v]) => `${k}: ${v}`).join(',')},
               ${values.map(([k, v]) => `${v}: '${k}'`).join(',')}
             })
           `).program.body[0]
-        )
+          )
+
+          path.insertBefore(
+            parse(`
+            const ${name}Active = Object.freeze({
+              ${active_values.map(([k, v]) => `${k}: ${v}n`).join(',')},
+              ${active_values.map(([k, v]) => `${v}n: '${k}'`).join(',')}
+            })
+          `).program.body[0]
+          )
+        } else {
+          path.insertBefore(
+            parse(`
+            const ${name} = Object.freeze({
+              ${values.map(([k, v]) => `${k}: ${v}`).join(',')},
+              ${values.map(([k, v]) => `${v}: '${k}'`).join(',')}
+            })
+          `).program.body[0]
+          )
+        }
 
         enums.push(name)
       }
@@ -126,7 +150,11 @@ async function generateGluecode(profile, version, flags, constants) {
         case 'callbacks':
           {
             const callbacks = Object.entries(constants)
-              .map(c => (c[0].startsWith('CALLBACK_') ? c[0].replace('CALLBACK_', '').toLowerCase() : null))
+              .map(c =>
+                c[0].startsWith('CALLBACK_') && !c[0].startsWith('CALLBACK_ACTIVE')
+                  ? c[0].replace('CALLBACK_', '').toLowerCase()
+                  : null
+              )
               .filter(Boolean)
 
             const expr = parseExpression(`{ ${callbacks.map(c => `${c}: noop`).join(', ')} }`)
@@ -140,7 +168,11 @@ async function generateGluecode(profile, version, flags, constants) {
         case 'simple_callbacks':
           {
             const callbacks = Object.entries(constants)
-              .map(c => (c[0].startsWith('CALLBACK_') ? [c[0].replace('CALLBACK_', '').toLowerCase(), c[1]] : null))
+              .map(c =>
+                c[0].startsWith('CALLBACK_') && !c[0].startsWith('CALLBACK_ACTIVE')
+                  ? [c[0].replace('CALLBACK_', '').toLowerCase(), c[1]]
+                  : null
+              )
               .filter(Boolean)
 
             const expr = parseExpression(
@@ -161,7 +193,8 @@ async function generateGluecode(profile, version, flags, constants) {
           break
         case 'constants':
           for (const [k, v] of Object.entries(constants)) {
-            path.insertBefore(parseExpression(`{ ${k}: ${v} }`).properties)
+            const suffix = k.includes('CALLBACK_ACTIVE') ? 'n' : ''
+            path.insertBefore(parseExpression(`{ ${k}: ${v}${suffix} }`).properties)
           }
 
           break

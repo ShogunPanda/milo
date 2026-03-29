@@ -49,10 +49,10 @@ pub fn append_output(parser: &Parser, message: String, from: usize, size: usize)
 }
 
 #[allow(dead_code)]
-pub fn event(parser: &Parser, name: &str, position: usize, from: usize, size: usize) {
+pub fn event(parser: &Parser, name: &str, from: usize, size: usize) {
   append_output(
     parser,
-    format!("\"pos\": {}, \"event\": \"{}\"", position, name),
+    format!("\"pos\": {}, \"event\": \"{}\"", from, name),
     from,
     size,
   );
@@ -85,5 +85,5 @@ pub fn show_span(parser: &Parser, name: &str, from: usize, size: usize) {
     let _ = Box::into_raw(context);
   }
 
-  event(parser, name, parser.position, from, size);
+  event(parser, name, from, size);
 }

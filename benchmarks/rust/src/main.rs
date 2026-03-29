@@ -60,14 +60,13 @@ fn main() {
     let bw = (total as f64) / time;
 
     println!(
-      // "{:>21} | {:>12} | {:>8} MB | {:>10} MB/s | {:>10} ops/sec | {:>6} s",
-      "{:>21} | {:>12} | {:>8} MB | {:>10} MB/s | {:>10} ops/sec",
+      "{:>21} | {:>12} | {:>8} MB | {:>12} MB/s | {:>13} ops/sec | {:>6} s",
       name,
       format_number(iterations as f64, true),
       format_number(total as f64 / (1024.0 * 1024.0), false),
       format_number(bw / (1024 * 1024) as f64, false),
       format_number((iterations as f64) / time, false),
-      // format_number(time, false)
+      format_number(time, false)
     );
   }
 

@@ -263,10 +263,6 @@ Returns `true` if the parser the current message has a `Trailers` header.
 
 Returns the parser error description or `null`.
 
-### `getCallbackError(parser)`
-
-Returns the parser callback error or `null`.
-
 ### `setMode(parser, value)`
 
 Sets the parser mode.

@@ -17,7 +17,7 @@ function formatEvent(name) {
   return `"${name}"`
 }
 
-function appendOutput(message, context, parser, from, size) {
+function appendOutput(message, context, _, from, size) {
   const payload =
     typeof from === 'number' && typeof size === 'number' && size > 0
       ? `"${extractPayload(context, from, size).toString('utf-8')}"`
@@ -26,8 +26,8 @@ function appendOutput(message, context, parser, from, size) {
   return 0
 }
 
-function event(name, position, context, parser, from, size) {
-  return appendOutput(sprintf('"pos": {}, "event": "{}"', position, name), context, parser, from, size)
+function event(name, context, parser, from, size) {
+  return appendOutput(sprintf('"pos": {}, "event": "{}"', from, name), context, parser, from, size)
 }
 
 function showSpan(name, context, parser, from, size) {
@@ -35,16 +35,12 @@ function showSpan(name, context, parser, from, size) {
     context[name] = extractPayload(context, from, size).toString('utf-8')
   }
 
-  return event(name, context.milo.getPosition(parser), context, parser, from, size)
+  return event(name, context, parser, from, size)
 }
 
 function onStateChange(context, parser, from, size) {
   return appendOutput(
-    sprintf(
-      '"pos": {}, "event": "state", "state": "{}"',
-      context.milo.getPosition(parser),
-      context.milo.States[context.milo.getState(parser)]
-    ),
+    sprintf('"pos": {}, "event": "state", "state": "{}"', from, context.milo.States[context.milo.getState(parser)]),
     context,
     parser,
     from,
@@ -54,11 +50,7 @@ function onStateChange(context, parser, from, size) {
 
 function onMessageStart(context, parser, from, size) {
   return appendOutput(
-    sprintf(
-      '"pos": {}, "event": "begin", "configuration": { "debug": {} }',
-      context.milo.getPosition(parser),
-      context.milo.FLAG_DEBUG
-    ),
+    sprintf('"pos": {}, "event": "begin", "configuration": { "debug": {} }', from, context.milo.DEBUG),
     context,
     parser,
     from,
@@ -67,31 +59,21 @@ function onMessageStart(context, parser, from, size) {
 }
 
 function onMessageComplete(context, parser, from, size) {
-  return event('complete', context.milo.getPosition(parser), context, parser, from, size)
+  return event('complete', context, parser, from, size)
 }
 
 function onError(context, parser, from, size) {
   const errorDescription = context.milo.getErrorDescription(parser)
-  let callbackError = context.milo.getCallbackError(parser)
-
-  if (callbackError) {
-    callbackError = JSON.stringify({
-      type: callbackError.name,
-      message: callbackError.message,
-      stack: callbackError.stack
-    })
-  }
 
   const errorCode = parser.errorCode
   return appendOutput(
     sprintf(
-      '"pos": {}, "event": {}, "error_code": {}, "error_code_string": "{}", reason: "{}", callbackError: {}',
-      context.milo.getPosition(parser),
+      '"pos": {}, "event": {}, "error_code": {}, "error_code_string": "{}", reason: "{}"',
+      from,
       'error',
       errorCode,
       context.milo.Errors[errorCode],
-      errorDescription.toString(),
-      callbackError
+      errorDescription.toString()
     ),
     context,
     parser,
@@ -101,15 +83,15 @@ function onError(context, parser, from, size) {
 }
 
 function onFinish(context, parser, from, size) {
-  return event('finish', context.milo.getPosition(parser), context, parser, from, size)
+  return event('finish', context, parser, from, size)
 }
 
 function onRequest(context, parser, from, size) {
-  return event('request', context.milo.getPosition(parser), context, parser, from, size)
+  return event('request', context, parser, from, size)
 }
 
 function onResponse(context, parser, from, size) {
-  return event('response', context.milo.getPosition(parser), context, parser, from, size)
+  return event('response', context, parser, from, size)
 }
 
 function onMethod(context, parser, from, size) {
@@ -145,7 +127,7 @@ function onHeaderValue(context, parser, from, size) {
 }
 
 function onHeaders(context, parser, from, size) {
-  const position = context.milo.getPosition(parser)
+  const position = from
   const chunked = context.milo.hasChunkedTransferEncoding(parser)
   const contentLength = context.milo.getContentLength(parser)
   const method = context.method
@@ -249,7 +231,7 @@ function onHeaders(context, parser, from, size) {
 }
 
 function onUpgrade(context, parser, from, size) {
-  return event('upgrade', context.milo.getPosition(parser), context, parser, from, size)
+  return event('upgrade', context, parser, from, size)
 }
 
 function onChunkLength(context, parser, from, size) {
@@ -265,11 +247,11 @@ function onChunkExtensionValue(context, parser, from, size) {
 }
 
 function onChunk(context, parser, from, size) {
-  return event('chunk', context.milo.getPosition(parser), context, parser, from, size)
+  return event('chunk', context, parser, from, size)
 }
 
 function onBody(context, parser, from, size) {
-  return event('body', context.milo.getPosition(parser), context, parser, from, size)
+  return event('body', context, parser, from, size)
 }
 
 function onData(context, parser, from, size) {
@@ -285,7 +267,7 @@ function onTrailerValue(context, parser, from, size) {
 }
 
 function onTrailers(context, parser, from, size) {
-  return event('trailers', context.milo.getPosition(parser), context, parser, from, size)
+  return event('trailers', context, parser, from, size)
 }
 
 async function main() {
@@ -323,6 +305,7 @@ async function main() {
   context.milo = milo
 
   const parser = milo.create()
+  milo.setCallbacksActive(parser, milo.CALLBACK_ACTIVE_ALL)
 
   const request1 = 'GET / HTTP/1.1\r\n\r\n'
   const request2 =

@@ -4,13 +4,37 @@ use syn::{Expr, Ident, parse_macro_input};
 
 use crate::{
   native,
-  structs::{Failure, IdentifierWithExpr},
+  structs::{CallbackRequest, FailureRequest},
   wasm,
 };
 
-/// Takes a state name and returns its state variant, which is its uppercased
-/// version.
-fn format_state(ident: &Ident) -> Ident { format_ident!("STATE_{}", ident.to_string().to_uppercase()) }
+// Define the body for a state.
+pub fn state(input: TokenStream) -> TokenStream {
+  let definition = parse_macro_input!(input as Ident);
+  let state = format_ident!("STATE_{}", definition.to_string().to_uppercase());
+
+  TokenStream::from(quote! { #state })
+}
+
+/// Invokes one of the user defined callbacks, eventually attaching some view of
+/// the data (via pointer and length).
+pub fn callback(input: TokenStream) -> TokenStream {
+  let definition = parse_macro_input!(input as CallbackRequest);
+  let native = native::callback(&definition);
+  let wasm = wasm::callback(&definition);
+
+  let bitmask = format_ident!("CALLBACK_ACTIVE_{}", definition.identifier.to_string().to_uppercase());
+
+  TokenStream::from(quote! {
+    if self.callbacks_active & #bitmask != 0 {
+      #[cfg(not(target_family = "wasm"))]
+      #native
+
+      #[cfg(target_family = "wasm")]
+      #wasm
+    }
+  })
+}
 
 // Marks a certain number of characters as used.
 pub fn advance(input: TokenStream) -> TokenStream {
@@ -19,49 +43,19 @@ pub fn advance(input: TokenStream) -> TokenStream {
   TokenStream::from(quote! { advanced += #len; })
 }
 
-// Define the body for a state.
-pub fn state(input: TokenStream) -> TokenStream {
-  let definition = parse_macro_input!(input as Ident);
-  let state = format_state(&definition);
-
-  TokenStream::from(quote! { #state })
-}
-
 /// Moves the parser to a new state.
 pub fn move_to(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as Ident);
-  let state = format_state(&definition);
+  let state = format_ident!("STATE_{}", definition.to_string().to_uppercase());
 
   TokenStream::from(quote! { self.state = #state; })
 }
 
-/// Marks the parsing a failed, setting a error code and and error message.
-pub fn fail(input: TokenStream) -> TokenStream {
-  let definition = parse_macro_input!(input as Failure);
-  let error = format_ident!("ERROR_{}", definition.error);
-  let message = definition.message;
+/// Go to the next iteration of the parser
+pub fn next() -> TokenStream { TokenStream::from(quote! { break 'state; }) }
 
-  TokenStream::from(quote! {
-    self.fail(#error, #message);
-    break 'parser;
-  })
-}
-
-/// Invokes one of the user defined callbacks, eventually attaching some view of
-/// the data (via pointer and length).
-pub fn callback(input: TokenStream) -> TokenStream {
-  let definition = parse_macro_input!(input as IdentifierWithExpr);
-  let native = native::callback(&definition);
-  let wasm = wasm::callback(&definition);
-
-  TokenStream::from(quote! {
-    #[cfg(not(target_family = "wasm"))]
-    #native
-
-    #[cfg(target_family = "wasm")]
-    #wasm
-  })
-}
+/// Go to the next iteration of the parser
+pub fn stop() -> TokenStream { TokenStream::from(quote! { break 'parser; }) }
 
 /// Marks the parser as suspended, waiting for more data.
 pub fn suspend() -> TokenStream {
@@ -71,5 +65,14 @@ pub fn suspend() -> TokenStream {
   })
 }
 
-/// Go to the next iteration of the parser
-pub fn parse_next() -> TokenStream { TokenStream::from(quote! { break 'state; }) }
+/// Marks the parsing a failed, setting a error code and and error message.
+pub fn fail(input: TokenStream) -> TokenStream {
+  let definition = parse_macro_input!(input as FailureRequest);
+  let error = format_ident!("ERROR_{}", definition.error);
+  let message = definition.message;
+
+  TokenStream::from(quote! {
+    self.fail(#error, #message);
+    break 'parser;
+  })
+}

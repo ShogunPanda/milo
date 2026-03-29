@@ -16,6 +16,6 @@
   lto              = true
   panic            = 'abort'
   incremental      = false
-  codegen-units    = 16
+  codegen-units    = 1
   rpath            = false
   strip            = true

@@ -4,7 +4,8 @@ mod helpers;
 use std::ffi::c_uchar;
 
 use milo::{
-  MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE, Parser, STATE_ERROR, STATE_FINISH, STATE_HEADER_NAME, STATE_START,
+  CALLBACK_ACTIVE_ON_HEADERS, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE, Parser, STATE_ERROR, STATE_FINISH,
+  STATE_HEADER, STATE_START,
 };
 
 use crate::helpers::{context, create_parser, http, parse};
@@ -35,13 +36,13 @@ fn basic_disable_autodetect() {
 
   parser.mode = MESSAGE_TYPE_REQUEST;
   parse(&mut parser, &response);
-  assert!(matches!(parser.state, STATE_ERROR));
+  assert_eq!(parser.state, STATE_ERROR);
 
   parser.reset(false);
 
   parser.mode = MESSAGE_TYPE_RESPONSE;
   parse(&mut parser, &request);
-  assert!(matches!(parser.state, STATE_ERROR));
+  assert_eq!(parser.state, STATE_ERROR);
 }
 
 #[test]
@@ -56,19 +57,19 @@ fn basic_incomplete_string_1() {
   let sample6 = http(r#"Value\r\n\r\n"#);
 
   let consumed1 = parse(&mut parser, &sample1);
-  assert!(consumed1 == sample1.len() - 4);
+  assert_eq!(consumed1, 0);
   let consumed2 = parse(&mut parser, &sample2);
-  assert!(consumed2 == sample2.len());
+  assert_eq!(consumed2, 0);
   let consumed3 = parse(&mut parser, &sample3);
-  assert!(consumed3 == 0);
+  assert_eq!(consumed3, 0);
   let consumed4 = parse(&mut parser, &sample4);
-  assert!(consumed4 == sample4.len());
+  assert_eq!(consumed4, 0);
   let consumed5 = parse(&mut parser, &sample5);
-  assert!(consumed5 == 0);
+  assert_eq!(consumed5, 0);
   let consumed6 = parse(&mut parser, &sample6);
-  assert!(consumed6 == sample6.len());
+  assert_eq!(consumed6, 0);
 
-  assert!(!matches!(parser.state, STATE_ERROR));
+  assert_eq!(parser.state, STATE_ERROR);
 }
 
 #[test]
@@ -80,12 +81,12 @@ fn basic_incomplete_string_2() {
   let sample2 = http(r#"GET / HTTP/1.1\r\nHost: foo\r\n\r\n"#);
 
   let consumed1 = parse(&mut parser, &sample1);
-  assert!(consumed1 == 0);
+  assert_eq!(consumed1, 0);
 
   let consumed2 = parse(&mut parser, &sample2);
-  assert!(consumed2 == sample2.len());
+  assert_eq!(consumed2, sample2.len());
 
-  assert!(!matches!(parser.state, STATE_ERROR));
+  assert_ne!(parser.state, STATE_ERROR);
 }
 
 #[test]
@@ -106,39 +107,39 @@ fn basic_incomplete_string_automanaged_1() {
   let _ = Box::into_raw(context);
 
   let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
-  assert!(consumed1 == sample1.len() - 4);
+  assert_eq!(consumed1, 0);
   let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
-  assert!(consumed2 == sample2.len() + 4);
+  assert_eq!(consumed2, 16);
   let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
-  assert!(consumed3 == 0);
+  assert_eq!(consumed3, 0);
   let consumed4 = parser.parse(sample4.as_ptr(), sample4.len());
-  assert!(consumed4 == sample3.len() + sample4.len() - 1);
+  assert_eq!(consumed4, 0);
   let consumed5 = parser.parse(sample5.as_ptr(), sample5.len());
-  assert!(consumed5 == 1);
+  assert_eq!(consumed5, 0);
   let consumed6 = parser.parse(sample6.as_ptr(), sample6.len());
-  assert!(consumed6 == sample5.len() + sample6.len());
+  assert_eq!(consumed6, sample3.len() + sample4.len() + sample5.len() + sample6.len());
 
-  assert!(!matches!(parser.state, STATE_ERROR));
-  assert!(parser.parsed == message.len() as u64);
+  assert_ne!(parser.state, STATE_ERROR);
+  assert_eq!(parser.parsed, message.len() as u64);
 
   // Verify the field is not reset
   parser.reset(true);
 
   let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
-  assert!(consumed1 == sample1.len() - 4);
+  assert_eq!(consumed1, 0);
   let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
-  assert!(consumed2 == sample2.len() + 4);
+  assert_eq!(consumed2, 16);
   let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
-  assert!(consumed3 == 0);
+  assert_eq!(consumed3, 0);
   let consumed4 = parser.parse(sample4.as_ptr(), sample4.len());
-  assert!(consumed4 == sample3.len() + sample4.len() - 1);
+  assert_eq!(consumed4, 0);
   let consumed5 = parser.parse(sample5.as_ptr(), sample5.len());
-  assert!(consumed5 == 1);
+  assert_eq!(consumed5, 0);
   let consumed6 = parser.parse(sample6.as_ptr(), sample6.len());
-  assert!(consumed6 == sample5.len() + sample6.len());
+  assert_eq!(consumed6, sample3.len() + sample4.len() + sample5.len() + sample6.len());
 
-  assert!(!matches!(parser.state, STATE_ERROR));
-  assert!(parser.parsed == (message.len() * 2) as u64);
+  assert_ne!(parser.state, STATE_ERROR);
+  assert_eq!(parser.parsed, (message.len() * 2) as u64);
 }
 
 #[test]
@@ -159,8 +160,8 @@ fn basic_incomplete_string_automanaged_2() {
   parser.parse(sample1.as_ptr(), sample1.len());
   parser.parse(sample2.as_ptr(), sample2.len());
 
-  assert!(!matches!(parser.state, STATE_ERROR));
-  assert!(parser.parsed == message.len() as u64);
+  assert_ne!(parser.state, STATE_ERROR);
+  assert_eq!(parser.parsed, message.len() as u64);
 }
 
 #[test]
@@ -190,7 +191,7 @@ fn basic_sample_multiple_requests() {
   );
 
   parse(&mut parser, &message);
-  assert!(!matches!(parser.state, STATE_ERROR));
+  assert_ne!(parser.state, STATE_ERROR);
 }
 
 #[test]
@@ -212,7 +213,8 @@ fn basic_connection_close() {
   );
 
   parse(&mut parser, &message);
-  assert!(matches!(parser.state, STATE_FINISH));
+
+  assert_eq!(parser.state, STATE_FINISH);
 }
 
 #[test]
@@ -243,7 +245,7 @@ fn basic_sample_multiple_responses() {
   );
 
   parse(&mut parser, &message);
-  assert!(!matches!(parser.state, STATE_ERROR));
+  assert_ne!(parser.state, STATE_ERROR);
 }
 
 #[test]
@@ -267,7 +269,7 @@ fn basic_trailers() {
   );
 
   parse(&mut parser, &message);
-  assert!(!matches!(parser.state, STATE_ERROR));
+  assert_ne!(parser.state, STATE_ERROR);
 }
 
 #[test]
@@ -279,13 +281,13 @@ fn basic_incomplete_body() {
   let sample3 = http(r#"890\r\n"#);
 
   let consumed1 = parse(&mut parser, &sample1);
-  assert!(consumed1 == sample1.len());
+  assert_eq!(consumed1, sample1.len());
   let consumed2 = parse(&mut parser, &sample2);
-  assert!(consumed2 == sample2.len());
+  assert_eq!(consumed2, sample2.len());
   let consumed3 = parse(&mut parser, &sample3);
-  assert!(consumed3 == sample3.len());
+  assert_eq!(consumed3, sample3.len());
 
-  assert!(!matches!(parser.state, STATE_ERROR));
+  assert_ne!(parser.state, STATE_ERROR);
 }
 
 #[test]
@@ -297,13 +299,13 @@ fn basic_incomplete_chunk() {
   let sample3 = http(r#"890\r\n0\r\nx-foo:value\r\n\r\n"#);
 
   let consumed1 = parse(&mut parser, &sample1);
-  assert!(consumed1 == sample1.len());
+  assert_eq!(consumed1, sample1.len());
   let consumed2 = parse(&mut parser, &sample2);
-  assert!(consumed2 == sample2.len());
+  assert_eq!(consumed2, sample2.len());
   let consumed3 = parse(&mut parser, &sample3);
-  assert!(consumed3 == sample3.len());
+  assert_eq!(consumed3, sample3.len());
 
-  assert!(!matches!(parser.state, STATE_ERROR));
+  assert_ne!(parser.state, STATE_ERROR);
 }
 
 #[test]
@@ -321,7 +323,7 @@ fn basic_connection_header() {
   );
 
   parse(&mut parser, &close_connection);
-  assert!(matches!(parser.state, STATE_FINISH));
+  assert_eq!(parser.state, STATE_FINISH);
 
   parser.reset(false);
 
@@ -335,7 +337,8 @@ fn basic_connection_header() {
   );
 
   parse(&mut parser, &keep_alive_connection);
-  assert!(matches!(parser.state, STATE_START));
+
+  assert_eq!(parser.state, STATE_START);
 }
 
 #[test]
@@ -354,29 +357,30 @@ fn basic_pause_and_resume() {
   parser.callbacks.on_headers = |p: &mut Parser, _at: usize, _size: usize| {
     p.pause();
   };
+  parser.callbacks_active |= CALLBACK_ACTIVE_ON_HEADERS;
 
-  assert!(!parser.paused);
+  assert_eq!(parser.paused, false);
 
   let consumed1 = parse(&mut parser, &sample1);
-  assert!(consumed1 == sample1.len());
+  assert_eq!(consumed1, sample1.len());
 
-  assert!(!parser.paused);
+  assert_eq!(parser.paused, false);
   let consumed2 = parse(&mut parser, &sample2);
-  assert!(consumed2 == sample2.len() - 3);
-  assert!(parser.paused);
+  assert_eq!(consumed2, sample2.len() - 3);
+  assert_eq!(parser.paused, true);
 
   let consumed3 = parse(&mut parser, &sample3);
-  assert!(consumed3 == 0);
+  assert_eq!(consumed3, 0);
 
-  assert!(parser.paused);
+  assert_eq!(parser.paused, true);
   parser.resume();
-  assert!(!parser.paused);
+  assert_eq!(parser.paused, false);
 
   let consumed4 = parse(&mut parser, &sample3);
-  assert!(consumed4 == sample3.len());
-  assert!(!parser.paused);
+  assert_eq!(consumed4, sample3.len());
+  assert_eq!(parser.paused, false);
 
-  assert!(!matches!(parser.state, STATE_ERROR));
+  assert_ne!(parser.state, STATE_ERROR);
 }
 
 #[test]
@@ -418,22 +422,22 @@ fn basic_restart() {
   );
 
   parse(&mut parser, &response);
-  assert!(matches!(parser.state, STATE_START));
+  assert_eq!(parser.state, STATE_START);
 
   parser.mode = MESSAGE_TYPE_REQUEST;
   parser.reset(false);
 
   parse(&mut parser, &request);
-  assert!(matches!(parser.state, STATE_START));
+  assert_eq!(parser.state, STATE_START);
 }
 
 #[test]
 fn basic_finish_logic() {
   let mut parser = create_parser();
 
-  assert!(matches!(parser.state, STATE_START));
+  assert_eq!(parser.state, STATE_START);
   parser.finish();
-  assert!(matches!(parser.state, STATE_FINISH));
+  assert_eq!(parser.state, STATE_FINISH);
 
   parser.reset(false);
 
@@ -448,9 +452,9 @@ fn basic_finish_logic() {
   );
 
   parse(&mut parser, &close_connection);
-  assert!(matches!(parser.state, STATE_FINISH));
+  assert_eq!(parser.state, STATE_FINISH);
   parser.finish();
-  assert!(matches!(parser.state, STATE_FINISH));
+  assert_eq!(parser.state, STATE_FINISH);
 
   parser.reset(false);
 
@@ -464,9 +468,9 @@ fn basic_finish_logic() {
   );
 
   parse(&mut parser, &keep_alive_connection);
-  assert!(matches!(parser.state, STATE_START));
+  assert_eq!(parser.state, STATE_START);
   parser.finish();
-  assert!(matches!(parser.state, STATE_FINISH));
+  assert_eq!(parser.state, STATE_FINISH);
 
   parser.reset(false);
 
@@ -478,9 +482,9 @@ fn basic_finish_logic() {
 
   parse(&mut parser, &incomplete);
 
-  assert!(matches!(parser.state, STATE_HEADER_NAME));
+  assert_eq!(parser.state, STATE_HEADER);
   parser.finish();
-  assert!(matches!(parser.state, STATE_ERROR));
+  assert_eq!(parser.state, STATE_ERROR);
 }
 
 #[test]
@@ -500,5 +504,5 @@ fn basic_empty_fields() {
   );
 
   parse(&mut parser, &message);
-  assert!(!matches!(parser.state, STATE_ERROR));
+  assert_ne!(parser.state, STATE_ERROR);
 }

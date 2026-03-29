@@ -1,19 +1,14 @@
 { "pos": 0, "event": "state", "state": "AUTODETECT", "data": null }
 { "pos": 0, "event": "request", "data": null }
 { "pos": 0, "event": "begin", "configuration": { "debug": true }, "data": null }
-{ "pos": 0, "event": "state", "state": "REQUEST", "data": null }
-{ "pos": 0, "event": "state", "state": "REQUEST_METHOD", "data": null }
+{ "pos": 0, "event": "state", "state": "REQUEST_LINE", "data": null }
 { "pos": 0, "event": "method", "data": "GET" }
-{ "pos": 4, "event": "state", "state": "REQUEST_URL", "data": null }
 { "pos": 4, "event": "url", "data": "/" }
-{ "pos": 6, "event": "state", "state": "REQUEST_PROTOCOL", "data": null }
 { "pos": 6, "event": "protocol", "data": "HTTP" }
-{ "pos": 11, "event": "state", "state": "REQUEST_VERSION", "data": null }
 { "pos": 11, "event": "version", "data": "1.1" }
-{ "pos": 16, "event": "state", "state": "HEADER_NAME", "data": null }
-{ "pos": 18, "event": "state", "state": "HEADERS", "data": null }
+{ "pos": 16, "event": "state", "state": "HEADER", "data": null }
+{ "pos": 18, "event": "state", "state": "BODY_DECISION", "data": null }
 { "pos": 18, "event": "headers", "type": "request", "method": "GET", "url": "/", "protocol": "HTTP", "version": "1.1", "body": null, "data": null }
-{ "pos": 18, "event": "state", "state": "COMPLETE", "data": null }
 { "pos": 18, "event": "complete", "data": null }
 { "pos": 18, "event": "state", "state": "START", "data": null }
 { "pos": 18, "consumed": 18, "state": "START" }
@@ -23,46 +18,34 @@
 { "pos": 0, "event": "state", "state": "AUTODETECT", "data": null }
 { "pos": 0, "event": "response", "data": null }
 { "pos": 0, "event": "begin", "configuration": { "debug": true }, "data": null }
-{ "pos": 0, "event": "state", "state": "RESPONSE", "data": null }
+{ "pos": 0, "event": "state", "state": "STATUS_LINE", "data": null }
 { "pos": 0, "event": "protocol", "data": "HTTP" }
-{ "pos": 5, "event": "state", "state": "RESPONSE_VERSION", "data": null }
 { "pos": 5, "event": "version", "data": "1.1" }
-{ "pos": 9, "event": "state", "state": "RESPONSE_STATUS", "data": null }
 { "pos": 9, "event": "status", "data": "200" }
-{ "pos": 13, "event": "state", "state": "RESPONSE_REASON", "data": null }
 { "pos": 13, "event": "reason", "data": "OK" }
-{ "pos": 17, "event": "state", "state": "HEADER_NAME", "data": null }
+{ "pos": 17, "event": "state", "state": "HEADER", "data": null }
 { "pos": 17, "event": "header_name", "data": "Transfer-Encoding" }
-{ "pos": 35, "event": "state", "state": "HEADER_TRANSFER_ENCODING", "data": null }
 { "pos": 36, "event": "header_value", "data": "chunked" }
-{ "pos": 45, "event": "state", "state": "HEADER_NAME", "data": null }
 { "pos": 45, "event": "header_name", "data": "Trailer" }
-{ "pos": 53, "event": "state", "state": "HEADER_VALUE", "data": null }
 { "pos": 54, "event": "header_value", "data": "x-trailer" }
-{ "pos": 67, "event": "state", "state": "HEADERS", "data": null }
+{ "pos": 67, "event": "state", "state": "BODY_DECISION", "data": null }
 { "pos": 67, "event": "headers", "type": "response", "status": 200, "protocol": "HTTP", "version": "1.1", "body": "chunked", "data": null }
-{ "pos": 67, "event": "state", "state": "CHUNK_LENGTH", "data": null }
+{ "pos": 67, "event": "state", "state": "CHUNK_HEADER", "data": null }
 { "pos": 67, "event": "chunk_length", "data": "c" }
-{ "pos": 69, "event": "state", "state": "CHUNK_EXTENSION_NAME", "data": null }
+{ "pos": 69, "event": "state", "state": "CHUNK_EXTENSIONS", "data": null }
 { "pos": 69, "event": "chunk_extensions_name", "data": "need" }
-{ "pos": 74, "event": "state", "state": "CHUNK_EXTENSION_VALUE", "data": null }
 { "pos": 74, "event": "chunk_extension_value", "data": "love" }
 { "pos": 80, "event": "state", "state": "CHUNK_DATA", "data": null }
 { "pos": 80, "event": "chunk", "data": null }
 { "pos": 80, "event": "data", "data": "hello world!" }
-{ "pos": 92, "event": "state", "state": "CHUNK_END", "data": null }
-{ "pos": 94, "event": "state", "state": "CHUNK_LENGTH", "data": null }
+{ "pos": 94, "event": "state", "state": "CHUNK_HEADER", "data": null }
 { "pos": 94, "event": "chunk_length", "data": "0" }
-{ "pos": 97, "event": "state", "state": "CHUNK_DATA", "data": null }
 { "pos": 97, "event": "chunk", "data": null }
 { "pos": 97, "event": "body", "data": null }
-{ "pos": 97, "event": "state", "state": "TRAILER_NAME", "data": null }
+{ "pos": 97, "event": "state", "state": "TRAILER", "data": null }
 { "pos": 97, "event": "trailer_name", "data": "X-Trailer" }
-{ "pos": 107, "event": "state", "state": "TRAILER_VALUE", "data": null }
 { "pos": 108, "event": "trailer_value", "data": "value" }
-{ "pos": 117, "event": "state", "state": "TRAILERS", "data": null }
 { "pos": 117, "event": "trailers", "data": null }
-{ "pos": 117, "event": "state", "state": "COMPLETE", "data": null }
 { "pos": 117, "event": "complete", "data": null }
 { "pos": 117, "event": "state", "state": "START", "data": null }
 { "pos": 117, "consumed": 117, "state": "START" }

@@ -3,10 +3,11 @@ use std::{env, ffi::c_void};
 use milo::Parser;
 use regex::Regex;
 
-mod callbacks;
+pub mod callbacks;
 pub mod context;
-mod output;
+pub mod output;
 
+#[allow(unused)]
 pub fn create_parser() -> Parser {
   let mut parser = Parser::new();
   let context = Box::new(context::Context::new());
@@ -45,6 +46,7 @@ pub fn create_parser() -> Parser {
   parser
 }
 
+#[allow(unused)]
 pub fn http(input: &str) -> String {
   let trailing_ws = Regex::new(r"(?m)^\s+").unwrap();
 

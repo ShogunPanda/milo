@@ -1,16 +1,19 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 
-use crate::structs::IdentifierWithExpr;
+use crate::structs::CallbackRequest;
 
-// Handles a callback.
-pub fn callback(definition: &IdentifierWithExpr) -> proc_macro2::TokenStream {
+pub fn callback(definition: &CallbackRequest) -> proc_macro2::TokenStream {
   let callback = &definition.identifier;
 
-  if let Some(length) = &definition.expr {
-    quote! { (self.callbacks.#callback)(self, self.position, #length); }
+  if let Some(offset) = &definition.offset
+    && let Some(length) = &definition.length
+  {
+    quote! {
+      (self.callbacks.#callback)(self, self.position + #offset, #length);
+    }
   } else {
-    quote! { (self.callbacks.#callback)(self, 0, 0); }
+    quote! { (self.callbacks.#callback)(self, self.position, 0); }
   }
 }
 

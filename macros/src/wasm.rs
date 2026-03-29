@@ -1,16 +1,17 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 
-use crate::structs::IdentifierWithExpr;
+use crate::structs::CallbackRequest;
 
-// Handles a callback.
-pub fn callback(definition: &IdentifierWithExpr) -> proc_macro2::TokenStream {
+pub fn callback(definition: &CallbackRequest) -> proc_macro2::TokenStream {
   let callback = &definition.identifier;
 
-  if let Some(length) = &definition.expr {
-    quote! { unsafe { #callback(self.ptr, self.position, #length) }; }
+  if let Some(offset) = &definition.offset
+    && let Some(length) = &definition.length
+  {
+    quote! { unsafe { #callback(self.ptr, self.position + #offset, #length) }; }
   } else {
-    quote! { unsafe { #callback(self.ptr, 0, 0) }; }
+    quote! { unsafe { #callback(self.ptr, self.position, 0) }; }
   }
 }
 
@@ -21,7 +22,7 @@ pub fn generate_callbacks(callbacks: &Vec<String>) -> TokenStream {
   TokenStream::from(quote! {
     #[cfg(target_family = "wasm")]
     #[link(wasm_import_module = "env")]
-    extern "C" {
+    unsafe extern "C" {
       #(fn #callbacks(parser: *mut c_void, _at: usize, _len: usize);)*
 
       #[cfg(any(debug_assertions, feature = "debug"))]

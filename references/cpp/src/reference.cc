@@ -32,7 +32,7 @@ void on_state_change(milo::Parser* parser, usize_t from, usize_t size) {
            position, state.ptr);
   milo::milo_free_string(state);
 
-  append_output(parser, message, data, size);
+  append_output(parser, message, data, from, size);
 }
 
 void on_message_start(milo::Parser* parser, usize_t from, usize_t size) {
@@ -44,12 +44,12 @@ void on_message_start(milo::Parser* parser, usize_t from, usize_t size) {
            "\"pos\": %lu, \"event\": \"begin\", \"configuration\": { \"debug\": %s }", position,
            milo::DEBUG ? "true" : "false");
 
-  append_output(parser, message, data, size);
+  append_output(parser, message, data, from, size);
 }
 
 void on_message_complete(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  event(parser, "complete", parser->position, data, size);
+  event(parser, "complete", data, from, size);
 }
 
 void on_error(milo::Parser* parser, usize_t from, usize_t size) {
@@ -66,62 +66,62 @@ void on_error(milo::Parser* parser, usize_t from, usize_t size) {
   milo::milo_free_string(error_code_string);
   milo::milo_free_string(error_code_description);
 
-  append_output(parser, message, data, size);
+  append_output(parser, message, data, from, size);
 }
 
 void on_finish(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  event(parser, "finish", parser->position, data, size);
+  event(parser, "finish", data, from, size);
 }
 
 void on_request(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  event(parser, "request", parser->position, data, size);
+  event(parser, "request", data, from, size);
 }
 
 void on_response(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  event(parser, "response", parser->position, data, size);
+  event(parser, "response", data, from, size);
 }
 
 void on_method(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "method", data, size);
+  show_span(parser, "method", data, from, size);
 }
 
 void on_url(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "url", data, size);
+  show_span(parser, "url", data, from, size);
 }
 
 void on_protocol(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "protocol", data, size);
+  show_span(parser, "protocol", data, from, size);
 }
 
 void on_version(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "version", data, size);
+  show_span(parser, "version", data, from, size);
 }
 
 void on_status(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "status", data, size);
+  show_span(parser, "status", data, from, size);
 }
 
 void on_reason(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "reason", data, size);
+  show_span(parser, "reason", data, from, size);
 }
 
 void on_header_name(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "header_name", data, size);
+  show_span(parser, "header_name", data, from, size);
 }
 
 void on_header_value(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "header_value", data, size);
+  show_span(parser, "header_value", data, from, size);
 }
 
 void on_headers(milo::Parser* parser, usize_t from, usize_t size) {
@@ -174,57 +174,57 @@ void on_headers(milo::Parser* parser, usize_t from, usize_t size) {
     }
   }
 
-  append_output(parser, message, data, size);
+  append_output(parser, message, data, from, size);
 }
 
 void on_upgrade(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  event(parser, "upgrade", parser->position, data, size);
+  event(parser, "upgrade", data, from, size);
 }
 
 void on_chunk_length(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "chunk_length", data, size);
+  show_span(parser, "chunk_length", data, from, size);
 }
 
 void on_chunk_extension_name(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "chunk_extensions_name", data, size);
+  show_span(parser, "chunk_extensions_name", data, from, size);
 }
 
 void on_chunk_extension_value(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "chunk_extension_value", data, size);
+  show_span(parser, "chunk_extension_value", data, from, size);
 }
 
 void on_chunk(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  event(parser, "chunk", parser->position, data, size);
+  event(parser, "chunk", data, from, size);
 }
 
 void on_body(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  event(parser, "body", parser->position, data, size);
+  event(parser, "body", data, from, size);
 }
 
 void on_data(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "data", data, size);
+  show_span(parser, "data", data, from, size);
 }
 
 void on_trailer_name(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "trailer_name", data, size);
+  show_span(parser, "trailer_name", data, from, size);
 }
 
 void on_trailer_value(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  show_span(parser, "trailer_value", data, size);
+  show_span(parser, "trailer_value", data, from, size);
 }
 
 void on_trailers(milo::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  event(parser, "trailers", parser->position, data, size);
+  event(parser, "trailers", data, from, size);
 }
 
 int main() {
@@ -262,6 +262,7 @@ int main() {
   parser->callbacks.on_trailer_name = on_trailer_name;
   parser->callbacks.on_trailer_value = on_trailer_value;
   parser->callbacks.on_trailers = on_trailers;
+  parser->callbacks_active |= milo::CALLBACK_ACTIVE_ALL;
 
   context.input = copy_string(request1, 0);
   usize_t consumed = milo::milo_parse(parser, reinterpret_cast<const uchar_t*>(request1), strlen(request1));

@@ -64,6 +64,8 @@ std::string load_message(std::string path) {
 int main() {
   std::string samples[SAMPLES_NUM] = {"seanmonstar_httparse", "nodejs_http_parser", "undici"};
 
+  printf("\n");
+
   for (size_t i = 0; i < SAMPLES_NUM; i++) {
     milo::Parser* parser = milo::milo_create();
     std::string payload = load_message(samples[i]);
@@ -89,9 +91,11 @@ int main() {
     std::string throughtput = format_number((iterations) / time, false);
     std::string duration = format_number(time, false);
 
-    printf("%21s | %12s samples | %8s MB | %10s MB/s | %10s ops/sec | %6s s\n", samples[i].c_str(),
+    printf("%21s | %12s samples | %8s MB | %12s MB/s | %13s ops/sec | %6s s\n", samples[i].c_str(),
            total_samples.c_str(), size.c_str(), speed.c_str(), throughtput.c_str(), duration.c_str());
   }
 
+  printf("\n");
+  
   return 0;
 }

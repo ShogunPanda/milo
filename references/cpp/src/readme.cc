@@ -28,9 +28,10 @@ int main() {
     char* payload = reinterpret_cast<char*>(malloc(sizeof(char) * size));
     strncpy(payload, reinterpret_cast<const char*>(p->context) + from, size);
 
-    printf("Pos=%lu Body: %s\n", p->position, payload);
+    printf("Pos=%lu Body: %s\n", from, payload);
     free(payload);
   };
+  parser->callbacks_active |= milo::CALLBACK_ACTIVE_ON_DATA;
 
   // Now perform the main parsing using milo.parse. The method returns the number of consumed characters.
   milo::milo_parse(parser, reinterpret_cast<const unsigned char*>(message), strlen(message));

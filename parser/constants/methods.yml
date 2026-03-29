@@ -54,3 +54,5 @@
 - TEARDOWN
 # Other commonly supported methods for backwards compatibility
 - PURGE
+# https://datatracker.ietf.org/doc/draft-ietf-httpbis-safe-method-w-body/
+- QUERY

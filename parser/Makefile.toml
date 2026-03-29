@@ -78,7 +78,7 @@
   script = [
     "mkdir -p dist/cpp/${CONFIGURATION}",
     "rm -rf dist/cpp/${CONFIGURATION}/*",
-    "cargo build -Z unstable-options --target ${TARGET} ${CARGO_OPTIONS} --out-dir target/cpp/${CONFIGURATION}",
+    "cargo build -Z unstable-options --target ${TARGET} ${CARGO_OPTIONS} --artifact-dir target/cpp/${CONFIGURATION}",
     "cp target/cpp/${CONFIGURATION}/libmilo.a target/headers/milo.h dist/cpp/${CONFIGURATION}",
     "node ./tools/postbuild-cpp.mjs	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
   ]
@@ -103,9 +103,9 @@
     "mkdir -p dist/wasm",
     "rm -rf dist/wasm/${CONFIGURATION}",
     "mkdir -p dist/wasm/${CONFIGURATION}",
-    "cargo build -Z unstable-options --target wasm32-unknown-unknown ${CARGO_OPTIONS}",
+    "RUSTFLAGS=\"-C target-feature=+simd128\" cargo build -Z unstable-options --target wasm32-unknown-unknown ${CARGO_OPTIONS}",
     "cp -a target/wasm32-unknown-unknown/${CONFIGURATION}/milo.wasm dist/wasm/${CONFIGURATION}",
-    "wasm-opt -O3 -o dist/wasm/${CONFIGURATION}/milo.wasm dist/wasm/${CONFIGURATION}/milo.wasm",
+    "wasm-opt -O3 --enable-bulk-memory-opt --enable-simd -o dist/wasm/${CONFIGURATION}/milo.wasm dist/wasm/${CONFIGURATION}/milo.wasm",
     "node ./tools/postbuild-wasm.mjs	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
   ]
 

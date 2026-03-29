@@ -19,8 +19,8 @@ fn undici() {
 
   let mut parser = create_parser();
   parse(&mut parser, &message);
-  assert!(!matches!(parser.state, STATE_ERROR));
-  assert!((parser.parsed as usize) == message.len());
+  assert_ne!(parser.state, STATE_ERROR);
+  assert_eq!((parser.parsed as usize), message.len());
 }
 
 #[test]
@@ -44,7 +44,7 @@ fn undici_multiple() {
 
   let mut parser = create_parser();
   parse(&mut parser, &message1);
-  assert!(!matches!(parser.state, STATE_ERROR));
+  assert_ne!(parser.state, STATE_ERROR);
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn undici_multibyte() {
     let _ = Box::into_raw(context);
 
     parser.parse(unsafe { message.as_ptr().add(offset) }, step);
-    assert!(!matches!(parser.state, STATE_ERROR));
+    assert_ne!(parser.state, STATE_ERROR);
 
     length -= step;
     offset += step;

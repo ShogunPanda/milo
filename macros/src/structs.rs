@@ -1,28 +1,22 @@
 use syn::parse::{Parse, ParseStream};
-use syn::{Expr, Ident, LitInt, LitStr, Result, Token};
+use syn::{Expr, Ident, Result, Token};
 
 /// An identifier associated to a message, typically a string - An example of
 /// this is used in `fail!`.
-pub struct Failure {
+pub struct FailureRequest {
   pub error: Ident,
   pub message: Expr,
 }
 
 /// An identifier associated to an expression - An example of this is used in
-/// `move!`.
-pub struct IdentifierWithExpr {
+/// `callback!`.
+pub struct CallbackRequest {
   pub identifier: Ident,
-  pub expr: Option<Expr>,
+  pub offset: Option<Expr>,
+  pub length: Option<Expr>,
 }
 
-/// A string length associated with a numeric modifier. It is used by
-/// `string_length!`.
-pub struct StringLength {
-  pub string: LitStr,
-  pub modifier: usize,
-}
-
-impl Parse for Failure {
+impl Parse for FailureRequest {
   // Parses a failure definition
   fn parse(input: ParseStream) -> Result<Self> {
     // Get the code
@@ -34,15 +28,16 @@ impl Parse for Failure {
     // Get the message
     let message = input.parse()?;
 
-    Ok(Failure { error, message })
+    Ok(FailureRequest { error, message })
   }
 }
 
-impl Parse for IdentifierWithExpr {
+impl Parse for CallbackRequest {
   // Parses a identifier and its optional expression
   fn parse(input: ParseStream) -> Result<Self> {
     let identifier = input.parse()?;
-    let mut expr = None;
+    let mut offset = None;
+    let mut length = None;
 
     // If there is more input
     if !input.is_empty() {
@@ -50,28 +45,19 @@ impl Parse for IdentifierWithExpr {
       input.parse::<Token![,]>()?;
 
       // Parse the expression
-      expr = Some(input.parse::<Expr>()?);
-    }
+      offset = Some(input.parse::<Expr>()?);
 
-    Ok(IdentifierWithExpr { identifier, expr })
-  }
-}
-
-impl Parse for StringLength {
-  // Parses a string length
-  fn parse(input: ParseStream) -> Result<Self> {
-    let string = input.parse()?;
-    let mut modifier = 0;
-
-    // If there is more input
-    if !input.is_empty() {
       // Discard the comma
       input.parse::<Token![,]>()?;
 
-      // Parse the modifier
-      modifier = input.parse::<LitInt>()?.base10_parse::<usize>()?;
+      // Parse the expression
+      length = Some(input.parse::<Expr>()?);
     }
 
-    Ok(StringLength { string, modifier })
+    Ok(CallbackRequest {
+      identifier,
+      offset,
+      length,
+    })
   }
 }

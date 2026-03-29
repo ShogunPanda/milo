@@ -21,10 +21,10 @@ function onUrlJSError(parser, from, size) {
   a = b
 }
 
-// TODO@PI: Support QUERY method (https://datatracker.ietf.org/doc/draft-ietf-httpbis-safe-method-w-body/)
 export async function main() {
   const milo = setup({ on_method: onMethod, on_url: onUrlJSError })
   const parser = milo.create()
+  milo.setCallbacksActive(parser, milo.CALLBACK_ACTIVE_ALL)
 
   const ptr = milo.alloc(100)
   const buffer = Buffer.from(milo.memory.buffer, ptr, 100)

@@ -1022,14 +1022,14 @@ impl Parser {
               // Less data than what it is expected for this chunk
               self.remaining_chunk_size -= available_64;
 
-              callback!(on_chunk);
+              callback!(on_chunk, 0, available);
               callback!(on_data, 0, available);
 
               advance!(available);
             } else {
               self.remaining_chunk_size = 0;
 
-              callback!(on_chunk);
+              callback!(on_chunk, 0, expected as usize);
               callback!(on_data, 0, expected as usize);
 
               advance!(expected as usize);

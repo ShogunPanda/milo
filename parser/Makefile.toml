@@ -104,7 +104,7 @@
     "rm -rf dist/wasm/${CONFIGURATION}",
     "mkdir -p dist/wasm/${CONFIGURATION}",
     "RUSTFLAGS=\"-C target-feature=+simd128\" cargo build -Z unstable-options --target wasm32-unknown-unknown ${CARGO_OPTIONS}",
-    "cp -a target/wasm32-unknown-unknown/${CONFIGURATION}/milo.wasm dist/wasm/${CONFIGURATION}",
+    "cp -a target/wasm32-unknown-unknown/release/milo.wasm dist/wasm/${CONFIGURATION}",
     "wasm-opt -O3 --enable-bulk-memory-opt --enable-simd -o dist/wasm/${CONFIGURATION}/milo.wasm dist/wasm/${CONFIGURATION}/milo.wasm",
     "node ./tools/postbuild-wasm.js	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
   ]

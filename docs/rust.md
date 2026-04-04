@@ -1,24 +1,4 @@
-TODO@PI: Here and in other languages, add headers
-
 # Rust API
-
-## Constants
-
-The crate exports several constants (`*` is used to denote a family prefix):
-
-- `DEBUG`: If the debug informations are enabled or not.
-- `MESSAGE_TYPE_*`: The type of the parser: it can autodetect (default) or only parse requests or response.
-- `ERROR_*`: An error code.
-- `METHOD_*`: An HTTP/RTSP request method.
-- `CONNECTION_*`: A `Connection` header value.
-- `CALLBACK_*`: A parser callback.
-- `STATE_*`: A parser state.
-
-## `Flags`
-
-A struct representing the current compile flags of Milo:
-
-- `debug`: If the debug informations are enabled or not.
 
 ## `Callback`
 
@@ -34,9 +14,56 @@ where the parameters have the following meaning:
 2. The payload offset. Can be `0`.
 3. The data length. Can be `0`.
 
-If both offset and length are `0`, it means the callback has no payload associated.
+If length is `0`, it means the callback has no payload associated.
 
-## `ParserCallbacks`
+Callbacks are dispatched only when the corresponding `CALLBACK_ACTIVE_*` flag is set in the parser `active_callbacks` field.
+
+Callbacks are disabled by default.
+
+## Constants
+
+The crate exports several constants (`*` is used to denote a family prefix):
+
+- `DEBUG`: If the debug informations are enabled or not.
+- `MESSAGE_TYPE_*`: The type of the parser: it can autodetect (default) or only parse requests or response.
+- `ERROR_*`: An error code.
+- `METHOD_*`: An HTTP/RTSP request method.
+- `CONNECTION_*`: A `Connection` header value.
+- `CALLBACK_*`: A parser callback.
+- `CALLBACK_ACTIVE_*`: A callback activation flag.
+- `STATE_*`: A parser state.
+
+## Enums
+
+All the enums below implement `TryFrom<usize>` and `Into<&str>` traits and have the `as_str` method.
+
+### `MessageTypes`
+
+An enum listing all possible message types.
+
+### `Errors`
+
+An enum listing all possible parser errors.
+
+### `Methods`
+
+An enum listing all possible HTTP/RTSP methods.
+
+### `Connections`
+
+An enum listing all possible connection (`Connection` header value) types.
+
+### `States`
+
+An enum listing all possible parser states.
+
+### `States`
+
+An enum listing all possible parser callbacks.
+
+## Types
+
+### `ParserCallbacks`
 
 A struct representing the callbacks for a parser.
 
@@ -73,7 +100,7 @@ Here's the list of supported callbacks:
 
 If you want to remove a previously set callback, you can use the `milo_noop` function also exported by this crate.
 
-## `Parser`
+### `Parser`
 
 A struct representing a parser. It has the following fields:
 
@@ -83,7 +110,9 @@ A struct representing a parser. It has the following fields:
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
 - `is_connect` (`bool`): If the current request used `CONNECT` method.
 - `skip_body` (`bool`): If the parser should skip the body.
-- `owner` (`*mut c_void`): The context of this parser. Use is reserved to the developer.
+- `max_start_line_length` (`usize`): Maximum allowed request/status line length. By default is `8192`.
+- `max_header_length` (`usize`): Maximum allowed header length. By default is `8192`.
+- `context` (`*mut c_void`): The context of this parser. Use is reserved to the developer.
 - `state` (`u8`): The current parser state.
 - `position` (`usize`): The current parser position in the slice in the current execution of `milo_parse`.
 - `parsed` (`u64`): The total bytes consumed from this parser.
@@ -102,6 +131,7 @@ A struct representing a parser. It has the following fields:
 - `has_chunked_transfer_encoding` (`bool`): If the current message has a `Transfer-Encoding` header.
 - `has_upgrade` (`bool`): If the current message has a `Connection: upgrade` header.
 - `has_trailers` (`bool`): If the current message has a `Trailers` header.
+- `active_callbacks` (`u64`): Active callback bitmask. Set to one or more `CALLBACK_ACTIVE_*` flags.
 - `callbacks` (`ParserCallbacks`): The callbacks for the current parser.
 - `error_description` (`*const c_uchar`): The parser error description.
 - `error_description_len` (`u16`): The parser error description length.
@@ -115,20 +145,23 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 - `continue_without_data`
 - `is_connect`
 - `skip_body`
+- `max_start_line_length`
+- `max_header_length`
 - `context`
+- `active_callbacks`
 - `callbacks`
 
-### `Parser::new() -> Parser`
+#### `Parser::new() -> Parser`
 
 Creates a new parser.
 
-### `Parser::parse(&mut self, data: *const c_uchar, limit: usize) -> usize`
+#### `Parser::parse(&mut self, data: *const c_uchar, limit: usize) -> usize`
 
 Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
-### `Parser::reset(&mut self, keep_parsed: bool)`
+#### `Parser::reset(&mut self, keep_parsed: bool)`
 
 Resets a parser. The second parameters specifies if to also reset the
 parsed counter.
@@ -140,92 +173,60 @@ The following fields are not modified:
 - `mode`
 - `manage_unconsumed`
 - `continue_without_data`
+- `max_start_line_length`
+- `max_header_length`
 - `context`
+- `active_callbacks`
+- `callbacks`
 
-### `Parser::clear(&mut self)`
+#### `Parser::clear(&mut self)`
 
 Clears all values about the message in the parser.
 
 The connection and message type fields are not cleared.
 
-### `Parser::pause(&mut self)`
+#### `Parser::pause(&mut self)`
 
 Pauses the parser. The parser will have to be resumed via `Parser::resume`.
 
-### `Parser::resume(&mut self)`
+#### `Parser::resume(&mut self)`
 
 Resumes the parser.
 
-### `Parser::finish(&mut self)`
+#### `Parser::finish(&mut self)`
 
 Marks the parser as finished. Any new data received via `parse` will
 put the parser in the error state.
 
-### `Parser::move_to(&mut self, state: usize, advance: usize)`
-
-Moves the parsers to a new state and marks a certain number of characters as used.
-
-This is meant to internal use.
-
-### `Parser::fail(&mut self, code: usize, description: &str)`
+#### `Parser::fail(&mut self, code: usize, description: &str)`
 
 Marks the parsing a failed, setting a error code and and error message.
 
 It always returns zero for internal use.
 
-### `Parser::state_str(&self) -> &str`
+#### `Parser::state_str(&self) -> &str`
 
 Returns the current parser's state as string.
 
-### `Parser::error_code_str(&self) -> &str`
+#### `Parser::error_code_str(&self) -> &str`
 
 Returns the current parser's error state as string.
 
-### `Parser::error_description_str(&self) -> &str`
+#### `Parser::error_description_str(&self) -> &str`
 
 Returns the current parser's error descrition.
 
-## `flags() -> Flags`
+## Methods
 
-Returns a struct representing the current compile flags of Milo.
-
-## `milo_noop(_parser: &Parser, _data: *const c_uchar, _len: usize)`
+### `milo_noop(_parser: &Parser, _data: *const c_uchar, _len: usize)`
 
 A callback that simply returns `0`.
 
 Use this callback as pointer when you want to remove a callback from the parser.
 
-## Enums
+## FFI public interface
 
-All the enums below implement `TryFrom<usize>` and `Into<&str>` traits and have the `as_str` method.
-
-### `MessageTypes`
-
-An enum listing all possible message types.
-
-### `Errors`
-
-An enum listing all possible parser errors.
-
-### `Methods`
-
-An enum listing all possible HTTP/RTSP methods.
-
-### `Connections`
-
-An enum listing all possible connection (`Connection` header value) types.
-
-### `States`
-
-An enum listing all possible parser states.
-
-### `States`
-
-An enum listing all possible parser callbacks.
-
-## C++ public interface
-
-The following functions are defined to allow Rust to work in a C++ environment.
+The following functions are defined to allow Rust to work in a C++ or WebAssembly environment.
 
 While you can use these functions within Rust, it makes little sense as they only call the corresponding method of the parser passed as first argument.
 
@@ -235,10 +236,6 @@ A struct representing a string containing the following fields:
 
 - `ptr` (`*const c_uchar`): The string data pointer.
 - `len` (`usize`): The string length.
-
-### `milo_flags() -> Flags`
-
-Returns a struct representing the current compile flags of Milo.
 
 ### `milo_free_string(s: CStringWithLength)`
 

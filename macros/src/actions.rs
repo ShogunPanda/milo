@@ -26,7 +26,7 @@ pub fn callback(input: TokenStream) -> TokenStream {
   let bitmask = format_ident!("CALLBACK_ACTIVE_{}", definition.identifier.to_string().to_uppercase());
 
   TokenStream::from(quote! {
-    if self.callbacks_active & #bitmask != 0 {
+    if self.active_callbacks & #bitmask != 0 {
       #[cfg(not(target_family = "wasm"))]
       #native
 
@@ -48,7 +48,11 @@ pub fn move_to(input: TokenStream) -> TokenStream {
   let definition = parse_macro_input!(input as Ident);
   let state = format_ident!("STATE_{}", definition.to_string().to_uppercase());
 
-  TokenStream::from(quote! { self.state = #state; })
+  TokenStream::from(quote! {
+     if self.state != STATE_ERROR {
+       self.state = #state;
+     }
+  })
 }
 
 /// Go to the next iteration of the parser

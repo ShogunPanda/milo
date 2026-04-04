@@ -54,7 +54,7 @@ pub struct Parser {
   pub has_trailers: bool,
 
   // Callback handling
-  pub callbacks_active: u64,
+  pub active_callbacks: u64,
   #[cfg(not(target_family = "wasm"))]
   pub callbacks: ParserCallbacks,
 
@@ -121,7 +121,7 @@ impl Parser {
       has_upgrade: false,
       has_trailers: false,
       // Callbacks handling
-      callbacks_active: 0,
+      active_callbacks: 0,
       #[cfg(not(target_family = "wasm"))]
       callbacks: ParserCallbacks::new(),
       // WASM Specific
@@ -226,17 +226,6 @@ impl Parser {
         self.fail(ERROR_UNEXPECTED_EOF, "Unexpected end of data");
       }
     }
-  }
-
-  /// Moves the parsers to a new state and marks a certain number of characters
-  /// as used.
-  ///
-  /// The allow annotation is needed when building in release mode.
-  #[allow(dead_code)]
-  pub fn move_to(&mut self, state: u8, advance: usize) {
-    // Change the state
-    self.state = state;
-    self.position += advance;
   }
 
   /// Marks the parsing a failed, setting a error code and and error message.

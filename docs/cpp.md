@@ -1,4 +1,6 @@
-# Linking Milo in C++
+# C++ API
+
+## Linking Milo in C++
 
 Milo release is composed by a header file `milo.h` and static library `libmilo.a`
 
@@ -12,36 +14,7 @@ where `$MILO_DIR` is the directory containing the `milo.h` and `libmilo.a` files
 
 When downloading Milo, you can choose between `debug` or `release` version:
 
-# C++ API
-
-The file `milo.h` defines several constants (`*` is used to denote a family prefix):
-
-- `MILO_VERSION_MAJOR`: The current Milo complete version as a string.
-- `MILO_VERSION_MAJOR`: The current Milo major version.
-- `MILO_VERSION_MINOR`: The current Milo minor version.
-- `MILO_VERSION_PATCH` The current Milo patch version.
-- `DEBUG`: If the debug informations are enabled or not.
-- `MESSAGE_TYPE_*`: The type of the parser: it can autodetect (default) or only parse requests or response.
-- `ERROR_*`: An error code.
-- `METHOD_*`: An HTTP/RTSP request method.
-- `CONNECTION_*`: A `Connection` header value.
-- `CALLBACK_*`: A parser callback.
-- `STATE_*`: A parser state.
-
-## `milo::Flags`
-
-A struct representing the current compile flags of Milo:
-
-- `debug`: If the debug informations are enabled or not.
-
-### `milo::CStringWithLength`
-
-A struct representing a string containing the following fields:
-
-- `ptr` (`const unsigned char *`): The string data pointer.
-- `len` (`uintptr_t`): The string length.
-
-## `milo::ParserCallbacks`
+## Callbacks handling
 
 All callback in Milo have the following signature (`Callback`):
 
@@ -55,9 +28,39 @@ where the parameters have the following meaning:
 2. The payload offset. Can be `0`.
 3. The data length. Can be `0`.
 
-If both offset and length are `0`, it means the callback has no payload associated.
+If length is `0`, it means the callback has no payload associated.
 
-## `milo::ParserCallbacks`
+Callbacks are dispatched only when the corresponding `CALLBACK_ACTIVE_*` flag is set in the parser `active_callbacks` field.
+
+Callbacks are disabled by default.
+
+## Constants
+
+The file `milo.h` defines several constants (`*` is used to denote a family prefix):
+
+- `MILO_VERSION`: The current Milo complete version as a string.
+- `MILO_VERSION_MAJOR`: The current Milo major version.
+- `MILO_VERSION_MINOR`: The current Milo minor version.
+- `MILO_VERSION_PATCH` The current Milo patch version.
+- `DEBUG`: If the debug informations are enabled or not.
+- `MESSAGE_TYPE_*`: The type of the parser: it can autodetect (default) or only parse requests or response.
+- `ERROR_*`: An error code.
+- `METHOD_*`: An HTTP/RTSP request method.
+- `CONNECTION_*`: A `Connection` header value.
+- `CALLBACK_*`: A parser callback.
+- `CALLBACK_ACTIVE_*`: A callback activation flag.
+- `STATE_*`: A parser state.
+
+## Types
+
+### `milo::CStringWithLength`
+
+A struct representing a string containing the following fields:
+
+- `ptr` (`const unsigned char *`): The string data pointer.
+- `len` (`uintptr_t`): The string length.
+
+### `milo::ParserCallbacks`
 
 A struct representing the callbacks for a parser. Here's the list of supported callbacks:
 
@@ -92,7 +95,7 @@ A struct representing the callbacks for a parser. Here's the list of supported c
 
 If you want to remove a previously set callback, you can use `milo::milo_noop`.
 
-## `milo::Parser`
+### `milo::Parser`
 
 A struct representing a parser. It has the following fields:
 
@@ -102,7 +105,9 @@ A struct representing a parser. It has the following fields:
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
 - `is_connect` (`bool`): If the current request used `CONNECT` method.
 - `skip_body` (`bool`): If the parser should skip the body.
-- `owner` (`void*`): The context of this parser. Use is reserved to the developer.
+- `max_start_line_length` (`uintptr_t`): Maximum allowed request/status line length. By default is `8192`.
+- `max_header_length` (`uintptr_t`): Maximum allowed header length. By default is `8192`.
+- `context` (`void*`): The context of this parser. Use is reserved to the developer.
 - `state` (`uint8_t`): The current parser state.
 - `position` (`uintptr_t`): The current parser position in the slice in the current execution of `milo_parse`.
 - `parsed` (`uint64_t`): The total bytes consumed from this parser.
@@ -121,6 +126,7 @@ A struct representing a parser. It has the following fields:
 - `has_chunked_transfer_encoding` (`bool`): If the current message has a `Transfer-Encoding` header.
 - `has_upgrade` (`bool`): If the current message has a `Connection: upgrade` header.
 - `has_trailers` (`bool`): If the current message has a `Trailers` header.
+- `active_callbacks` (`uint64_t`): Active callback bitmask. Set to one or more `CALLBACK_ACTIVE_*` values.
 - `callbacks` (`ParserCallbacks`): The callbacks for the current parser.
 - `error_description` (`const unsigned char*`): The parser error description.
 - `error_description_len` (`uint16_t`): The parser error description length.
@@ -134,56 +140,59 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 - `continue_without_data`
 - `is_connect`
 - `skip_body`
+- `max_start_line_length`
+- `max_header_length`
 - `context`
+- `active_callbacks`
 - `callbacks`
 
-## `milo::MessageTypes`
+## Enumerations
+
+### `milo::MessageTypes`
 
 An enum listing all possible message types.
 
-## `milo::Errors`
+### `milo::Errors`
 
 An enum listing all possible parser errors.
 
-## `milo::Methods`
+### `milo::Methods`
 
 An enum listing all possible HTTP/RTSP methods.
 
-## `milo::Connections`
+### `milo::Connections`
 
 An enum listing all possible connection (`Connection` header value) types.
 
-## `milo::Callbacks`
+### `milo::Callbacks`
 
 An enum listing all possible parser callbacks.
 
-## `milo::States`
+### `milo::States`
 
 An enum listing all possible parser states.
 
-### `Flags milo::milo_flags()`
+## Methods
 
-Returns a struct representing the current compile flags of Milo.
-
-## `void milo_noop(Parser *_parser, uintptr_t _at, uintptr_t _len)`
+### `void milo_noop(Parser *_parser, uintptr_t _at, uintptr_t _len)`
 
 A callback that does nothing.
 
 Use this callback as pointer when you want to remove a callback from the parser.
 
-## `void milo_free_string(CStringWithLength s)`
+### `void milo_free_string(CStringWithLength s)`
 
 Release memory from a string previously obtained from other APIs.
 
 **By convention, all milo's C++ function which ends in `_string` MUST have their value freed up with this function when done.**
 
-## `Parser *milo_create()`
+### `Parser *milo_create()`
 
 Creates a new parser.
 
 **The returned value MUST be destroyed later using `milo_destroy`.**
 
-## `void milo_destroy(Parser *ptr)`
+### `void milo_destroy(Parser *ptr)`
 
 Destroys a parser.
 
@@ -193,7 +202,7 @@ Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
-## `void milo_reset(Parser *parser, bool keep_parsed)`
+### `void milo_reset(Parser *parser, bool keep_parsed)`
 
 Resets a parser. The second parameters specifies if to also reset the
 parsed counter.
@@ -205,7 +214,11 @@ The following fields are not modified:
 - `mode`
 - `manage_unconsumed`
 - `continue_without_data`
+- `max_start_line_length`
+- `max_header_length`
 - `context`
+- `active_callbacks`
+- `callbacks`
 
 ### `void milo_clear(parser: *mut Parser)`
 
@@ -213,15 +226,15 @@ Clears all values about the message in the parser.
 
 The connection and message type fields are not cleared.
 
-## `void milo_pause(Parser *parser)`
+### `void milo_pause(Parser *parser)`
 
 Pauses the parser. The parser will have to be resumed via `milo::milo_resume`.
 
-## `void milo_resume(Parser *parser)`
+### `void milo_resume(Parser *parser)`
 
 Resumes the parser.
 
-## `void milo_finish(Parser *parser)`
+### `void milo_finish(Parser *parser)`
 
 Marks the parser as finished. Any new invocation of `milo::milo_parse` will put the parser in the error state.
 
@@ -229,19 +242,19 @@ Marks the parser as finished. Any new invocation of `milo::milo_parse` will put 
 
 Marks the parsing a failed, setting a error code and and error message.
 
-## `CStringWithLength *milo_state_string(Parser *parser)`
+### `CStringWithLength *milo_state_string(Parser *parser)`
 
 Returns the current parser's state as string.
 
 **The returned value MUST be freed using `milo::milo_free_string`.**
 
-## `CStringWithLength *milo_error_code_string(Parser *parser)`
+### `CStringWithLength *milo_error_code_string(Parser *parser)`
 
 Returns the current parser's error state as string.
 
 **The returned value MUST be freed using `milo::milo_free_string`.**
 
-## `CStringWithLength *milo_error_description_string(Parser *parser)`
+### `CStringWithLength *milo_error_description_string(Parser *parser)`
 
 Returns the current parser's error descrition.
 

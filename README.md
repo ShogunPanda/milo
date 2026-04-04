@@ -32,7 +32,7 @@ import { setup } from '@perseveranza-pets/milo'
 */
 const milo = setup({
   on_data(p, from, size) {
-    console.log(`Pos=${milo.getPosition(p)} Body: ${message.slice(from, from + size).toString()}`)
+    console.log(`Pos=${from} Body: ${message.slice(from, from + size).toString()}`)
   }
 })
 
@@ -47,6 +47,9 @@ const buffer = Buffer.from(milo.memory.buffer, ptr, message.length)
 
 // Create the parser.
 const parser = milo.create()
+
+// Toggle on the callbacks you want to receive
+milo.setCallbacksActive(parser, milo.CALLBACK_ACTIVE_ON_DATA)
 
 // Now perform the main parsing using milo.parse. The method returns the number of consumed characters.
 buffer.set(message, 0)
@@ -72,11 +75,11 @@ Add `milo` to your `Cargo.toml`:
 [package]
 name = "milo-example"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 publish = false
 
 [dependencies]
-milo = "0.1.0"
+milo = "0.4.0"
 ```
 
 Create a sample source file:
@@ -85,7 +88,7 @@ Create a sample source file:
 use core::ffi::c_void;
 use core::slice;
 
-use milo::Parser;
+use milo::{Parser, CALLBACK_ACTIVE_ON_DATA};
 
 fn main() {
   // Create the parser.
@@ -112,8 +115,11 @@ fn main() {
       unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(p.context.add(from) as *const u8, size)) };
 
     // Do somethin cvdg with the informations.
-    println!("Pos={} Body: {}", p.position, message);
+    println!("Pos={} Body: {}", from, message);
   };
+
+  // Toggle on the callbacks you want to receive
+  parser.active_callbacks |= CALLBACK_ACTIVE_ON_DATA;
 
   // Now perform the main parsing using milo.parse. The method returns the number
   // of consumed characters.
@@ -171,6 +177,9 @@ int main() {
     printf("Pos=%lu Body: %s\n", p->position, payload);
     free(payload);
   };
+
+  // Toggle on the callbacks you want to receive
+  parser->active_callbacks |= milo::CALLBACK_ACTIVE_ON_DATA;
 
   // Now perform the main parsing using milo.parse. The method returns the number of consumed characters.
   milo::milo_parse(parser, reinterpret_cast<const unsigned char*>(message), strlen(message));
@@ -235,15 +244,13 @@ See the following files, according to the language you are using:
 
 ## How it works?
 
-Milo leverages Rust's [procedural macro], [syn] and [quote] crates to allow an easy definition of states and matchers for the parser.
+Milo leverages Rust's [procedural macro], [syn] and [quote] crates to allow an easy definition of actions and matchers for the parser.
 
 See the [macros](./macros/README.md) internal crate for more information.
 
-The data matching is possible thanks to power of the Rust's [match] statement applied to [data slices][match-slice].
-
 The resulting parser is as simple state machine which copies the data in only one (optional) specific case: to automatically handle unconsumed portion of the input data.
 
-In all other all cases, no data is copied and the memory footprint is very small as only 30 `bool`, `uintprt_t` or `uint64_t` fields can represent the entire parser state.
+In all other all cases, no data is copied and the memory footprint is very small as only few tens of `bool`, `uintprt_t` or `uint64_t` fields can represent the entire parser state.
 
 ## Why?
 

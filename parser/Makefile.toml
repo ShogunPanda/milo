@@ -71,7 +71,7 @@
   run_task = "cpp-lib"
 
 [tasks.cpp-debug]
-  env      = { CONFIGURATION = "debug", "CARGO_OPTIONS" = "", POSTBUILD_OPTIONS = "DEBUG:true" }
+  env      = { CONFIGURATION = "debug", "CARGO_OPTIONS" = "--release --features debug", POSTBUILD_OPTIONS = "DEBUG:true" }
   run_task = "cpp-lib"
 
 [tasks.cpp-lib]
@@ -95,7 +95,7 @@
   run_task = "wasm-module"
 
 [tasks.wasm-debug]
-  env      = { CONFIGURATION = "debug", "CARGO_OPTIONS" = "", "WASMPACK_OPTIONS" = "--debug", POSTBUILD_OPTIONS = "DEBUG:true" }
+  env      = { CONFIGURATION = "debug", "CARGO_OPTIONS" = "--release --features debug", "WASMPACK_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:true" }
   run_task = "wasm-module"
 
 [tasks.wasm-module]

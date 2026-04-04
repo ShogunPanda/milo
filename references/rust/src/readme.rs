@@ -30,7 +30,7 @@ fn main() {
     // Do somethin cool with the informations.
     println!("Pos={} Body: {}", from, message);
   };
-  parser.callbacks_active |= CALLBACK_ACTIVE_ON_DATA;
+  parser.active_callbacks |= CALLBACK_ACTIVE_ON_DATA;
 
   // Now perform the main parsing using milo.parse. The method returns the number
   // of consumed characters.

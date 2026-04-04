@@ -357,7 +357,7 @@ fn basic_pause_and_resume() {
   parser.callbacks.on_headers = |p: &mut Parser, _at: usize, _size: usize| {
     p.pause();
   };
-  parser.callbacks_active |= CALLBACK_ACTIVE_ON_HEADERS;
+  parser.active_callbacks |= CALLBACK_ACTIVE_ON_HEADERS;
 
   assert_eq!(parser.paused, false);
 

@@ -41,7 +41,7 @@ fn main() {
   parser.callbacks.on_trailer_name = callbacks::on_trailer_name;
   parser.callbacks.on_trailer_value = callbacks::on_trailer_value;
   parser.callbacks.on_trailers = callbacks::on_trailers;
-  parser.callbacks_active |= CALLBACK_ACTIVE_ALL;
+  parser.active_callbacks |= CALLBACK_ACTIVE_ALL;
 
   let mut consumed = parse(&mut parser, request1);
 

@@ -125,6 +125,18 @@ pub fn is_paused(parser: *const c_void) -> bool { unsafe { (*(parser as *const P
 #[unsafe(no_mangle)]
 pub fn manage_unconsumed(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).manage_unconsumed } }
 
+// Get the parser max_start_line_length property.
+#[unsafe(no_mangle)]
+pub fn get_max_start_line_length(parser: *const c_void) -> usize {
+  unsafe { (*(parser as *const Parser)).max_start_line_length }
+}
+
+// Get the parser max_header_length property.
+#[unsafe(no_mangle)]
+pub fn get_max_header_length(parser: *const c_void) -> usize {
+  unsafe { (*(parser as *const Parser)).max_header_length }
+}
+
 // Get the parser continue_without_data property.
 #[unsafe(no_mangle)]
 pub fn continue_without_data(parser: *const c_void) -> bool {
@@ -244,6 +256,20 @@ pub fn set_manage_unconsumed(parser: *mut c_void, value: bool) {
 }
 
 #[unsafe(no_mangle)]
+pub fn set_max_start_line_length(parser: *mut c_void, value: usize) {
+  unsafe {
+    (*(parser as *mut Parser)).max_start_line_length = value;
+  }
+}
+
+#[unsafe(no_mangle)]
+pub fn set_max_header_length(parser: *mut c_void, value: usize) {
+  unsafe {
+    (*(parser as *mut Parser)).max_header_length = value;
+  }
+}
+
+#[unsafe(no_mangle)]
 pub fn set_continue_without_data(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).continue_without_data = value;
@@ -265,8 +291,8 @@ pub fn set_is_connect(parser: *mut c_void, value: bool) {
 }
 
 #[unsafe(no_mangle)]
-pub fn set_callbacks_active(parser: *mut c_void, value: u64) {
+pub fn set_active_callbacks(parser: *mut c_void, value: u64) {
   unsafe {
-    (*(parser as *mut Parser)).callbacks_active = value;
+    (*(parser as *mut Parser)).active_callbacks = value;
   }
 }

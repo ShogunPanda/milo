@@ -262,7 +262,7 @@ int main() {
   parser->callbacks.on_trailer_name = on_trailer_name;
   parser->callbacks.on_trailer_value = on_trailer_value;
   parser->callbacks.on_trailers = on_trailers;
-  parser->callbacks_active |= milo::CALLBACK_ACTIVE_ALL;
+  parser->active_callbacks |= milo::CALLBACK_ACTIVE_ALL;
 
   context.input = copy_string(request1, 0);
   usize_t consumed = milo::milo_parse(parser, reinterpret_cast<const uchar_t*>(request1), strlen(request1));

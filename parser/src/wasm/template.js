@@ -55,6 +55,8 @@ function getErrorDescription(parser) {
 function $milo_getter_getMode(number) {}
 function $milo_getter_isPaused(bool) {}
 function $milo_getter_manageUnconsumed(bool) {}
+function $milo_getter_getMaxStartLineLength(number) {}
+function $milo_getter_getMaxHeaderLength(number) {}
 function $milo_getter_continueWithoutData(bool) {}
 function $milo_getter_isConnect(bool) {}
 function $milo_getter_skipBody(bool) {}
@@ -81,10 +83,12 @@ function $milo_setter_setContinueWithoutData() {}
 function $milo_setter_setIsConnect() {}
 function $milo_setter_setManageUnconsumed() {}
 function $milo_setter_setMode() {}
+function $milo_setter_setMaxStartLineLength() {}
+function $milo_setter_setMaxHeaderLength() {}
 function $milo_setter_setSkipBody() {}
 
 function setCallbacksActive(parser, value) {
-  this.set_callbacks_active(parser, value)
+  this.set_active_callbacks(parser, value)
 }
 
 function $milo_enum_MessageTypes(MESSAGE_TYPE_) {}

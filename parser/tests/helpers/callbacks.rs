@@ -2,7 +2,7 @@
 
 use std::{os::unix::process, slice, str};
 
-use milo::{DEBUG, MESSAGE_TYPE_RESPONSE, Parser};
+use milo::{Parser, DEBUG, MESSAGE_TYPE_RESPONSE};
 
 use crate::helpers::{context, output};
 

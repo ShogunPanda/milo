@@ -24,7 +24,7 @@ function onUrlJSError(parser, from, size) {
 export async function main() {
   const milo = setup({ on_method: onMethod, on_url: onUrlJSError })
   const parser = milo.create()
-  milo.setCallbacksActive(parser, milo.CALLBACK_ACTIVE_ALL)
+  milo.setActiveCallbacks(parser, milo.CALLBACK_ACTIVE_ALL)
 
   const ptr = milo.alloc(100)
   const buffer = Buffer.from(milo.memory.buffer, ptr, 100)

@@ -18,7 +18,7 @@ where the parameters have the following meaning:
 
 If length is `0`, it means the callback has no payload associated.
 
-Callbacks are dispatched only when enabled with `setCallbacksActive`.
+Callbacks are dispatched only when enabled with `setActiveCallbacks`.
 
 Callbacks are disabled by default.
 
@@ -67,6 +67,12 @@ An enum listing all possible parser callbacks.
 
 Access is supported from string constant or numeric value.
 
+#### `CallbackActives`
+
+An enum listing all possible parser callbacks bitmask.
+
+Access is supported from string constant or numeric value.
+
 #### `States`
 
 An enum listing all possible parser states.
@@ -110,7 +116,7 @@ The method accepts a single object containing one or more of the following callb
 - `on_trailer_value`
 - `on_trailers`
 
-Callbacks are disabled by default and must be enabled with `setCallbacksActive` using one of the `CALLBACK_ACTIVE_*` constants.
+Callbacks are disabled by default and must be enabled with `setActiveCallbacks` using one of the `CALLBACK_ACTIVE_*` constants.
 
 The return object will be a milo module instance which can be use to create and manage parsers.
 
@@ -310,7 +316,7 @@ Sets the parser maximum allowed header length.
 
 Defaults to `8192` in a new parser.
 
-#### `setCallbacksActive(parser, value)`
+#### `setActiveCallbacks(parser, value)`
 
 Sets the active callback bitmask on the parser.
 
@@ -348,8 +354,9 @@ This API is useful when you want a minimal integration that records parser event
 Example:
 
 ```javascript
-import { simple as milo } from '@perseveranza-pets/milo'
+import { simple } from '@perseveranza-pets/milo'
 
+const milo = simple()
 const message = Buffer.from('HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc')
 const ptr = milo.alloc(message.length)
 const parser = milo.create()

@@ -10,15 +10,15 @@
 
 [tasks.benchmarks]
   command = "node"
-  args    = ["src/index.mjs"]
+  args    = ["src/index.js"]
 
 [tasks.lint]
   command = "eslint"
-  args    = ["--cache", "--ext", ".mjs", "src"]
+  args    = ["--cache", "--ext", ".js", "src"]
 
 [tasks."lint:fix"]
   command = "eslint"
-  args    = ["--cache", "--fix", "--ext", ".mjs", "src"]
+  args    = ["--cache", "--fix", "--ext", ".js", "src"]
 
 [tasks.format]
   command = "prettier"

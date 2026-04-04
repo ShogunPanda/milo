@@ -1,5 +1,6 @@
-import { simple as milo } from '@perseveranza-pets/milo'
+import { simple } from '@perseveranza-pets/milo'
 
+const milo = simple()
 const message = Buffer.from('HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc')
 const ptr = milo.alloc(message.length)
 const parser = milo.create()

@@ -32,7 +32,7 @@ const buffer = Buffer.from(milo.memory.buffer, ptr, message.length)
 
 // Create the parser.
 const parser = milo.create()
-milo.setCallbacksActive(parser, milo.CALLBACK_ACTIVE_ON_DATA)
+milo.setActiveCallbacks(parser, milo.CALLBACK_ACTIVE_ON_DATA)
 
 // Now perform the main parsing using milo.parse. The method returns the number of consumed characters.
 buffer.set(message, 0)

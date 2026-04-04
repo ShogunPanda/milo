@@ -9,15 +9,15 @@
 
 [tasks.test]
   command = "node"
-  args    = ["--test", "../reference.test.mjs"]
+  args    = ["--test", "../reference.test.js"]
 
 [tasks.lint]
   command = "eslint"
-  args    = ["--cache", "--ext", ".mjs", "src"]
+  args    = ["--cache", "--ext", ".js", "src"]
 
 [tasks."lint:fix"]
   command = "eslint"
-  args    = ["--cache", "--fix", "--ext", ".mjs", "src"]
+  args    = ["--cache", "--fix", "--ext", ".js", "src"]
 
 [tasks.format]
   command = "prettier"
@@ -28,10 +28,21 @@
   args    = ["-r", "-f", "dist"]
 
 [tasks.verify]
-  dependencies = ["format", "lint", "clean", "prepare", "test", "readme"]
+  dependencies = [
+    "format",
+    "lint",
+    "clean",
+    "prepare",
+    "test",
+    "readme",
+    "simple",
+  ]
 
 [tasks.readme]
   command = "./dist/readme"
+
+[tasks.simple]
+  command = "./dist/simple"
 
 [tasks.prepare]
   script = [
@@ -40,5 +51,6 @@
     "cat ./templates/reference.sh | sed -e 's#CONFIGURATION#release#' > dist/reference-release",
     "cat ./templates/reference.sh | sed -e 's#CONFIGURATION#debug#' > dist/reference-debug",
     "cat ./templates/readme.sh | sed -e 's#CONFIGURATION#release#' > dist/readme",
+    "cat ./templates/simple.sh | sed -e 's#CONFIGURATION#release#' > dist/simple",
     "chmod a+x dist/*",
   ]

@@ -17,11 +17,12 @@
   "author": "Shogun <shogun@cowtech.it>",
   "license": "ISC",
   "private": false,
+  "type": "module",
   "files": [
     "index.js",
     "index.d.ts",
-    "index-unbundled.js",
-    "index-unbundled.d.ts",
+    "unbundled.js",
+    "unbundled.d.ts",
     "milo.wasm",
     "CODE_OF_CONDUCT.md",
     "LICENSE.md",
@@ -36,9 +37,9 @@
       "types": "./index.d.ts"
     },
     "./unbundled": {
-      "import": "./index-unbundled.js",
-      "require": "./index-unbundled.js",
-      "types": "./index-unbundled.d.ts"
+      "import": "./unbundled.js",
+      "require": "./unbundled.js",
+      "types": "./unbundled.d.ts"
     }
   },
   "engines": {

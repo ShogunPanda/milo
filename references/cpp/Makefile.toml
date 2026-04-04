@@ -9,7 +9,7 @@
 
 [tasks.test]
   command = "node"
-  args    = ["--test", "../reference.test.mjs"]
+  args    = ["--test", "../reference.test.js"]
 
 [tasks.format]
   command = "clang-format"

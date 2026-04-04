@@ -305,7 +305,7 @@ async function main() {
   context.milo = milo
 
   const parser = milo.create()
-  milo.setCallbacksActive(parser, milo.CALLBACK_ACTIVE_ALL)
+  milo.setActiveCallbacks(parser, milo.CALLBACK_ACTIVE_ALL)
 
   const request1 = 'GET / HTTP/1.1\r\n\r\n'
   const request2 =

@@ -5,4 +5,4 @@ set -e
 cd $(dirname $0)/..
 rm -rf node_modules/@perseveranza-pets
 ln -s ../../../parser/dist/wasm/CONFIGURATION/@perseveranza-pets node_modules/@perseveranza-pets
-node src/readme.js
+node src/simple.js

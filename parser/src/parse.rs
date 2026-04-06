@@ -106,11 +106,13 @@ impl Parser {
               }
               MESSAGE_TYPE_REQUEST => {
                 self.message_type = MESSAGE_TYPE_REQUEST;
+                callback!(on_request);
                 callback!(on_message_start);
                 move_to!(request_line);
               }
               MESSAGE_TYPE_RESPONSE => {
                 self.message_type = MESSAGE_TYPE_RESPONSE;
+                callback!(on_response);
                 callback!(on_message_start);
                 move_to!(status_line);
               }
@@ -151,7 +153,7 @@ impl Parser {
           }
 
           STATE_REQUEST_LINE => {
-            match self.find_char(data, 0, available - 1, b'\r') {
+            match self.find_cr(data, available) {
               // // RFC 9112 section 3
               Some(cr) => {
                 match self.ensure_valid_line(data, cr, available) {
@@ -269,7 +271,7 @@ impl Parser {
 
           // RFC 9112 section 4
           STATE_STATUS_LINE => {
-            match self.find_char(data, 0, available - 1, b'\r') {
+            match self.find_cr(data, available) {
               Some(cr) => {
                 match self.ensure_valid_line(data, cr, available) {
                   StateResult::Continue => {}
@@ -386,7 +388,7 @@ impl Parser {
           }
 
           STATE_HEADER => {
-            match self.find_char(data, 0, available - 1, b'\r') {
+            match self.find_cr(data, available) {
               Some(cr) => {
                 match self.ensure_valid_line(data, cr, available) {
                   StateResult::Continue => {}
@@ -415,6 +417,7 @@ impl Parser {
                     fail!(UNEXPECTED_CHARACTER, "Invalid header field name character");
                   }
                 };
+                let header_name_len = header_name_end - header_name_start;
 
                 let mut header_value_start = header_name_end + 1;
                 let mut header_value_end = cr;
@@ -423,7 +426,10 @@ impl Parser {
                 match &data[header_name_start..header_name_end] {
                   // RFC 9112 section 6.2
                   case_insensitive_string!("content-length") => {
-                    if self.has_chunked_transfer_encoding {
+                    // It just matched a prefix, invalid header
+                    if header_name_len > 14 {
+                      fail!(UNEXPECTED_CHARACTER, "Invalid header field name");
+                    } else if self.has_chunked_transfer_encoding {
                       fail!(
                         UNEXPECTED_CONTENT_LENGTH,
                         "Unexpected Content-Length header when Transfer-Encoding header is present"
@@ -471,7 +477,10 @@ impl Parser {
                   }
                   // RFC 9112 section 6.1
                   case_insensitive_string!("transfer-encoding") => {
-                    if self.has_content_length {
+                    // It just matched a prefix, invalid header
+                    if header_name_len > 17 {
+                      fail!(UNEXPECTED_CHARACTER, "Invalid header field name");
+                    } else if self.has_content_length {
                       fail!(
                         UNEXPECTED_TRANSFER_ENCODING,
                         "Unexpected Transfer-Encoding header when Content-Length header is present"
@@ -575,6 +584,11 @@ impl Parser {
                   }
                   // RFC 9112 section 9.6
                   case_insensitive_string!("connection") => {
+                    // It just matched a prefix, invalid header
+                    if header_name_len > 10 {
+                      fail!(UNEXPECTED_CHARACTER, "Invalid header field name");
+                    }
+
                     if let StateResult::Stop = self.strip_ows(
                       data,
                       &mut header_value_start,
@@ -598,6 +612,11 @@ impl Parser {
                     }
                   }
                   case_insensitive_string!("trailer") => {
+                    // It just matched a prefix, invalid header
+                    if header_name_len > 7 {
+                      fail!(UNEXPECTED_CHARACTER, "Invalid header field name");
+                    }
+
                     self.has_trailers = true;
 
                     if let StateResult::Stop = self.strip_ows(
@@ -610,7 +629,18 @@ impl Parser {
                     }
                   }
                   case_insensitive_string!("upgrade") => {
+                    // It just matched a prefix, invalid header
+                    if header_name_len > 7 {
+                      fail!(UNEXPECTED_CHARACTER, "Invalid header field name");
+                    }
+
                     self.has_upgrade = true;
+
+                    if let StateResult::Stop =
+                      self.strip_ows_allowing_empty(data, &mut header_value_start, &mut header_value_end)
+                    {
+                      stop!();
+                    }
                   }
                   _ => {
                     if let StateResult::Stop = self.validate(
@@ -735,7 +765,7 @@ impl Parser {
               self.remaining_content_length = 0;
 
               callback!(on_data, 0, expected as usize);
-              callback!(on_body);
+              callback!(on_body, expected as usize, 0);
 
               self.continue_without_data = true;
 
@@ -755,7 +785,7 @@ impl Parser {
 
           // RFC 9112 section 7.1
           STATE_CHUNK_HEADER => {
-            match self.find_char(data, 0, available - 1, b'\r') {
+            match self.find_cr(data, available) {
               Some(cr) => {
                 match self.ensure_valid_line(data, cr, available) {
                   StateResult::Continue => {}
@@ -836,7 +866,7 @@ impl Parser {
           }
 
           STATE_CHUNK_EXTENSIONS => {
-            match self.find_char(data, 0, available - 1, b'\r') {
+            match self.find_cr(data, available) {
               Some(cr) => {
                 match self.ensure_valid_line(data, cr, available) {
                   StateResult::Continue => {}
@@ -1038,7 +1068,7 @@ impl Parser {
 
           // RFC 9112 section 7.1.2
           STATE_TRAILER => {
-            match self.find_char(data, 0, available - 1, b'\r') {
+            match self.find_cr(data, available) {
               Some(cr) => {
                 match self.ensure_valid_line(data, cr, available) {
                   StateResult::Continue => {}
@@ -1230,6 +1260,15 @@ impl Parser {
       move_to!(finish);
     } else {
       move_to!(start);
+    }
+  }
+
+  #[inline(always)]
+  fn find_cr(&self, data: &[u8], available: usize) -> Option<usize> {
+    if available == 0 {
+      None
+    } else {
+      self.find_char(data, 0, available - 1, b'\r')
     }
   }
 

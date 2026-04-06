@@ -240,6 +240,7 @@ impl Parser {
     self.error_code = code;
     self.error_description = ptr;
     self.error_description_len = len as u16;
+    callback!(on_error, 0, 0);
   }
 
   /// Returns the current parser's state as string.

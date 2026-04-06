@@ -16,7 +16,11 @@
   phf         = { version = "0.13.1", default-features = false }
 
 [dev-dependencies]
-  regex = "1.12.3"
+  comfy-table = { version = "7.2.2" }
+  regex       = "1.12.3"
+  serde       = { version = "1.0.228", features = ["derive"] }
+  serde_yaml  = "0.9.34"
+  similar     = "3.0.0"
 
 [profile.release]
   opt-level        = 3

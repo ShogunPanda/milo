@@ -1,7 +1,10 @@
 {
   "type": "module",
   "dependencies": {
-    "prettier": "^3.8.1"
+    "prettier": "^3.8.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "yaml": "^2.8.1"
   },
   "devDependencies": {
     "@cowtech/eslint-config": "^11.1.3",

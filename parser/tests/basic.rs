@@ -506,3 +506,20 @@ fn basic_empty_fields() {
   parse(&mut parser, &message);
   assert_ne!(parser.state, STATE_ERROR);
 }
+
+#[test]
+fn basic_space_after_header_name() {
+  let mut parser = create_parser();
+
+  let message = http(
+    r#"
+        PUT /url HTTP/1.1\r\n
+        Content-Length : 3\r\n
+        \r\n
+        abc\r\n\r\n
+      "#,
+  );
+
+  parse(&mut parser, &message);
+  assert_eq!(parser.state, STATE_ERROR);
+}

@@ -21,10 +21,10 @@ pub fn extract_payload(parser: &Parser, from: usize, size: usize) -> (*const c_u
   )
 }
 
-#[allow(dead_code)]
+#[allow(unused)]
 pub fn format_event(name: &str) -> String { format!("\"{}\"", name).to_string() }
 
-#[allow(dead_code)]
+#[allow(unused)]
 pub fn append_output(parser: &Parser, message: String, from: usize, size: usize) {
   let (data, cleanup) = extract_payload(parser, from, size);
 
@@ -48,7 +48,7 @@ pub fn append_output(parser: &Parser, message: String, from: usize, size: usize)
   cleanup();
 }
 
-#[allow(dead_code)]
+#[allow(unused)]
 pub fn event(parser: &Parser, name: &str, from: usize, size: usize) {
   append_output(
     parser,
@@ -58,7 +58,7 @@ pub fn event(parser: &Parser, name: &str, from: usize, size: usize) {
   );
 }
 
-#[allow(dead_code)]
+#[allow(unused)]
 pub fn show_span(parser: &Parser, name: &str, from: usize, size: usize) {
   if name == "method" || name == "url" || name == "protocol" || name == "version" {
     let (data, cleanup) = extract_payload(parser, from, size);

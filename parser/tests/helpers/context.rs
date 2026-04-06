@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct Context {
   pub input: String,
   pub output: String,
@@ -12,7 +13,7 @@ impl Default for Context {
 }
 
 impl Context {
-  #[allow(dead_code)]
+  #[allow(unused)]
   pub fn new() -> Context {
     Context {
       input: String::new(),

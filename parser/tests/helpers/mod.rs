@@ -5,6 +5,7 @@ use regex::Regex;
 
 pub mod callbacks;
 pub mod context;
+pub mod llhttp;
 pub mod output;
 
 #[allow(unused)]
@@ -58,6 +59,7 @@ pub fn http(input: &str) -> String {
     .replace("\\s", " ")
 }
 
+#[allow(unused)]
 pub fn parse(parser: &mut Parser, content: &str) -> usize {
   let mut context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
   context.input = String::from(content);

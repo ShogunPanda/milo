@@ -1,0 +1,49 @@
+path: tests/fixtures/llhttp/response/headers-separated-by-cr.yml
+name: Headers Separated By CR
+checked: true
+source:
+  path: test/response/invalid.md
+  line: 108
+meta:
+  type: response
+input:
+- HTTP/1.1 200 OK
+- 'Foo: 1\rBar: 2'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=2 span[status]="OK"
+- off=17 status complete
+- off=17 len=3 span[header_field]="Foo"
+- off=21 header_field complete
+- off=22 len=1 span[header_value]="1"
+- off=24 error code=3 reason="Missing expected LF after header value"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '200'
+- offset: 13
+  type: reason
+  payload: OK
+- offset: 17
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Expected CRLF

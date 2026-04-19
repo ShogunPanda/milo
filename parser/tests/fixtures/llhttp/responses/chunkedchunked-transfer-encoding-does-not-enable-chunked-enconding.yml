@@ -1,0 +1,89 @@
+path: tests/fixtures/llhttp/response/chunkedchunked-transfer-encoding-does-not-enable-chunked-enconding.yml
+name: Chunkedchunked Transfer-encoding Does Not Enable Chunked Enconding
+checked: true
+source:
+  path: test/response/transfer-encoding.md
+  line: 110
+meta:
+  type: response
+input:
+- HTTP/1.1 200 OK
+- 'Accept: */*'
+- 'Transfer-Encoding: chunkedchunked'
+- ''
+- '2'
+- OK
+- '0'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=2 span[status]="OK"
+- off=17 status complete
+- off=17 len=6 span[header_field]="Accept"
+- off=24 header_field complete
+- off=25 len=3 span[header_value]="*/*"
+- off=30 header_value complete
+- off=30 len=17 span[header_field]="Transfer-Encoding"
+- off=48 header_field complete
+- off=49 len=14 span[header_value]="chunkedchunked"
+- off=65 header_value complete
+- off=67 headers complete status=200 v=1/1 flags=200 content_length=0
+- off=67 len=1 span[body]="2"
+- off=68 len=1 span[body]=cr
+- off=69 len=1 span[body]=lf
+- off=70 len=2 span[body]="OK"
+- off=72 len=1 span[body]=cr
+- off=73 len=1 span[body]=lf
+- off=74 len=1 span[body]="0"
+- off=75 len=1 span[body]=cr
+- off=76 len=1 span[body]=lf
+- off=77 len=1 span[body]=cr
+- off=78 len=1 span[body]=lf
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '200'
+- offset: 13
+  type: reason
+  payload: OK
+- offset: 17
+  type: header_name
+  payload: Accept
+- offset: 25
+  type: header_value
+  payload: '*/*'
+- offset: 30
+  type: header_name
+  payload: Transfer-Encoding
+- offset: 49
+  type: header_value
+  payload: chunkedchunked
+- offset: 67
+  type: headers
+  payload:
+    method: null
+    status: 200
+    url: null
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 67
+  type: data
+  payload: "2\r\nOK\r\n0\r\n\r\n"

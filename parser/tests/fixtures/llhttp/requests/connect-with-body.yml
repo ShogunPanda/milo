@@ -1,0 +1,52 @@
+path: tests/fixtures/llhttp/request/connect-with-body.yml
+name: CONNECT With Body
+checked: true
+source:
+  path: test/request/method.md
+  line: 96
+meta:
+  type: request
+input:
+- CONNECT foo.bar.com:443 HTTP/1.0
+- 'User-agent: Mozilla/1.1N'
+- 'Proxy-authorization: basic aGVsbG86d29ybGQ='
+- 'Content-Length: 10'
+- ''
+- blarfcicle"
+llhttp:
+- off=0 message begin
+- off=0 len=7 span[method]="CONNECT"
+- off=7 method complete
+- off=8 len=15 span[url]="foo.bar.com:443"
+- off=24 url complete
+- off=24 len=4 span[protocol]="HTTP"
+- off=28 protocol complete
+- off=29 len=3 span[version]="1.0"
+- off=32 version complete
+- off=34 len=10 span[header_field]="User-agent"
+- off=45 header_field complete
+- off=46 len=12 span[header_value]="Mozilla/1.1N"
+- off=60 header_value complete
+- off=60 len=19 span[header_field]="Proxy-authorization"
+- off=80 header_field complete
+- off=81 len=22 span[header_value]="basic aGVsbG86d29ybGQ="
+- off=105 header_value complete
+- off=105 len=14 span[header_field]="Content-Length"
+- off=120 header_field complete
+- off=121 len=2 span[header_value]="10"
+- off=125 header_value complete
+- off=127 headers complete method=5 v=1/0 flags=20 content_length=10
+- off=127 message complete
+- off=127 error code=22 reason="Pause on CONNECT/Upgrade"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid protocol

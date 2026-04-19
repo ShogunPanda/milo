@@ -1,0 +1,49 @@
+path: tests/fixtures/llhttp/request/content-length-with-cr-instead-of-dash.yml
+name: Content-Length With CR Instead Of Dash
+checked: true
+source:
+  path: test/request/content-length.md
+  line: 421
+meta:
+  noScan: true
+  type: request
+input:
+- PUT /url HTTP/1.1
+- 'Content\rLength: 003'
+- ''
+- abc
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="PUT"
+- off=3 method complete
+- off=4 len=4 span[url]="/url"
+- off=9 url complete
+- off=9 len=4 span[protocol]="HTTP"
+- off=13 protocol complete
+- off=14 len=3 span[version]="1.1"
+- off=17 version complete
+- off=26 error code=10 reason="Invalid header token"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: PUT
+- offset: 4
+  type: url
+  payload: /url
+- offset: 9
+  type: protocol
+  payload: HTTP
+- offset: 14
+  type: version
+  payload: '1.1'
+- offset: 19
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Expected CRLF

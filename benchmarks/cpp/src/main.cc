@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <fstream>
+#include <cstdint>
 #include <regex>
 #include <sstream>
 
@@ -69,13 +70,14 @@ int main() {
   for (size_t i = 0; i < SAMPLES_NUM; i++) {
     milo::Parser* parser = milo::milo_create();
     std::string payload = load_message(samples[i]);
-    double len = payload.length();
-    double iterations = pow(2, 33) / len;
-    double total = iterations * len;
+    const auto* data = reinterpret_cast<const unsigned char*>(payload.data());
+    size_t len = payload.length();
+    uint64_t iterations = (1ULL << 33) / len;
+    uint64_t total = iterations * len;
 
     const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-    for (double j = 0; j < iterations; j++) {
-      milo::milo_parse(parser, reinterpret_cast<const unsigned char*>(payload.c_str()), (int) len);
+    for (uint64_t j = 0; j < iterations; j++) {
+      milo::milo_parse(parser, data, len);
     }
     const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
 
@@ -83,10 +85,10 @@ int main() {
 
     std::chrono::duration<double> diff = end - start;
     double time = diff.count();
-    double bw = total / time;
+    double bw = static_cast<double>(total) / time;
 
     std::string total_samples = format_number(iterations, true);
-    std::string size = format_number(total / (1024.0 * 1024.0), false);
+    std::string size = format_number(static_cast<double>(total) / (1024.0 * 1024.0), false);
     std::string speed = format_number(bw / (1024 * 1024), false);
     std::string throughtput = format_number((iterations) / time, false);
     std::string duration = format_number(time, false);
@@ -96,6 +98,6 @@ int main() {
   }
 
   printf("\n");
-  
+
   return 0;
 }

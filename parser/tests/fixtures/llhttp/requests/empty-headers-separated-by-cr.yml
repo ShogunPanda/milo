@@ -1,0 +1,75 @@
+path: tests/fixtures/llhttp/request/empty-headers-separated-by-cr.yml
+name: Empty Headers Separated By CR
+checked: true
+source:
+  path: test/request/invalid.md
+  line: 216
+meta:
+  type: request
+input:
+- POST / HTTP/1.1
+- 'Connection: Close'
+- 'Host: localhost:5000'
+- 'x:\rTransfer-Encoding: chunked'
+- ''
+- '1'
+- A
+- '0'
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[method]="POST"
+- off=4 method complete
+- off=5 len=1 span[url]="/"
+- off=7 url complete
+- off=7 len=4 span[protocol]="HTTP"
+- off=11 protocol complete
+- off=12 len=3 span[version]="1.1"
+- off=15 version complete
+- off=17 len=10 span[header_field]="Connection"
+- off=28 header_field complete
+- off=29 len=5 span[header_value]="Close"
+- off=36 header_value complete
+- off=36 len=4 span[header_field]="Host"
+- off=41 header_field complete
+- off=42 len=14 span[header_value]="localhost:5000"
+- off=58 header_value complete
+- off=58 len=1 span[header_field]="x"
+- off=60 header_field complete
+- off=61 error code=2 reason="Expected LF after CR"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: POST
+- offset: 5
+  type: url
+  payload: /
+- offset: 7
+  type: protocol
+  payload: HTTP
+- offset: 12
+  type: version
+  payload: '1.1'
+- offset: 17
+  type: header_name
+  payload: Connection
+- offset: 29
+  type: header_value
+  payload: Close
+- offset: 36
+  type: header_name
+  payload: Host
+- offset: 42
+  type: header_value
+  payload: localhost:5000
+- offset: 58
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Expected CRLF

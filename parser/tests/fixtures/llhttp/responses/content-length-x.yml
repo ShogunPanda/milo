@@ -1,0 +1,105 @@
+path: tests/fixtures/llhttp/response/content-length-x.yml
+name: Content-Length-X
+checked: true
+source:
+  path: test/response/content-length.md
+  line: 80
+meta:
+  type: response
+input:
+- HTTP/1.1 200 OK
+- 'Content-Length-X: 0'
+- 'Transfer-Encoding: chunked'
+- ''
+- '2'
+- OK
+- '0'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=2 span[status]="OK"
+- off=17 status complete
+- off=17 len=16 span[header_field]="Content-Length-X"
+- off=34 header_field complete
+- off=35 len=1 span[header_value]="0"
+- off=38 header_value complete
+- off=38 len=17 span[header_field]="Transfer-Encoding"
+- off=56 header_field complete
+- off=57 len=7 span[header_value]="chunked"
+- off=66 header_value complete
+- off=68 headers complete status=200 v=1/1 flags=208 content_length=0
+- off=71 chunk header len=2
+- off=71 len=2 span[body]="OK"
+- off=75 chunk complete
+- off=78 chunk header len=0
+- off=80 chunk complete
+- off=80 message complete
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '200'
+- offset: 13
+  type: reason
+  payload: OK
+- offset: 17
+  type: header_name
+  payload: Content-Length-X
+- offset: 35
+  type: header_value
+  payload: '0'
+- offset: 38
+  type: header_name
+  payload: Transfer-Encoding
+- offset: 57
+  type: header_value
+  payload: chunked
+- offset: 68
+  type: headers
+  payload:
+    method: null
+    status: 200
+    url: null
+    protocol: HTTP
+    version: '1.1'
+    body: chunked
+- offset: 68
+  type: chunk_length
+  payload: '2'
+- offset: 71
+  type: chunk
+  payload: OK
+- offset: 71
+  type: data
+  payload: OK
+- offset: 75
+  type: chunk_length
+  payload: '0'
+- offset: 78
+  type: chunk
+  payload: null
+- offset: 78
+  type: body
+  payload: null
+- offset: 80
+  type: trailers
+  payload: null
+- offset: 80
+  type: complete
+  payload: null

@@ -1,0 +1,90 @@
+path: tests/fixtures/llhttp/response/non-ascii-in-status-line.yml
+name: Non ASCII In Status Line
+checked: true
+source:
+  path: test/response/sample.md
+  line: 609
+meta:
+  noScan: true
+  type: response
+input:
+- HTTP/1.1 500 Oriëntatieprobleem
+- 'Date: Fri, 5 Nov 2010 23:07:12 GMT+2'
+- 'Content-Length: 0'
+- 'Connection: close'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=19 span[status]="Oriëntatieprobleem"
+- off=34 status complete
+- off=34 len=4 span[header_field]="Date"
+- off=39 header_field complete
+- off=40 len=30 span[header_value]="Fri, 5 Nov 2010 23:07:12 GMT+2"
+- off=72 header_value complete
+- off=72 len=14 span[header_field]="Content-Length"
+- off=87 header_field complete
+- off=88 len=1 span[header_value]="0"
+- off=91 header_value complete
+- off=91 len=10 span[header_field]="Connection"
+- off=102 header_field complete
+- off=103 len=5 span[header_value]="close"
+- off=110 header_value complete
+- off=112 headers complete status=500 v=1/1 flags=22 content_length=0
+- off=112 message complete
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '500'
+- offset: 13
+  type: reason
+  payload: Oriëntatieprobleem
+- offset: 34
+  type: header_name
+  payload: Date
+- offset: 40
+  type: header_value
+  payload: Fri, 5 Nov 2010 23:07:12 GMT+2
+- offset: 72
+  type: header_name
+  payload: Content-Length
+- offset: 88
+  type: header_value
+  payload: '0'
+- offset: 91
+  type: header_name
+  payload: Connection
+- offset: 103
+  type: header_value
+  payload: close
+- offset: 112
+  type: headers
+  payload:
+    method: null
+    status: 500
+    url: null
+    protocol: HTTP
+    version: '1.1'
+    body: 0
+- offset: 112
+  type: complete
+  payload: null
+- offset: 112
+  type: finish
+  payload: null

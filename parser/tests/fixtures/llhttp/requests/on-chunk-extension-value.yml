@@ -1,0 +1,108 @@
+path: tests/fixtures/llhttp/request/on-chunk-extension-value.yml
+name: On_chunk_extension_value
+checked: true
+source:
+  path: test/request/pausing.md
+  line: 355
+meta:
+  pause: on_chunk_extension_value
+  type: request
+input:
+- PUT / HTTP/1.1
+- 'Transfer-Encoding: chunked'
+- ''
+- a;foo=bar
+- '0123456789'
+- '0'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="PUT"
+- off=3 method complete
+- off=4 len=1 span[url]="/"
+- off=6 url complete
+- off=6 len=4 span[protocol]="HTTP"
+- off=10 protocol complete
+- off=11 len=3 span[version]="1.1"
+- off=14 version complete
+- off=16 len=17 span[header_field]="Transfer-Encoding"
+- off=34 header_field complete
+- off=35 len=7 span[header_value]="chunked"
+- off=44 header_value complete
+- off=46 headers complete method=4 v=1/1 flags=208 content_length=0
+- off=48 len=3 span[chunk_extension_name]="foo"
+- off=52 chunk_extension_name complete
+- off=52 len=3 span[chunk_extension_value]="bar"
+- off=56 chunk_extension_value complete
+- off=56 pause
+- off=57 chunk header len=10
+- off=57 len=10 span[body]="0123456789"
+- off=69 chunk complete
+- off=72 chunk header len=0
+- off=74 chunk complete
+- off=74 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: PUT
+- offset: 4
+  type: url
+  payload: /
+- offset: 6
+  type: protocol
+  payload: HTTP
+- offset: 11
+  type: version
+  payload: '1.1'
+- offset: 16
+  type: header_name
+  payload: Transfer-Encoding
+- offset: 35
+  type: header_value
+  payload: chunked
+- offset: 46
+  type: headers
+  payload:
+    method: PUT
+    status: null
+    url: /
+    protocol: HTTP
+    version: '1.1'
+    body: chunked
+- offset: 46
+  type: chunk_length
+  payload: a
+- offset: 48
+  type: chunk_extension_name
+  payload: foo
+- offset: 52
+  type: chunk_extension_value
+  payload: bar
+- offset: 57
+  type: chunk
+  payload: '0123456789'
+- offset: 57
+  type: data
+  payload: '0123456789'
+- offset: 69
+  type: chunk_length
+  payload: '0'
+- offset: 72
+  type: chunk
+  payload: null
+- offset: 72
+  type: body
+  payload: null
+- offset: 74
+  type: trailers
+  payload: null
+- offset: 74
+  type: complete
+  payload: null

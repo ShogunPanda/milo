@@ -3,13 +3,14 @@ use std::collections::HashSet;
 use std::ffi::c_void;
 use std::fs::read_to_string;
 use std::str::from_utf8_unchecked;
-use std::vec;
+use std::{env, vec};
 use std::{fs::read_dir, path::Path};
 
-use milo::{CALLBACK_ACTIVE_ALL, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE, Parser};
+use milo::{CALLBACK_ACTIVE_ALL, Parser, STATE_TUNNEL};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use crate::helpers::callbacks::on_state_change;
 use crate::helpers::output::extract_payload;
 
 #[derive(Debug)]
@@ -90,6 +91,8 @@ pub struct TestCase {
   pub name: String,
   pub checked: bool,
   pub source: Source,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub meta: Option<serde_json::Value>,
   pub input: Vec<String>,
   pub llhttp: Vec<String>,
   pub output: Option<Vec<Event>>,
@@ -156,6 +159,16 @@ fn add_event(parser: &mut Parser, kind: &str, from: usize, size: usize) {
   let _ = Box::into_raw(context);
 }
 
+fn on_tunnel(parser: &mut Parser, from: usize, size: usize) {
+  if env::var_os("DEBUG_TESTS").unwrap_or("false".into()) == "true" {
+    on_state_change(parser, from, size);
+  }
+
+  if parser.state == STATE_TUNNEL {
+    add_event(parser, "tunnel", from, size);
+  }
+}
+
 fn on_error(parser: &mut Parser, from: usize, _size: usize) {
   let mut context = unsafe { Box::from_raw(parser.context as *mut Context) };
 
@@ -189,6 +202,11 @@ fn on_protocol(parser: &mut Parser, from: usize, size: usize) { add_event(parser
 
 fn on_version(parser: &mut Parser, from: usize, size: usize) { add_event(parser, "version", from, size); }
 
+fn on_version_skip_body(parser: &mut Parser, from: usize, size: usize) {
+  add_event(parser, "version", from, size);
+  parser.skip_body = true;
+}
+
 fn on_status(parser: &mut Parser, from: usize, size: usize) { add_event(parser, "status", from, size); }
 
 fn on_reason(parser: &mut Parser, from: usize, size: usize) { add_event(parser, "reason", from, size); }
@@ -208,7 +226,7 @@ fn on_headers(parser: &mut Parser, from: usize, _size: usize) {
     None
   };
 
-  let payload = if parser.message_type == MESSAGE_TYPE_REQUEST {
+  let payload = if parser.is_request {
     Some(Payload::Headers(Headers {
       method: Some(context.method.clone()),
       url: Some(context.url.clone()),
@@ -321,6 +339,7 @@ pub fn create_parser(input: String) -> Parser {
   context.input = input;
   parser.context = Box::into_raw(context) as *mut c_void;
 
+  parser.callbacks.on_state_change = on_tunnel;
   parser.callbacks.on_error = on_error;
   parser.callbacks.on_finish = on_finish;
   parser.callbacks.on_request = on_request;
@@ -387,10 +406,22 @@ pub fn run_test(section: &str, path: &str) -> Result {
 
   // Create the parser with its context
   let mut parser = create_parser(input.clone());
+  parser.autodetect = false;
   if section == "requests" {
-    parser.mode = MESSAGE_TYPE_REQUEST;
+    parser.is_request = true;
   } else {
-    parser.mode = MESSAGE_TYPE_RESPONSE;
+    parser.is_request = false;
+  }
+
+  // Prepare body skipping if needed
+  if case
+    .meta
+    .as_ref()
+    .and_then(|meta| meta.get("skipBody"))
+    .and_then(|v| v.as_bool())
+    .unwrap_or(false)
+  {
+    parser.callbacks.on_version = on_version_skip_body;
   }
 
   // Perform the parsing

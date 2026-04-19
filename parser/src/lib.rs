@@ -18,7 +18,8 @@ use milo_macros::{callback, generate, next};
 #[derive(Clone, Debug)]
 pub struct Parser {
   // User writable
-  pub mode: u8,
+  pub autodetect: bool,
+  pub is_request: bool,
   pub manage_unconsumed: bool,
   pub continue_without_data: bool,
   pub is_connect: bool,
@@ -38,18 +39,19 @@ pub struct Parser {
   pub error_code: u8,
 
   // Current message flags
-  pub message_type: u8,
   pub method: u8,
   pub status: u32,
   pub version_major: u8,
   pub version_minor: u8,
-  pub connection: u8,
   pub content_length: u64,
   pub chunk_size: u64,
   pub remaining_content_length: u64,
   pub remaining_chunk_size: u64,
   pub has_content_length: bool,
+  pub has_transfer_encoding: bool,
   pub has_chunked_transfer_encoding: bool,
+  pub has_connection_close: bool,
+  pub has_connection_upgrade: bool,
   pub has_upgrade: bool,
   pub has_trailers: bool,
 
@@ -88,7 +90,8 @@ impl Parser {
   pub fn new() -> Parser {
     Parser {
       // User writable
-      mode: MESSAGE_TYPE_AUTODETECT,
+      autodetect: true,
+      is_request: false,
       manage_unconsumed: false,
       continue_without_data: false,
       is_connect: false,
@@ -106,18 +109,19 @@ impl Parser {
       paused: false,
       error_code: ERROR_NONE,
       // Current message flags
-      message_type: 0,
       method: 0,
       status: 0,
       version_major: 0,
       version_minor: 0,
-      connection: 0,
       content_length: 0,
       chunk_size: 0,
       remaining_content_length: 0,
       remaining_chunk_size: 0,
       has_content_length: false,
+      has_transfer_encoding: false,
       has_chunked_transfer_encoding: false,
+      has_connection_close: false,
+      has_connection_upgrade: false,
       has_upgrade: false,
       has_trailers: false,
       // Callbacks handling
@@ -141,7 +145,8 @@ impl Parser {
   /// The following fields are not modified:
   ///   * position
   ///   * context
-  ///   * mode
+  ///   * autodetect
+  ///   * is_request
   ///   * manage_unconsumed
   ///   * continue_without_data
   ///   * context
@@ -153,8 +158,6 @@ impl Parser {
       self.parsed = 0;
     }
 
-    self.message_type = 0;
-    self.connection = 0;
     self.error_code = ERROR_NONE;
 
     if self.error_description_len > 0 {
@@ -180,8 +183,6 @@ impl Parser {
   }
 
   /// Clears all values about the message in the parser.
-  ///
-  /// The connection and message type fields are not cleared.  
   pub fn clear(&mut self) {
     self.is_connect = false;
     self.method = 0;
@@ -189,7 +190,10 @@ impl Parser {
     self.version_major = 0;
     self.version_minor = 0;
     self.has_content_length = false;
+    self.has_transfer_encoding = false;
     self.has_chunked_transfer_encoding = false;
+    self.has_connection_close = false;
+    self.has_connection_upgrade = false;
     self.has_upgrade = false;
     self.has_trailers = false;
     self.content_length = 0;
@@ -210,7 +214,7 @@ impl Parser {
   pub fn finish(&mut self) {
     match self.state {
       // If the parser is one of the initial states, simply jump to finish
-      STATE_START | STATE_AUTODETECT | STATE_REQUEST_LINE | STATE_STATUS_LINE | STATE_FINISH => {
+      STATE_START | STATE_REQUEST_LINE | STATE_STATUS_LINE | STATE_FINISH => {
         self.state = STATE_FINISH;
       }
       STATE_BODY_WITH_NO_LENGTH => {
@@ -268,4 +272,5 @@ impl Default for Parser {
   fn default() -> Self { Self::new() }
 }
 
+mod matchers;
 mod parse;

@@ -3,10 +3,7 @@ mod helpers;
 #[allow(unused_imports)]
 use std::ffi::c_uchar;
 
-use milo::{
-  CALLBACK_ACTIVE_ON_HEADERS, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE, Parser, STATE_ERROR, STATE_FINISH,
-  STATE_HEADER, STATE_START,
-};
+use milo::{CALLBACK_ACTIVE_ON_HEADERS, Parser, STATE_ERROR, STATE_FINISH, STATE_HEADER, STATE_START};
 
 use crate::helpers::{context, create_parser, http, parse};
 
@@ -34,13 +31,15 @@ fn basic_disable_autodetect() {
       "#,
   );
 
-  parser.mode = MESSAGE_TYPE_REQUEST;
+  parser.autodetect = false;
+  parser.is_request = true;
   parse(&mut parser, &response);
   assert_eq!(parser.state, STATE_ERROR);
 
   parser.reset(false);
 
-  parser.mode = MESSAGE_TYPE_RESPONSE;
+  parser.autodetect = false;
+  parser.is_request = false;
   parse(&mut parser, &request);
   assert_eq!(parser.state, STATE_ERROR);
 }
@@ -76,7 +75,8 @@ fn basic_incomplete_string_1() {
 fn basic_incomplete_string_2() {
   let mut parser = create_parser();
 
-  parser.mode = MESSAGE_TYPE_REQUEST;
+  parser.autodetect = false;
+  parser.is_request = true;
   let sample1 = http(r#"GE"#);
   let sample2 = http(r#"GET / HTTP/1.1\r\nHost: foo\r\n\r\n"#);
 
@@ -146,7 +146,8 @@ fn basic_incomplete_string_automanaged_1() {
 fn basic_incomplete_string_automanaged_2() {
   let mut parser = create_parser();
   parser.manage_unconsumed = true;
-  parser.mode = MESSAGE_TYPE_REQUEST;
+  parser.autodetect = false;
+  parser.is_request = true;
 
   let message = http(r#"GET / HTTP/1.1\r\nHost: foo\r\n\r\n"#);
 
@@ -386,7 +387,8 @@ fn basic_pause_and_resume() {
 #[test]
 fn basic_restart() {
   let mut parser = create_parser();
-  parser.mode = MESSAGE_TYPE_RESPONSE;
+  parser.autodetect = false;
+  parser.is_request = false;
 
   let response = http(
     r#"
@@ -424,7 +426,8 @@ fn basic_restart() {
   parse(&mut parser, &response);
   assert_eq!(parser.state, STATE_START);
 
-  parser.mode = MESSAGE_TYPE_REQUEST;
+  parser.autodetect = false;
+  parser.is_request = true;
   parser.reset(false);
 
   parse(&mut parser, &request);
@@ -522,4 +525,24 @@ fn basic_space_after_header_name() {
 
   parse(&mut parser, &message);
   assert_eq!(parser.state, STATE_ERROR);
+}
+
+#[test]
+fn basic_response_204_has_no_body() {
+  let mut parser = create_parser();
+  parser.autodetect = false;
+  parser.is_request = false;
+
+  let message = http(
+    r#"
+        HTTP/1.1 204 No content\r\n\r\n
+        HTTP/1.1 200 OK\r\n
+        Content-Length: 2\r\n
+        \r\n
+        ok
+      "#,
+  );
+
+  parse(&mut parser, &message);
+  assert_eq!(parser.state, STATE_START);
 }

@@ -1,0 +1,55 @@
+path: tests/fixtures/llhttp/request/host-port-and-basic-auth.yml
+name: Host:port And Basic Auth
+checked: true
+source:
+  path: test/request/uri.md
+  line: 222
+meta:
+  type: request
+input:
+- GET http://a%12:b!&*$@hypnotoad.org:1234/toto HTTP/1.1
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=41 span[url]="http://a%12:b!&*$@hypnotoad.org:1234/toto"
+- off=46 url complete
+- off=46 len=4 span[protocol]="HTTP"
+- off=50 protocol complete
+- off=51 len=3 span[version]="1.1"
+- off=54 version complete
+- off=58 headers complete method=1 v=1/1 flags=0 content_length=0
+- off=58 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: GET
+- offset: 4
+  type: url
+  payload: http://a%12:b!&*$@hypnotoad.org:1234/toto
+- offset: 46
+  type: protocol
+  payload: HTTP
+- offset: 51
+  type: version
+  payload: '1.1'
+- offset: 58
+  type: headers
+  payload:
+    method: GET
+    status: null
+    url: http://a%12:b!&*$@hypnotoad.org:1234/toto
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 58
+  type: complete
+  payload: null

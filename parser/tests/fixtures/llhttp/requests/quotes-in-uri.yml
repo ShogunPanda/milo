@@ -1,0 +1,36 @@
+path: tests/fixtures/llhttp/request/quotes-in-uri.yml
+name: Quotes In URI
+checked: true
+source:
+  path: test/request/uri.md
+  line: 4
+meta:
+  type: request
+input:
+- GET /with_"lovely"_quotes?foo=\"bar\" HTTP/1.1
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=33 span[url]="/with_"lovely"_quotes?foo=\"bar\""
+- off=38 url complete
+- off=38 len=4 span[protocol]="HTTP"
+- off=42 protocol complete
+- off=43 len=3 span[version]="1.1"
+- off=46 version complete
+- off=50 headers complete method=1 v=1/1 flags=0 content_length=0
+- off=50 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid URL character

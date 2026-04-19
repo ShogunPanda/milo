@@ -113,9 +113,13 @@ pub fn fail(parser: *mut c_void, code: u8, description_ptr: *const c_uchar, desc
 // }
 
 // Getters
-// Get the parser mode property.
+// Get the parser autodetect property.
 #[unsafe(no_mangle)]
-pub fn get_mode(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Parser)).mode } }
+pub fn is_autodetect(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).autodetect } }
+
+// Get the parser is_request property.
+#[unsafe(no_mangle)]
+pub fn is_request(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).is_request } }
 
 // Get the parser paused property.
 #[unsafe(no_mangle)]
@@ -123,7 +127,9 @@ pub fn is_paused(parser: *const c_void) -> bool { unsafe { (*(parser as *const P
 
 // Get the parser manage_unconsumed property.
 #[unsafe(no_mangle)]
-pub fn manage_unconsumed(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).manage_unconsumed } }
+pub fn should_manage_unconsumed(parser: *const c_void) -> bool {
+  unsafe { (*(parser as *const Parser)).manage_unconsumed }
+}
 
 // Get the parser max_start_line_length property.
 #[unsafe(no_mangle)]
@@ -139,7 +145,7 @@ pub fn get_max_header_length(parser: *const c_void) -> usize {
 
 // Get the parser continue_without_data property.
 #[unsafe(no_mangle)]
-pub fn continue_without_data(parser: *const c_void) -> bool {
+pub fn should_continue_without_data(parser: *const c_void) -> bool {
   unsafe { (*(parser as *const Parser)).continue_without_data }
 }
 
@@ -149,7 +155,7 @@ pub fn is_connect(parser: *const c_void) -> bool { unsafe { (*(parser as *const 
 
 // Get the parser skip_body property.
 #[unsafe(no_mangle)]
-pub fn skip_body(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).skip_body } }
+pub fn should_skip_body(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).skip_body } }
 
 // Get the parser state property.
 #[unsafe(no_mangle)]
@@ -167,10 +173,6 @@ pub fn get_parsed(parser: *const c_void) -> u64 { unsafe { (*(parser as *const P
 #[unsafe(no_mangle)]
 pub fn get_error_code(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Parser)).error_code } }
 
-// Get the parser message_type property.
-#[unsafe(no_mangle)]
-pub fn get_message_type(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Parser)).message_type } }
-
 // Get the parser method property.
 #[unsafe(no_mangle)]
 pub fn get_method(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Parser)).method } }
@@ -187,9 +189,17 @@ pub fn get_version_major(parser: *const c_void) -> u8 { unsafe { (*(parser as *c
 #[unsafe(no_mangle)]
 pub fn get_version_minor(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Parser)).version_minor } }
 
-// Get the parser connection property.
+// Get the parser has_connection_close property.
 #[unsafe(no_mangle)]
-pub fn get_connection(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Parser)).connection } }
+pub fn has_connection_close(parser: *const c_void) -> bool {
+  unsafe { (*(parser as *const Parser)).has_connection_close }
+}
+
+// Get the parser has_connection_upgrade property.
+#[unsafe(no_mangle)]
+pub fn has_connection_upgrade(parser: *const c_void) -> bool {
+  unsafe { (*(parser as *const Parser)).has_connection_upgrade }
+}
 
 // Get the parser content_length property.
 #[unsafe(no_mangle)]
@@ -214,6 +224,12 @@ pub fn get_remaining_chunk_size(parser: *const c_void) -> u64 {
 // Get the parser has_content_length property.
 #[unsafe(no_mangle)]
 pub fn has_content_length(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).has_content_length } }
+
+// Get the parser has_transfer_encoding property.
+#[unsafe(no_mangle)]
+pub fn has_transfer_encoding(parser: *const c_void) -> bool {
+  unsafe { (*(parser as *const Parser)).has_transfer_encoding }
+}
 
 // Get the parser has_chunked_transfer_encoding property.
 #[unsafe(no_mangle)]
@@ -242,14 +258,21 @@ pub fn get_error_description_raw(parser: *mut c_void) -> u64 {
 }
 
 #[unsafe(no_mangle)]
-pub fn set_mode(parser: *mut c_void, value: u8) {
+pub fn set_should_autodetect(parser: *mut c_void, value: bool) {
   unsafe {
-    (*(parser as *mut Parser)).mode = value;
+    (*(parser as *mut Parser)).autodetect = value;
   }
 }
 
 #[unsafe(no_mangle)]
-pub fn set_manage_unconsumed(parser: *mut c_void, value: bool) {
+pub fn set_is_request(parser: *mut c_void, value: bool) {
+  unsafe {
+    (*(parser as *mut Parser)).is_request = value;
+  }
+}
+
+#[unsafe(no_mangle)]
+pub fn set_should_manage_unconsumed(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).manage_unconsumed = value;
   }
@@ -270,14 +293,14 @@ pub fn set_max_header_length(parser: *mut c_void, value: usize) {
 }
 
 #[unsafe(no_mangle)]
-pub fn set_continue_without_data(parser: *mut c_void, value: bool) {
+pub fn set_should_continue_without_data(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).continue_without_data = value;
   }
 }
 
 #[unsafe(no_mangle)]
-pub fn set_skip_body(parser: *mut c_void, value: bool) {
+pub fn set_should_skip_body(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).skip_body = value;
   }

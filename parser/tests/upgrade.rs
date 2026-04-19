@@ -38,7 +38,7 @@ fn upgrade_connection_upgrade() {
 
   let message1 = http(
     r#"
-        GET / HTTP/1.1\r\n
+        POST / HTTP/1.1\r\n
         Host: example.com\r\n
         Connection: upgrade\r\n
         Upgrade: websocket\r\n
@@ -55,7 +55,7 @@ fn upgrade_connection_upgrade() {
   );
 
   let consumed1 = parse(&mut parser, &message1);
-  assert_eq!(consumed1, message1.len() - message2.len());
+  assert_eq!(consumed1, message1.len() - 4);
   assert_eq!(parser.state, STATE_TUNNEL);
 
   let consumed2 = parse(&mut parser, &message2);

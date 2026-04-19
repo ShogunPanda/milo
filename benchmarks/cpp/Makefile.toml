@@ -9,12 +9,16 @@
   command = "clang++"
   args = [
     "-std=c++11",
+    "-O3",
+    "-march=native",
+    "-flto",
+    "-DNDEBUG",
     "-I",
     "../../parser/dist/cpp/release",
     "-o",
     "./dist/milo-benchmarks",
-    "../../parser/dist/cpp/release/libmilo.a",
     "src/main.cc",
+    "../../parser/dist/cpp/release/libmilo.a",
   ]
 
 [tasks.benchmarks]

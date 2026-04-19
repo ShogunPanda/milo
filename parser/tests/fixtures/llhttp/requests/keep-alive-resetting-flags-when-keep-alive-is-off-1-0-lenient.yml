@@ -1,0 +1,59 @@
+path: tests/fixtures/llhttp/request/keep-alive-resetting-flags-when-keep-alive-is-off-1-0-lenient.yml
+name: keep-alive / Resetting Flags When Keep-alive Is Off (1.0, Lenient)
+checked: true
+source:
+  path: test/request/connection.md
+  line: 107
+meta:
+  type: request-lenient-keep-alive
+input:
+- PUT /url HTTP/1.0
+- 'Content-Length: 0'
+- ''
+- PUT /url HTTP/1.1
+- 'Transfer-Encoding: chunked'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="PUT"
+- off=3 method complete
+- off=4 len=4 span[url]="/url"
+- off=9 url complete
+- off=9 len=4 span[protocol]="HTTP"
+- off=13 protocol complete
+- off=14 len=3 span[version]="1.0"
+- off=17 version complete
+- off=19 len=14 span[header_field]="Content-Length"
+- off=34 header_field complete
+- off=35 len=1 span[header_value]="0"
+- off=38 header_value complete
+- off=40 headers complete method=4 v=1/0 flags=20 content_length=0
+- off=40 message complete
+- off=40 reset
+- off=40 message begin
+- off=40 len=3 span[method]="PUT"
+- off=43 method complete
+- off=44 len=4 span[url]="/url"
+- off=49 url complete
+- off=49 len=4 span[protocol]="HTTP"
+- off=53 protocol complete
+- off=54 len=3 span[version]="1.1"
+- off=57 version complete
+- off=59 len=17 span[header_field]="Transfer-Encoding"
+- off=77 header_field complete
+- off=78 len=7 span[header_value]="chunked"
+- off=87 header_value complete
+- off=89 headers complete method=4 v=1/1 flags=208 content_length=0
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid protocol

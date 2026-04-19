@@ -1,0 +1,55 @@
+path: tests/fixtures/llhttp/request/prefix-newline.yml
+name: Prefix Newline
+checked: true
+source:
+  path: test/request/sample.md
+  line: 288
+meta:
+  type: request
+input:
+- \r\nGET /test HTTP/1.1
+- ''
+- ''
+llhttp:
+- off=2 message begin
+- off=2 len=3 span[method]="GET"
+- off=5 method complete
+- off=6 len=5 span[url]="/test"
+- off=12 url complete
+- off=12 len=4 span[protocol]="HTTP"
+- off=16 protocol complete
+- off=17 len=3 span[version]="1.1"
+- off=20 version complete
+- off=24 headers complete method=1 v=1/1 flags=0 content_length=0
+- off=24 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 2
+  type: method
+  payload: GET
+- offset: 6
+  type: url
+  payload: /test
+- offset: 12
+  type: protocol
+  payload: HTTP
+- offset: 17
+  type: version
+  payload: '1.1'
+- offset: 24
+  type: headers
+  payload:
+    method: GET
+    status: null
+    url: /test
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 24
+  type: complete
+  payload: null

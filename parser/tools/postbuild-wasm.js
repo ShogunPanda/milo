@@ -5,39 +5,39 @@ import { format } from 'prettier'
 import prettierConfig from './prettier.config.js'
 
 const enums = {
-  MESSAGE_TYPE: 'MessageTypes',
   ERROR: 'Errors',
   METHOD: 'Methods',
-  CONNECTION: 'Connections',
   CALLBACK: 'Callbacks',
   CALLBACK_ACTIVE: 'CallbackActives',
   STATE: 'States'
 }
 
 const getters = {
-  getMode: ['number', 'get_mode'],
+  isAutodetect: ['bool', 'is_autodetect'],
+  isRequest: ['bool', 'is_request'],
   isPaused: ['bool', 'is_paused'],
-  manageUnconsumed: ['bool', 'manage_unconsumed'],
+  shouldManageUnconsumed: ['bool', 'should_manage_unconsumed'],
   getMaxStartLineLength: ['number', 'get_max_start_line_length'],
   getMaxHeaderLength: ['number', 'get_max_header_length'],
-  continueWithoutData: ['bool', 'continue_without_data'],
+  shouldContinueWithoutData: ['bool', 'should_continue_without_data'],
   isConnect: ['bool', 'is_connect'],
-  skipBody: ['bool', 'skip_body'],
+  shouldSkipBody: ['bool', 'should_skip_body'],
   getState: ['number', 'get_state'],
   getPosition: ['number', 'get_position'],
   getParsed: ['bigint', 'get_parsed'],
   getErrorCode: ['number', 'get_error_code'],
-  getMessageType: ['number', 'get_message_type'],
   getMethod: ['number', 'get_method'],
   getStatus: ['number', 'get_status'],
   getVersionMajor: ['number', 'get_version_major'],
   getVersionMinor: ['number', 'get_version_minor'],
-  getConnection: ['number', 'get_connection'],
+  hasConnectionClose: ['bool', 'has_connection_close'],
+  hasConnectionUpgrade: ['bool', 'has_connection_upgrade'],
   getContentLength: ['bigint', 'get_content_length'],
   getChunkSize: ['bigint', 'get_chunk_size'],
   getRemainingContentLength: ['bigint', 'get_remaining_content_length'],
   getRemainingChunkSize: ['bigint', 'get_remaining_chunk_size'],
   hasContentLength: ['bool', 'has_content_length'],
+  hasTransferEncoding: ['bool', 'has_transfer_encoding'],
   hasChunkedTransferEncoding: ['bool', 'has_chunked_transfer_encoding'],
   hasUpgrade: ['bool', 'has_upgrade'],
   hasTrailers: ['bool', 'has_trailers'],
@@ -45,13 +45,14 @@ const getters = {
 }
 
 const setters = {
-  setContinueWithoutData: 'set_continue_without_data',
+  setShouldAutodetect: 'set_should_autodetect',
+  setShouldContinueWithoutData: 'set_should_continue_without_data',
+  setIsRequest: 'set_is_request',
   setIsConnect: 'set_is_connect',
-  setManageUnconsumed: 'set_manage_unconsumed',
-  setMode: 'set_mode',
+  setShouldManageUnconsumed: 'set_should_manage_unconsumed',
   setMaxStartLineLength: 'set_max_start_line_length',
   setMaxHeaderLength: 'set_max_header_length',
-  setSkipBody: 'set_skip_body',
+  setShouldSkipBody: 'set_should_skip_body',
   setActiveCallbacks: 'set_active_callbacks'
 }
 

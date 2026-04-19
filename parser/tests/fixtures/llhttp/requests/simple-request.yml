@@ -1,0 +1,77 @@
+path: tests/fixtures/llhttp/request/simple-request.yml
+name: Simple Request
+checked: true
+source:
+  path: test/request/sample.md
+  line: 6
+meta:
+  type: request
+input:
+- OPTIONS /url HTTP/1.1
+- 'Header1: Value1'
+- Header2:\t Value2
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=7 span[method]="OPTIONS"
+- off=7 method complete
+- off=8 len=4 span[url]="/url"
+- off=13 url complete
+- off=13 len=4 span[protocol]="HTTP"
+- off=17 protocol complete
+- off=18 len=3 span[version]="1.1"
+- off=21 version complete
+- off=23 len=7 span[header_field]="Header1"
+- off=31 header_field complete
+- off=32 len=6 span[header_value]="Value1"
+- off=40 header_value complete
+- off=40 len=7 span[header_field]="Header2"
+- off=48 header_field complete
+- off=50 len=6 span[header_value]="Value2"
+- off=58 header_value complete
+- off=60 headers complete method=6 v=1/1 flags=0 content_length=0
+- off=60 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: OPTIONS
+- offset: 8
+  type: url
+  payload: /url
+- offset: 13
+  type: protocol
+  payload: HTTP
+- offset: 18
+  type: version
+  payload: '1.1'
+- offset: 23
+  type: header_name
+  payload: Header1
+- offset: 32
+  type: header_value
+  payload: Value1
+- offset: 40
+  type: header_name
+  payload: Header2
+- offset: 50
+  type: header_value
+  payload: Value2
+- offset: 60
+  type: headers
+  payload:
+    method: OPTIONS
+    status: null
+    url: /url
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 60
+  type: complete
+  payload: null

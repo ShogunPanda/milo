@@ -1,0 +1,62 @@
+path: tests/fixtures/llhttp/request/spaces-in-content-length-surrounding.yml
+name: Spaces In Content-Length (surrounding)
+checked: true
+source:
+  path: test/request/content-length.md
+  line: 290
+meta:
+  type: request
+input:
+- POST / HTTP/1.1
+- 'Content-Length:  42 '
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[method]="POST"
+- off=4 method complete
+- off=5 len=1 span[url]="/"
+- off=7 url complete
+- off=7 len=4 span[protocol]="HTTP"
+- off=11 protocol complete
+- off=12 len=3 span[version]="1.1"
+- off=15 version complete
+- off=17 len=14 span[header_field]="Content-Length"
+- off=32 header_field complete
+- off=34 len=3 span[header_value]="42 "
+- off=39 header_value complete
+- off=41 headers complete method=3 v=1/1 flags=20 content_length=42
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: POST
+- offset: 5
+  type: url
+  payload: /
+- offset: 7
+  type: protocol
+  payload: HTTP
+- offset: 12
+  type: version
+  payload: '1.1'
+- offset: 17
+  type: header_name
+  payload: Content-Length
+- offset: 34
+  type: header_value
+  payload: '42'
+- offset: 41
+  type: headers
+  payload:
+    method: POST
+    status: null
+    url: /
+    protocol: HTTP
+    version: '1.1'
+    body: 42

@@ -1,0 +1,47 @@
+path: tests/fixtures/llhttp/request/underscore-in-hostname.yml
+name: Underscore In Hostname
+checked: true
+source:
+  path: test/request/uri.md
+  line: 188
+meta:
+  type: request
+input:
+- CONNECT home_0.netscape.com:443 HTTP/1.0
+- 'User-agent: Mozilla/1.1N'
+- 'Proxy-authorization: basic aGVsbG86d29ybGQ='
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=7 span[method]="CONNECT"
+- off=7 method complete
+- off=8 len=23 span[url]="home_0.netscape.com:443"
+- off=32 url complete
+- off=32 len=4 span[protocol]="HTTP"
+- off=36 protocol complete
+- off=37 len=3 span[version]="1.0"
+- off=40 version complete
+- off=42 len=10 span[header_field]="User-agent"
+- off=53 header_field complete
+- off=54 len=12 span[header_value]="Mozilla/1.1N"
+- off=68 header_value complete
+- off=68 len=19 span[header_field]="Proxy-authorization"
+- off=88 header_field complete
+- off=89 len=22 span[header_value]="basic aGVsbG86d29ybGQ="
+- off=113 header_value complete
+- off=115 headers complete method=5 v=1/0 flags=0 content_length=0
+- off=115 message complete
+- off=115 error code=22 reason="Pause on CONNECT/Upgrade"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid protocol

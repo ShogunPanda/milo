@@ -12,5 +12,5 @@ pub fn case_insensitive_string(input: TokenStream) -> TokenStream {
     .map(|b| parse_str::<Expr>(&format!("{} | {}", b.to_ascii_uppercase(), b.to_ascii_lowercase())).unwrap())
     .collect();
 
-  TokenStream::from(quote! { [#(#bytes),*, ..] })
+  TokenStream::from(quote! { [#(#bytes),*] })
 }

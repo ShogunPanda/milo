@@ -1,0 +1,97 @@
+path: tests/fixtures/llhttp/response/underscore-in-header-key.yml
+name: Underscore In Header Key
+checked: true
+source:
+  path: test/response/sample.md
+  line: 382
+meta:
+  type: response
+input:
+- HTTP/1.1 200 OK
+- 'Server: DCLK-AdSvr'
+- 'Content-Type: text/xml'
+- 'Content-Length: 0'
+- 'DCLK_imp: v7;x;114750856;0-0;0;17820020;0/0;21603567/21621457/1;;~okv=;dcmt=text/xml;;~cs=o'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=2 span[status]="OK"
+- off=17 status complete
+- off=17 len=6 span[header_field]="Server"
+- off=24 header_field complete
+- off=25 len=10 span[header_value]="DCLK-AdSvr"
+- off=37 header_value complete
+- off=37 len=12 span[header_field]="Content-Type"
+- off=50 header_field complete
+- off=51 len=8 span[header_value]="text/xml"
+- off=61 header_value complete
+- off=61 len=14 span[header_field]="Content-Length"
+- off=76 header_field complete
+- off=77 len=1 span[header_value]="0"
+- off=80 header_value complete
+- off=80 len=8 span[header_field]="DCLK_imp"
+- off=89 header_field complete
+- off=90 len=81 span[header_value]="v7;x;114750856;0-0;0;17820020;0/0;21603567/21621457/1;;~okv=;dcmt=text/xml;;~cs=o"
+- off=173 header_value complete
+- off=175 headers complete status=200 v=1/1 flags=20 content_length=0
+- off=175 message complete
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '200'
+- offset: 13
+  type: reason
+  payload: OK
+- offset: 17
+  type: header_name
+  payload: Server
+- offset: 25
+  type: header_value
+  payload: DCLK-AdSvr
+- offset: 37
+  type: header_name
+  payload: Content-Type
+- offset: 51
+  type: header_value
+  payload: text/xml
+- offset: 61
+  type: header_name
+  payload: Content-Length
+- offset: 77
+  type: header_value
+  payload: '0'
+- offset: 80
+  type: header_name
+  payload: DCLK_imp
+- offset: 90
+  type: header_value
+  payload: v7;x;114750856;0-0;0;17820020;0/0;21603567/21621457/1;;~okv=;dcmt=text/xml;;~cs=o
+- offset: 175
+  type: headers
+  payload:
+    method: null
+    status: 200
+    url: null
+    protocol: HTTP
+    version: '1.1'
+    body: 0
+- offset: 175
+  type: complete
+  payload: null

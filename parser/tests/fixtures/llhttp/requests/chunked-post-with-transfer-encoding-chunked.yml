@@ -1,0 +1,96 @@
+path: tests/fixtures/llhttp/request/chunked-post-with-transfer-encoding-chunked.yml
+name: 'chunked / POST With Transfer-Encoding: Chunked'
+checked: true
+source:
+  path: test/request/transfer-encoding.md
+  line: 107
+meta:
+  type: request
+input:
+- POST /post_chunked_all_your_base HTTP/1.1
+- 'Transfer-Encoding: chunked'
+- ''
+- 1e
+- all your base are belong to us
+- '0'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[method]="POST"
+- off=4 method complete
+- off=5 len=27 span[url]="/post_chunked_all_your_base"
+- off=33 url complete
+- off=33 len=4 span[protocol]="HTTP"
+- off=37 protocol complete
+- off=38 len=3 span[version]="1.1"
+- off=41 version complete
+- off=43 len=17 span[header_field]="Transfer-Encoding"
+- off=61 header_field complete
+- off=62 len=7 span[header_value]="chunked"
+- off=71 header_value complete
+- off=73 headers complete method=3 v=1/1 flags=208 content_length=0
+- off=77 chunk header len=30
+- off=77 len=30 span[body]="all your base are belong to us"
+- off=109 chunk complete
+- off=112 chunk header len=0
+- off=114 chunk complete
+- off=114 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: POST
+- offset: 5
+  type: url
+  payload: /post_chunked_all_your_base
+- offset: 33
+  type: protocol
+  payload: HTTP
+- offset: 38
+  type: version
+  payload: '1.1'
+- offset: 43
+  type: header_name
+  payload: Transfer-Encoding
+- offset: 62
+  type: header_value
+  payload: chunked
+- offset: 73
+  type: headers
+  payload:
+    method: POST
+    status: null
+    url: /post_chunked_all_your_base
+    protocol: HTTP
+    version: '1.1'
+    body: chunked
+- offset: 73
+  type: chunk_length
+  payload: 1e
+- offset: 77
+  type: chunk
+  payload: all your base are belong to us
+- offset: 77
+  type: data
+  payload: all your base are belong to us
+- offset: 109
+  type: chunk_length
+  payload: '0'
+- offset: 112
+  type: chunk
+  payload: null
+- offset: 112
+  type: body
+  payload: null
+- offset: 114
+  type: trailers
+  payload: null
+- offset: 114
+  type: complete
+  payload: null

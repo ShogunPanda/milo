@@ -1,0 +1,49 @@
+path: tests/fixtures/llhttp/response/no-headers-and-no-body.yml
+name: No Headers And No Body
+checked: true
+source:
+  path: test/response/sample.md
+  line: 271
+meta:
+  type: response
+input:
+- HTTP/1.1 404 Not Found
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=9 span[status]="Not Found"
+- off=24 status complete
+- off=26 headers complete status=404 v=1/1 flags=0 content_length=0
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '404'
+- offset: 13
+  type: reason
+  payload: Not Found
+- offset: 26
+  type: headers
+  payload:
+    method: null
+    status: 404
+    url: null
+    protocol: HTTP
+    version: '1.1'
+    body: null

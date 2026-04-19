@@ -79,7 +79,8 @@ pub extern "C" fn milo_parse(parser: *mut Parser, data: *const c_uchar, limit: u
 /// The following fields are not modified:
 ///   * position
 ///   * context
-///   * mode
+///   * autodetect
+///   * is_request
 ///   * manage_unconsumed
 ///   * continue_without_data
 ///   * context
@@ -88,7 +89,7 @@ pub extern "C" fn milo_reset(parser: *mut Parser, keep_parsed: bool) { unsafe { 
 
 /// Clears all values about the message in the parser.
 ///
-/// The connection and message type fields are not cleared.  
+/// The autodetect and is_request fields are not cleared.
 #[unsafe(no_mangle)]
 pub extern "C" fn milo_clear(parser: *mut Parser) { unsafe { (*parser).clear() } }
 

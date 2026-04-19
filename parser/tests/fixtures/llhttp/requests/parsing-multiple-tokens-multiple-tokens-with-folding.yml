@@ -1,0 +1,98 @@
+path: tests/fixtures/llhttp/request/parsing-multiple-tokens-multiple-tokens-with-folding.yml
+name: Parsing multiple tokens / Multiple Tokens With Folding
+checked: true
+source:
+  path: test/request/connection.md
+  line: 403
+meta:
+  type: request-lenient-headers
+input:
+- GET /demo HTTP/1.1
+- 'Host: example.com'
+- 'Connection: Something,'
+- ' Upgrade, ,Keep-Alive'
+- 'Sec-WebSocket-Key2: 12998 5 Y3 1  .P00'
+- 'Sec-WebSocket-Protocol: sample'
+- 'Upgrade: WebSocket'
+- 'Sec-WebSocket-Key1: 4 @1  46546xW%0l 1 5'
+- 'Origin: http://example.com'
+- ''
+- Hot diggity dogg
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=5 span[url]="/demo"
+- off=10 url complete
+- off=10 len=4 span[protocol]="HTTP"
+- off=14 protocol complete
+- off=15 len=3 span[version]="1.1"
+- off=18 version complete
+- off=20 len=4 span[header_field]="Host"
+- off=25 header_field complete
+- off=26 len=11 span[header_value]="example.com"
+- off=39 header_value complete
+- off=39 len=10 span[header_field]="Connection"
+- off=50 header_field complete
+- off=51 len=10 span[header_value]="Something,"
+- off=63 len=21 span[header_value]=" Upgrade, ,Keep-Alive"
+- off=86 header_value complete
+- off=86 len=18 span[header_field]="Sec-WebSocket-Key2"
+- off=105 header_field complete
+- off=106 len=18 span[header_value]="12998 5 Y3 1  .P00"
+- off=126 header_value complete
+- off=126 len=22 span[header_field]="Sec-WebSocket-Protocol"
+- off=149 header_field complete
+- off=150 len=6 span[header_value]="sample"
+- off=158 header_value complete
+- off=158 len=7 span[header_field]="Upgrade"
+- off=166 header_field complete
+- off=167 len=9 span[header_value]="WebSocket"
+- off=178 header_value complete
+- off=178 len=18 span[header_field]="Sec-WebSocket-Key1"
+- off=197 header_field complete
+- off=198 len=20 span[header_value]="4 @1  46546xW%0l 1 5"
+- off=220 header_value complete
+- off=220 len=6 span[header_field]="Origin"
+- off=227 header_field complete
+- off=228 len=18 span[header_value]="http://example.com"
+- off=248 header_value complete
+- off=250 headers complete method=1 v=1/1 flags=15 content_length=0
+- off=250 message complete
+- off=250 error code=22 reason="Pause on CONNECT/Upgrade"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: GET
+- offset: 4
+  type: url
+  payload: /demo
+- offset: 10
+  type: protocol
+  payload: HTTP
+- offset: 15
+  type: version
+  payload: '1.1'
+- offset: 20
+  type: header_name
+  payload: Host
+- offset: 26
+  type: header_value
+  payload: example.com
+- offset: 39
+  type: header_name
+  payload: Connection
+- offset: 51
+  type: header_value
+  payload: Something,
+- offset: 63
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid header field name character

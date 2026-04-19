@@ -27,21 +27,13 @@ Callbacks are disabled by default.
 The module exports several constants (`*` is used to denote a family prefix):
 
 - `DEBUG`: If debug informations are enabled or not.
-- `MESSAGE_TYPE_*`: The type of the parser: it can autodetect (default) or only parse requests or response.
 - `ERROR_*`: An error code.
 - `METHOD_*`: An HTTP/RTSP request method.
-- `CONNECTION_*`: A `Connection` header value.
 - `CALLBACK_*`: A parser callback.
 - `CALLBACK_ACTIVE_*`: Callback activation flags.
 - `STATE_*`: A parser state.
 
 ### Enumeratons
-
-#### `MessageTypes`
-
-An enum listing all possible message types.
-
-Access is supported from string constant or numeric value.
 
 #### `Errors`
 
@@ -52,12 +44,6 @@ Access is supported from string constant or numeric value.
 #### `Methods`
 
 An enum listing all possible HTTP/RTSP methods.
-
-Access is supported from string constant or numeric value.
-
-#### `Connections`
-
-An enum listing all possible connection (`Connection` header value) types.
 
 Access is supported from string constant or numeric value.
 
@@ -157,7 +143,8 @@ The following fields are not modified:
 
 - `position`
 - `context`
-- `mode`
+- `isAutodetect`
+- `is_request`
 - `manage_unconsumed`
 - `continue_without_data`
 - `max_start_line_length`
@@ -170,7 +157,7 @@ The following fields are not modified:
 
 Clears all values about the message in the parser.
 
-The connection and message type fields are not cleared.
+The configured message type fields are not cleared.
 
 #### `pause(parser)`
 
@@ -188,15 +175,19 @@ Marks the parser as finished. Any new invocation of `milo::milo_parse` will put 
 
 Marks the parsing a failed, setting a error code and and error message.
 
-#### `getMode(parser)`
+#### `isAutodetect(parser)`
 
-Returns the parser mode.
+Returns `true` if the parser autodetects requests and responses.
+
+#### `isRequest(parser)`
+
+Returns `true` if the configured or detected message type is a request.
 
 #### `isPaused(parser)`
 
 Returns `true` if the parser is paused.
 
-#### `manageUnconsumed(parser)`
+#### `shouldManageUnconsumed(parser)`
 
 Returns `true` if the parser should automatically copy and prepend unconsumed data.
 
@@ -212,7 +203,7 @@ Returns the parser maximum allowed header length.
 
 Default is `8192`.
 
-#### `continueWithoutData(parser)`
+#### `shouldContinueWithoutData(parser)`
 
 Returns `true` if the next execution of the parse loop should execute even if there is no more data.
 
@@ -220,7 +211,7 @@ Returns `true` if the next execution of the parse loop should execute even if th
 
 Returns `true` if the current request used `CONNECT` method.
 
-#### `skipBody(parser)`
+#### `shouldSkipBody(parser)`
 
 Returns `true` if the parser should skip the body.
 
@@ -240,10 +231,6 @@ Returns the total bytes consumed from this parser.
 
 Returns the parser error.
 
-#### `getMessageType(parser)`
-
-Returns the parser current message type.
-
 #### `getMethod(parser)`
 
 Returns the parser current request method.
@@ -260,9 +247,13 @@ Returns the parser current message HTTP version major version.
 
 Returns the parser current message HTTP version minor version.
 
-#### `getConnection(parser)`
+#### `hasConnectionClose(parser)`
 
-Returns the parser value for the connection header.
+Returns `true` if the current message has a `Connection: close` token.
+
+#### `hasConnectionUpgrade(parser)`
+
+Returns `true` if the current message has a `Connection: upgrade` token.
 
 #### `getContentLength(parser)`
 
@@ -284,9 +275,13 @@ Returns the parser missing data length of the next chunk according to to the `ch
 
 Returns `true` if the parser the current message has a `Content-Length` header.
 
+#### `hasTransferEncoding(parser)`
+
+Returns `true` if the current message has a `Transfer-Encoding` header.
+
 #### `hasChunkedTransferEncoding(parser)`
 
-Returns `true` if the parser the current message has a `Transfer-Encoding: chunked` header.
+Returns `true` if the current message is using chunked encoding.
 
 #### `hasUpgrade(parser)`
 
@@ -300,9 +295,13 @@ Returns `true` if the parser the current message has a `Trailers` header.
 
 Returns the parser error description or `null`.
 
-#### `setMode(parser, value)`
+#### `setShouldAutodetect(parser, value)`
 
-Sets the parser mode.
+Sets if the parser should autodetect requests and responses.
+
+#### `setIsRequest(parser, value)`
+
+Sets the parser message type when `autodetect` is disabled.
 
 #### `setMaxStartLineLength(parser, value)`
 
@@ -320,15 +319,15 @@ Defaults to `8192` in a new parser.
 
 Sets the active callback bitmask on the parser.
 
-#### `setManageUnconsumed(parser, value)`
+#### `setShouldManageUnconsumed(parser, value)`
 
 Sets if the parser should automatically copy and prepend unconsumed data.
 
-#### `setContinueWithoutData(parser, value)`
+#### `setShouldContinueWithoutData(parser, value)`
 
 Sets if the next execution of the parse loop should execute even if there is no more data.
 
-#### `setSkipBody(parser, value)`
+#### `setShouldSkipBody(parser, value)`
 
 Set if the parser should skip the body.
 

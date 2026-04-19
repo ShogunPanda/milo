@@ -2,7 +2,7 @@
 
 use std::{os::unix::process, slice, str};
 
-use milo::{Parser, DEBUG, MESSAGE_TYPE_RESPONSE};
+use milo::{DEBUG, Parser};
 
 use crate::helpers::{context, output};
 
@@ -90,7 +90,7 @@ pub fn on_headers(parser: &mut Parser, from: usize, size: usize) {
   let version: String = context.version.clone();
   let _ = Box::into_raw(context);
 
-  if parser.message_type == MESSAGE_TYPE_RESPONSE {
+  if !parser.is_request {
     let heading = format!(
       "\"pos\": {}, \"event\": {}, \"type\": \"response\", ",
       position,

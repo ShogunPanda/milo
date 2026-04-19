@@ -25,10 +25,8 @@ Callbacks are disabled by default.
 The crate exports several constants (`*` is used to denote a family prefix):
 
 - `DEBUG`: If the debug informations are enabled or not.
-- `MESSAGE_TYPE_*`: The type of the parser: it can autodetect (default) or only parse requests or response.
 - `ERROR_*`: An error code.
 - `METHOD_*`: An HTTP/RTSP request method.
-- `CONNECTION_*`: A `Connection` header value.
 - `CALLBACK_*`: A parser callback.
 - `CALLBACK_ACTIVE_*`: A callback activation flag.
 - `STATE_*`: A parser state.
@@ -37,10 +35,6 @@ The crate exports several constants (`*` is used to denote a family prefix):
 
 All the enums below implement `TryFrom<usize>` and `Into<&str>` traits and have the `as_str` method.
 
-### `MessageTypes`
-
-An enum listing all possible message types.
-
 ### `Errors`
 
 An enum listing all possible parser errors.
@@ -48,10 +42,6 @@ An enum listing all possible parser errors.
 ### `Methods`
 
 An enum listing all possible HTTP/RTSP methods.
-
-### `Connections`
-
-An enum listing all possible connection (`Connection` header value) types.
 
 ### `States`
 
@@ -104,7 +94,8 @@ If you want to remove a previously set callback, you can use the `milo_noop` fun
 
 A struct representing a parser. It has the following fields:
 
-- `mode` (`u8`): The current parser mode. Can be `MESSAGE_TYPE_AUTODETECT`, `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`,
+- `autodetect` (`bool`): If the parser should autodetect requests and responses. Enabled by default.
+- `is_request` (`bool`): The configured or detected message type. Set this when `autodetect` is `false`.
 - `paused` (`bool`): If the parser is paused.
 - `manage_unconsumed` (`bool`): If the parser should automatically copy and prepend unconsumed data.
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
@@ -117,18 +108,19 @@ A struct representing a parser. It has the following fields:
 - `position` (`usize`): The current parser position in the slice in the current execution of `milo_parse`.
 - `parsed` (`u64`): The total bytes consumed from this parser.
 - `error_code` (`u8`): The parser error. By default is `ERROR_NONE`.
-- `message_type` (`u8`): The current message type. Can be `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`.
 - `method` (`u8`): The current request method.
 - `status` (`u32`): The current response status.
 - `version_major` (`u8`): The current message HTTP version major version.
 - `version_minor` (`u8`): The current message HTTP version minor version.
-- `connection` (`u8`): The value for the connection header. Can be `CONNECTION_CLOSE`, `CONNECTION_UPGRADE` or `CONNECTION_KEEPALIVE` (which is the default when no header is set).
 - `content_length` (`u64`): The value of the `Content-Length` header.
 - `chunk_size` (`u64`): The expected length of the next chunk.
 - `remaining_content_length` (`u64`): The missing data length of the body according to the `content_length` field.
 - `remaining_chunk_size` (`u64`): The missing data length of the next chunk according to the `chunk_size` field.
 - `has_content_length` (`bool`): If the current message has a `Content-Length` header.
-- `has_chunked_transfer_encoding` (`bool`): If the current message has a `Transfer-Encoding` header.
+- `has_transfer_encoding` (`bool`): If the current message has a `Transfer-Encoding` header.
+- `has_chunked_transfer_encoding` (`bool`): If the current message is using chunked encoding.
+- `has_connection_close` (`bool`): If the current message has a `Connection: close` token.
+- `has_connection_upgrade` (`bool`): If the current message has a `Connection: upgrade` token.
 - `has_upgrade` (`bool`): If the current message has a `Connection: upgrade` header.
 - `has_trailers` (`bool`): If the current message has a `Trailers` header.
 - `active_callbacks` (`u64`): Active callback bitmask. Set to one or more `CALLBACK_ACTIVE_*` flags.
@@ -140,7 +132,8 @@ A struct representing a parser. It has the following fields:
 
 All the fields **MUST** be considered readonly, with the following exceptions:
 
-- `mode`
+- `autodetect`
+- `is_request`
 - `manage_unconsumed`
 - `continue_without_data`
 - `is_connect`
@@ -170,7 +163,8 @@ The following fields are not modified:
 
 - `position`
 - `context`
-- `mode`
+- `autodetect`
+- `is_request`
 - `manage_unconsumed`
 - `continue_without_data`
 - `max_start_line_length`
@@ -183,7 +177,7 @@ The following fields are not modified:
 
 Clears all values about the message in the parser.
 
-The connection and message type fields are not cleared.
+The `autodetect` and `is_request` fields are not cleared.
 
 #### `Parser::pause(&mut self)`
 
@@ -266,7 +260,8 @@ The following fields are not modified:
 
 - `position`
 - `context`
-- `mode`
+- `autodetect`
+- `is_request`
 - `manage_unconsumed`
 - `continue_without_data`
 - `context`
@@ -275,7 +270,7 @@ The following fields are not modified:
 
 Clears all values about the message in the parser.
 
-The connection and message type fields are not cleared.
+The `autodetect` and `is_request` fields are not cleared.
 
 ### `milo_pause(parser: *mut Parser)`
 

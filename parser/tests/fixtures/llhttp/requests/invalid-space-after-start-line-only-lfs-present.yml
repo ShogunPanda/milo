@@ -1,0 +1,50 @@
+path: tests/fixtures/llhttp/request/invalid-space-after-start-line-only-lfs-present.yml
+name: Invalid space after start line / Only LFs Present
+checked: true
+source:
+  path: test/request/invalid.md
+  line: 531
+meta:
+  type: request
+input:
+- POST / HTTP/1.1\n\
+- 'Transfer-Encoding: chunked\n\'
+- 'Trailer: Baz'
+- 'Foo: abc\n\'
+- 'Bar: def\n\'
+- \n\
+- 1\n\
+- A\n\
+- 1;abc\n\
+- B\n\
+- 1;def=ghi\n\
+- C\n\
+- 1;jkl="mno"\n\
+- D\n\
+- 0\n\
+- \n\
+- 'Baz: ghi\n\'
+- \n\
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[method]="POST"
+- off=4 method complete
+- off=5 len=1 span[url]="/"
+- off=7 url complete
+- off=7 len=4 span[protocol]="HTTP"
+- off=11 protocol complete
+- off=12 len=3 span[version]="1.1"
+- off=15 version complete
+- off=16 error code=9 reason="Expected CRLF after version"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid protocol name

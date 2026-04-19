@@ -61,20 +61,20 @@
   args         = ["./tools/publish.js"]
 
 [tasks.cpp]
-  dependencies = ["cpp-headers", "cpp-libs"]
+  dependencies = ["cpp:headers", "cpp:libs"]
 
-[tasks.cpp-libs]
-  dependencies = ["cpp-release", "cpp-debug"]
+[tasks."cpp:libs"]
+  dependencies = ["cpp:release", "cpp:debug"]
 
-[tasks.cpp-release]
+[tasks."cpp:release"]
   env      = { CONFIGURATION = "release", "CARGO_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false" }
-  run_task = "cpp-lib"
+  run_task = "cpp:lib"
 
-[tasks.cpp-debug]
+[tasks."cpp:debug"]
   env      = { CONFIGURATION = "debug", "CARGO_OPTIONS" = "--release --features debug", POSTBUILD_OPTIONS = "DEBUG:true" }
-  run_task = "cpp-lib"
+  run_task = "cpp:lib"
 
-[tasks.cpp-lib]
+[tasks."cpp:lib"]
   script = [
     "mkdir -p dist/cpp/${CONFIGURATION}",
     "rm -rf dist/cpp/${CONFIGURATION}/*",
@@ -83,22 +83,22 @@
     "node ./tools/postbuild-cpp.js	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
   ]
 
-[tasks.cpp-headers]
+[tasks."cpp:headers"]
   command = "cbindgen"
   args    = ["--quiet", "--output", "target/headers/milo.h"]
 
 [tasks.wasm]
-  dependencies = ["wasm-release", "wasm-debug"]
+  dependencies = ["wasm:release", "wasm:debug"]
 
-[tasks.wasm-release]
+[tasks."wasm:release"]
   env      = { CONFIGURATION = "release", "CARGO_OPTIONS" = "--release", "WASMPACK_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false" }
-  run_task = "wasm-module"
+  run_task = "wasm:module"
 
-[tasks.wasm-debug]
+[tasks."wasm:debug"]
   env      = { CONFIGURATION = "debug", "CARGO_OPTIONS" = "--release --features debug", "WASMPACK_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:true" }
-  run_task = "wasm-module"
+  run_task = "wasm:module"
 
-[tasks.wasm-module]
+[tasks."wasm:module"]
   script = [
     "mkdir -p dist/wasm",
     "rm -rf dist/wasm/${CONFIGURATION}",
@@ -109,10 +109,18 @@
     "node ./tools/postbuild-wasm.js	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
   ]
 
-[tasks.cargo-clean]
-  command = "cargo"
-  args    = ["clean"]
-
-[tasks.dist-clean]
+[tasks.distclean]
   command = "rm"
   args    = ["-r", "-f", "dist"]
+
+[tasks."llhttp:import"]
+  script = ["node tools/import-llhttp-tests.js ${1} ."]
+
+[tasks."llhttp:review"]
+  script = ["cargo run --example llhttp -- --review ${1}"]
+
+[tasks."llhttp:show"]
+  script = ["cargo run --example llhttp -- --show ${1}"]
+
+[tasks."llhttp:update"]
+  script = ["cargo run --example llhttp -- --update ${1}"]

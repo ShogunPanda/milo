@@ -1,0 +1,96 @@
+path: tests/fixtures/llhttp/request/chunked-parse-chunks-with-uppercase-size.yml
+name: chunked / Parse Chunks With Uppercase Size
+checked: true
+source:
+  path: test/request/transfer-encoding.md
+  line: 70
+meta:
+  type: request
+input:
+- PUT /url HTTP/1.1
+- 'Transfer-Encoding: chunked'
+- ''
+- A
+- '0123456789'
+- '0'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="PUT"
+- off=3 method complete
+- off=4 len=4 span[url]="/url"
+- off=9 url complete
+- off=9 len=4 span[protocol]="HTTP"
+- off=13 protocol complete
+- off=14 len=3 span[version]="1.1"
+- off=17 version complete
+- off=19 len=17 span[header_field]="Transfer-Encoding"
+- off=37 header_field complete
+- off=38 len=7 span[header_value]="chunked"
+- off=47 header_value complete
+- off=49 headers complete method=4 v=1/1 flags=208 content_length=0
+- off=52 chunk header len=10
+- off=52 len=10 span[body]="0123456789"
+- off=64 chunk complete
+- off=67 chunk header len=0
+- off=69 chunk complete
+- off=69 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: PUT
+- offset: 4
+  type: url
+  payload: /url
+- offset: 9
+  type: protocol
+  payload: HTTP
+- offset: 14
+  type: version
+  payload: '1.1'
+- offset: 19
+  type: header_name
+  payload: Transfer-Encoding
+- offset: 38
+  type: header_value
+  payload: chunked
+- offset: 49
+  type: headers
+  payload:
+    method: PUT
+    status: null
+    url: /url
+    protocol: HTTP
+    version: '1.1'
+    body: chunked
+- offset: 49
+  type: chunk_length
+  payload: A
+- offset: 52
+  type: chunk
+  payload: '0123456789'
+- offset: 52
+  type: data
+  payload: '0123456789'
+- offset: 64
+  type: chunk_length
+  payload: '0'
+- offset: 67
+  type: chunk
+  payload: null
+- offset: 67
+  type: body
+  payload: null
+- offset: 69
+  type: trailers
+  payload: null
+- offset: 69
+  type: complete
+  payload: null

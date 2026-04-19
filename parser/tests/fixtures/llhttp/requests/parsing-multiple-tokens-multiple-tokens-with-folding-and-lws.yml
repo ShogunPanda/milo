@@ -1,0 +1,81 @@
+path: tests/fixtures/llhttp/request/parsing-multiple-tokens-multiple-tokens-with-folding-and-lws.yml
+name: Parsing multiple tokens / Multiple Tokens With Folding And LWS
+checked: true
+source:
+  path: test/request/connection.md
+  line: 464
+meta:
+  type: request
+input:
+- GET /demo HTTP/1.1
+- 'Connection: keep-alive, upgrade'
+- 'Upgrade: WebSocket'
+- ''
+- Hot diggity dogg
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=5 span[url]="/demo"
+- off=10 url complete
+- off=10 len=4 span[protocol]="HTTP"
+- off=14 protocol complete
+- off=15 len=3 span[version]="1.1"
+- off=18 version complete
+- off=20 len=10 span[header_field]="Connection"
+- off=31 header_field complete
+- off=32 len=19 span[header_value]="keep-alive, upgrade"
+- off=53 header_value complete
+- off=53 len=7 span[header_field]="Upgrade"
+- off=61 header_field complete
+- off=62 len=9 span[header_value]="WebSocket"
+- off=73 header_value complete
+- off=75 headers complete method=1 v=1/1 flags=15 content_length=0
+- off=75 message complete
+- off=75 error code=22 reason="Pause on CONNECT/Upgrade"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: GET
+- offset: 4
+  type: url
+  payload: /demo
+- offset: 10
+  type: protocol
+  payload: HTTP
+- offset: 15
+  type: version
+  payload: '1.1'
+- offset: 20
+  type: header_name
+  payload: Connection
+- offset: 32
+  type: header_value
+  payload: keep-alive, upgrade
+- offset: 53
+  type: header_name
+  payload: Upgrade
+- offset: 62
+  type: header_value
+  payload: WebSocket
+- offset: 75
+  type: headers
+  payload:
+    method: GET
+    status: null
+    url: /demo
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 75
+  type: complete
+  payload: null
+- offset: 75
+  type: tunnel
+  payload: null

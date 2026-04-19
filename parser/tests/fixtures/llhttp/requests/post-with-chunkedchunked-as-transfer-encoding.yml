@@ -1,0 +1,50 @@
+path: tests/fixtures/llhttp/request/post-with-chunkedchunked-as-transfer-encoding.yml
+name: POST With Chunkedchunked As Transfer-encoding
+checked: true
+source:
+  path: test/request/transfer-encoding.md
+  line: 840
+meta:
+  type: request
+input:
+- POST /post_identity_body_world?q=search#hey HTTP/1.1
+- 'Accept: */*'
+- 'Transfer-Encoding: chunkedchunked'
+- ''
+- '5'
+- World
+- '0'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[method]="POST"
+- off=4 method complete
+- off=5 len=38 span[url]="/post_identity_body_world?q=search#hey"
+- off=44 url complete
+- off=44 len=4 span[protocol]="HTTP"
+- off=48 protocol complete
+- off=49 len=3 span[version]="1.1"
+- off=52 version complete
+- off=54 len=6 span[header_field]="Accept"
+- off=61 header_field complete
+- off=62 len=3 span[header_value]="*/*"
+- off=67 header_value complete
+- off=67 len=17 span[header_field]="Transfer-Encoding"
+- off=85 header_field complete
+- off=86 len=14 span[header_value]="chunkedchunked"
+- off=102 header_value complete
+- off=104 headers complete method=3 v=1/1 flags=200 content_length=0
+- off=104 error code=15 reason="Request has invalid `Transfer-Encoding`"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid URL character

@@ -1,0 +1,184 @@
+path: tests/fixtures/llhttp/response/amazon-com.yml
+name: Amazon.com
+checked: true
+source:
+  path: test/response/sample.md
+  line: 196
+meta:
+  type: response
+input:
+- HTTP/1.1 301 MovedPermanently
+- 'Date: Wed, 15 May 2013 17:06:33 GMT'
+- 'Server: Server'
+- 'x-amz-id-1: 0GPHKXSJQ826RK7GZEB2'
+- 'p3p: policyref="http://www.amazon.com/w3c/p3p.xml",CP="CAO DSP LAW CUR ADM IVAo IVDo CONo OTPo OUR DELi PUBi OTRi BUS PHY ONL UNI PUR FIN COM NAV INT DEM CNT STA HEA PRE LOC GOV OTC "'
+- 'x-amz-id-2: STN69VZxIFSz9YJLbz1GDbxpbjG6Qjmmq5E3DxRhOUw+Et0p4hr7c/Q8qNcx4oAD'
+- 'Location: http://www.amazon.com/Dan-Brown/e/B000AP9DSU/ref=s9_pop_gw_al1?_encoding=UTF8&refinementId=618073011&pf_rd_m=ATVPDKIKX0DER&pf_rd_s=center-2&pf_rd_r=0SHYY5BZXN3KR20BNFAY&pf_rd_t=101&pf_rd_p=1263340922&pf_rd_i=507846'
+- 'Vary: Accept-Encoding,User-Agent'
+- 'Content-Type: text/html; charset=ISO-8859-1'
+- 'Transfer-Encoding: chunked'
+- ''
+- '1'
+- \n
+- '0'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=16 span[status]="MovedPermanently"
+- off=31 status complete
+- off=31 len=4 span[header_field]="Date"
+- off=36 header_field complete
+- off=37 len=29 span[header_value]="Wed, 15 May 2013 17:06:33 GMT"
+- off=68 header_value complete
+- off=68 len=6 span[header_field]="Server"
+- off=75 header_field complete
+- off=76 len=6 span[header_value]="Server"
+- off=84 header_value complete
+- off=84 len=10 span[header_field]="x-amz-id-1"
+- off=95 header_field complete
+- off=96 len=20 span[header_value]="0GPHKXSJQ826RK7GZEB2"
+- off=118 header_value complete
+- off=118 len=3 span[header_field]="p3p"
+- off=122 header_field complete
+- off=123 len=178 span[header_value]="policyref="http://www.amazon.com/w3c/p3p.xml",CP="CAO DSP LAW CUR ADM IVAo IVDo CONo OTPo OUR DELi PUBi OTRi BUS PHY ONL UNI PUR FIN COM NAV INT DEM CNT STA HEA PRE LOC GOV OTC ""
+- off=303 header_value complete
+- off=303 len=10 span[header_field]="x-amz-id-2"
+- off=314 header_field complete
+- off=315 len=64 span[header_value]="STN69VZxIFSz9YJLbz1GDbxpbjG6Qjmmq5E3DxRhOUw+Et0p4hr7c/Q8qNcx4oAD"
+- off=381 header_value complete
+- off=381 len=8 span[header_field]="Location"
+- off=390 header_field complete
+- off=391 len=214 span[header_value]="http://www.amazon.com/Dan-Brown/e/B000AP9DSU/ref=s9_pop_gw_al1?_encoding=UTF8&refinementId=618073011&pf_rd_m=ATVPDKIKX0DER&pf_rd_s=center-2&pf_rd_r=0SHYY5BZXN3KR20BNFAY&pf_rd_t=101&pf_rd_p=1263340922&pf_rd_i=507846"
+- off=607 header_value complete
+- off=607 len=4 span[header_field]="Vary"
+- off=612 header_field complete
+- off=613 len=26 span[header_value]="Accept-Encoding,User-Agent"
+- off=641 header_value complete
+- off=641 len=12 span[header_field]="Content-Type"
+- off=654 header_field complete
+- off=655 len=29 span[header_value]="text/html; charset=ISO-8859-1"
+- off=686 header_value complete
+- off=686 len=17 span[header_field]="Transfer-Encoding"
+- off=704 header_field complete
+- off=705 len=7 span[header_value]="chunked"
+- off=714 header_value complete
+- off=716 headers complete status=301 v=1/1 flags=208 content_length=0
+- off=719 chunk header len=1
+- off=719 len=1 span[body]=lf
+- off=722 chunk complete
+- off=725 chunk header len=0
+- off=727 chunk complete
+- off=727 message complete
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '301'
+- offset: 13
+  type: reason
+  payload: MovedPermanently
+- offset: 31
+  type: header_name
+  payload: Date
+- offset: 37
+  type: header_value
+  payload: Wed, 15 May 2013 17:06:33 GMT
+- offset: 68
+  type: header_name
+  payload: Server
+- offset: 76
+  type: header_value
+  payload: Server
+- offset: 84
+  type: header_name
+  payload: x-amz-id-1
+- offset: 96
+  type: header_value
+  payload: 0GPHKXSJQ826RK7GZEB2
+- offset: 118
+  type: header_name
+  payload: p3p
+- offset: 123
+  type: header_value
+  payload: policyref="http://www.amazon.com/w3c/p3p.xml",CP="CAO DSP LAW CUR ADM IVAo IVDo CONo OTPo OUR DELi PUBi OTRi BUS PHY ONL UNI PUR FIN COM NAV INT DEM CNT STA HEA PRE LOC GOV OTC "
+- offset: 303
+  type: header_name
+  payload: x-amz-id-2
+- offset: 315
+  type: header_value
+  payload: STN69VZxIFSz9YJLbz1GDbxpbjG6Qjmmq5E3DxRhOUw+Et0p4hr7c/Q8qNcx4oAD
+- offset: 381
+  type: header_name
+  payload: Location
+- offset: 391
+  type: header_value
+  payload: http://www.amazon.com/Dan-Brown/e/B000AP9DSU/ref=s9_pop_gw_al1?_encoding=UTF8&refinementId=618073011&pf_rd_m=ATVPDKIKX0DER&pf_rd_s=center-2&pf_rd_r=0SHYY5BZXN3KR20BNFAY&pf_rd_t=101&pf_rd_p=1263340922&pf_rd_i=507846
+- offset: 607
+  type: header_name
+  payload: Vary
+- offset: 613
+  type: header_value
+  payload: Accept-Encoding,User-Agent
+- offset: 641
+  type: header_name
+  payload: Content-Type
+- offset: 655
+  type: header_value
+  payload: text/html; charset=ISO-8859-1
+- offset: 686
+  type: header_name
+  payload: Transfer-Encoding
+- offset: 705
+  type: header_value
+  payload: chunked
+- offset: 716
+  type: headers
+  payload:
+    method: null
+    status: 301
+    url: null
+    protocol: HTTP
+    version: '1.1'
+    body: chunked
+- offset: 716
+  type: chunk_length
+  payload: '1'
+- offset: 719
+  type: chunk
+  payload: |2+
+
+- offset: 719
+  type: data
+  payload: |2+
+
+- offset: 722
+  type: chunk_length
+  payload: '0'
+- offset: 725
+  type: chunk
+  payload: null
+- offset: 725
+  type: body
+  payload: null
+- offset: 727
+  type: trailers
+  payload: null
+- offset: 727
+  type: complete
+  payload: null

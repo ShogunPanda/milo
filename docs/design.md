@@ -1,0 +1,101 @@
+# Milo Design
+
+## Scope
+
+Milo is an HTTP/1.1 message parser. It validates protocol syntax, message framing, protocol switching, connection management, and data-after-close behavior.
+
+Milo generally does not validate application semantics such as routing, authorization, representation interpretation, URI normalization, or method registry policy. Milo only enforces semantic-adjacent rules when they prevent ambiguous framing, request smuggling, unsafe protocol switching, or other security-sensitive behavior.
+
+## Strictness
+
+Milo is strict by default. It rejects malformed framing instead of recovering leniently.
+
+For security and ambiguity reduction, Milo intentionally does not support HTTP/0.9, HTTP/1.0, RTSP, or obs-fold. Start lines, header lines, chunk lines, and trailer lines must use CRLF. Bare LF and bare CR are invalid.
+
+## Protocol Versions
+
+HTTP/1.1 is the normal supported message version.
+
+HTTP/2 is not parsed as an HTTP message. `PRI` is reserved for HTTP/2 switch-over handling and is only valid with `HTTP/2.0`; otherwise it is rejected. Normal HTTP/2 request or response messages are rejected.
+
+RTSP is not supported and is not auto-detected as a response protocol.
+
+## Start-Line Parsing
+
+Request lines use `method SP request-target SP HTTP-version`. Status lines use `HTTP-version SP status-code SP reason-phrase`.
+
+Known RFC 9110 methods, `PATCH`, and `PRI` are mapped directly. Unknown valid method tokens are accepted as `METHOD_OTHER`. Invalid unknown method tokens are rejected.
+
+Request targets use Milo's strict character allowlist for HTTP request-targets. Fragments are rejected because `#` is not part of request-target syntax. Full URL semantics, URI normalization, and percent-triplet validation are out of scope.
+
+## Header Parsing
+
+Header field names are RFC tokens. Header values reject invalid control bytes while allowing OWS where RFC syntax permits it.
+
+`Content-Length` duplicates are rejected. Milo caps `Content-Length` at 19 digits as a practical overflow-safe limit.
+
+## Body Framing
+
+Milo supports `Content-Length`, `Transfer-Encoding`, chunked bodies, and EOF-delimited response bodies.
+
+`Content-Length` and `Transfer-Encoding` together are rejected. If `Transfer-Encoding` includes `chunked`, `chunked` must be final and must appear only once. Requests using `Transfer-Encoding` must end with `chunked` so body length is determinable.
+
+Requests without body framing complete after headers.
+
+## Method Policy
+
+For security and ambiguity reduction, Milo intentionally rejects bodies on `GET` and `HEAD` requests. This is a project-level strict policy.
+
+Responses to `HEAD` are application context. The application must use `skip_body` when it knows a response has no body because it belongs to a `HEAD` request.
+
+## No-Body Responses
+
+Responses with status `1xx`, `204`, `205`, and `304` complete after headers and never parse a body.
+
+Milo rejects `Content-Length` on `1xx`, `204`, and `205`. Milo allows `Content-Length` on `304` as representation metadata, but it never uses it for message body framing. Milo rejects `Transfer-Encoding` on `1xx`, `204`, `205`, and `304`.
+
+## Chunked Encoding
+
+Chunk sizes are parsed strictly as hexadecimal. Chunk data must be followed by CRLF.
+
+Chunk extension names are RFC tokens. Unquoted chunk extension values are RFC tokens. Quoted chunk extension values are validated with quoted-string-compatible rules and keep their quoted callback span.
+
+Trailers are parsed only after chunked framing.
+
+## Trailers
+
+The `Trailer` header requires chunked transfer coding. This validation is independent from `Upgrade`. Forbidden trailer field-name enforcement is out of scope.
+
+Request upgrade may include a chunked body and trailers before entering tunnel. Response upgrade cannot use trailers because `101` cannot use HTTP body framing.
+
+## Connection Management
+
+`Connection` values are comma-separated tokens. Milo recognizes `close`, `upgrade`, and `keep-alive`. Valid unknown options are accepted and ignored.
+
+`close` and `upgrade` are tracked as independent flags. `Connection: close` finishes the parser after the current message. Any later data is invalid.
+
+## Upgrade And Tunnel
+
+`Upgrade` values are comma-separated protocol values. Milo validates `token` and `token/token` syntax, but does not enforce a registry of known upgrade protocols.
+
+`Upgrade` requires `Connection: upgrade`. Responses enter tunnel only for valid `101 Switching Protocols`. Non-`101` responses with `Upgrade` do not tunnel.
+
+Request upgrade parses any framed body and trailers first, then enters tunnel. Tunnel state stops HTTP parsing.
+
+## CONNECT
+
+CONNECT handling is request-only. A `CONNECT` request enters tunnel after headers.
+
+CONNECT response behavior requires application context and is not inferred by Milo. Milo does not infer request/response pairing.
+
+## Parser Controls
+
+`skip_body` lets applications skip response body parsing when they have external context, such as responses to `HEAD`.
+
+`autodetect` and `is_request` control parser direction. Milo also supports managed unconsumed data, start-line and header length limits, and callback activation flags.
+
+## Non-Goals
+
+Milo does not aim for llhttp behavioral compatibility when it conflicts with Milo policy.
+
+Milo does not implement full URI semantic validation, URI normalization, percent-triplet validation, forbidden trailer field-name enforcement, method registry enforcement beyond token validity and known-method mapping, request/response pairing, HTTP/0.9, HTTP/1.0, RTSP, or obs-fold compatibility.

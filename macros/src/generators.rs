@@ -9,7 +9,7 @@ use regex::{Captures, Regex};
 use semver::Version;
 use serde::Serialize;
 use serde_json::Value;
-use syn::{Arm, ItemConst, ItemStatic, parse_str};
+use syn::{Arm, ItemConst, parse_str};
 use toml::Table;
 
 use crate::{native, wasm};
@@ -54,9 +54,8 @@ fn init_constants() -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
   (methods, errors, callbacks, states)
 }
 
-fn generate_constants_and_phfs(items: &Vec<String>, prefix: &str) -> (Vec<ItemConst>, ItemStatic) {
+fn generate_constants_internal(items: &Vec<String>, prefix: &str) -> Vec<ItemConst> {
   let mut consts: Vec<ItemConst> = Vec::new();
-  let mut builder = phf_codegen::Map::new();
   let mut bytes: Vec<&[u8]> = vec![];
 
   for (i, x) in items.iter().enumerate() {
@@ -65,20 +64,9 @@ fn generate_constants_and_phfs(items: &Vec<String>, prefix: &str) -> (Vec<ItemCo
     bytes.push(x.as_bytes());
 
     consts.push(parse_str::<ItemConst>(&format!("pub const {}_{}: u8 = {};", prefix, name, i)).unwrap());
-    builder.entry(bytes[i], format!("{}", i));
   }
 
-  let phf_map = builder.build();
-
-  (
-    consts,
-    parse_str::<ItemStatic>(&format!(
-      "pub static {}S: phf::Map<&'static [u8], u8> = {};",
-      prefix,
-      phf_map.to_string()
-    ))
-    .unwrap(),
-  )
+  consts
 }
 
 fn generate_bitmask(items: &Vec<String>, prefix: &str) -> Vec<ItemConst> {
@@ -108,63 +96,11 @@ pub fn generate_constants(
   callbacks: &Vec<String>,
   states: &Vec<String>,
 ) -> TokenStream {
-  let (methods_consts, methods_hash) = generate_constants_and_phfs(&methods, "METHOD");
-  let (states_consts, states_hash) = generate_constants_and_phfs(&states, "STATE");
-  let (errors_consts, errors_hash) = generate_constants_and_phfs(&errors, "ERROR");
-  let (callbacks_consts, callbacks_hash) = generate_constants_and_phfs(&callbacks, "CALLBACK");
+  let methods_consts = generate_constants_internal(&methods, "METHOD");
+  let states_consts = generate_constants_internal(&states, "STATE");
+  let errors_consts = generate_constants_internal(&errors, "ERROR");
+  let callbacks_consts = generate_constants_internal(&callbacks, "CALLBACK");
   let callbacks_bitmask = generate_bitmask(&callbacks, "CALLBACK_ACTIVE");
-
-  let digit_table: Vec<_> = (0..=255).map(|i| (0x30..=0x39).contains(&i)).collect();
-
-  let token_other_characters = [
-    b'!', b'#', b'$', b'%', b'&', b'\'', b'*', b'+', b'-', b'.', b'^', b'_', b'`', b',', b'~',
-  ];
-
-  let token_table: Vec<_> = (0..=255)
-    .map(|i| {
-      (0x30..=0x39).contains(&i)
-        || (0x41..=0x5A).contains(&i)
-        || (0x61..=0x7A).contains(&i)
-        || token_other_characters.contains(&i)
-    })
-    .collect();
-
-  let mut token_value_table: Vec<_> = (0..=255).map(|_| false).collect();
-  token_value_table[9] = true;
-  token_value_table[32] = true;
-
-  for i in 0x21..=0xff {
-    if i != 0x7f {
-      token_value_table[i] = true;
-    }
-  }
-
-  let mut token_value_quoted_table: Vec<_> = (0..=255).map(|_| false).collect();
-  token_value_quoted_table[9] = true;
-  token_value_quoted_table[32] = true;
-
-  // Note that " is permitted as we validate that is preceded by a \, so we can
-  // allow it in the table
-  for i in 0x22..=0x7e {
-    token_value_quoted_table[i] = true;
-  }
-
-  let url_other_characters = [
-    b'-', b'.', b'_', b'~', b':', b'/', b'?', b'#', b'[', b']', b'@', b'!', b'$', b'&', b'\'', b'(', b')', b'*', b'+',
-    b',', b';', b'=', b'%',
-  ];
-  let url_table: Vec<_> = (0..=255)
-    .map(|i| {
-      (0x30..=0x39).contains(&i)
-        || (0x41..=0x5A).contains(&i)
-        || (0x61..=0x7A).contains(&i)
-        || url_other_characters.contains(&i)
-    })
-    .collect();
-
-  let mut ws_table: Vec<_> = (0..=255).map(|_| false).collect();
-  ws_table[9] = true;
-  ws_table[32] = true;
 
   TokenStream::from(quote! {
     pub type StateHandler = fn (parser: &mut Parser, data: &[c_uchar], available: usize);
@@ -174,44 +110,11 @@ pub fn generate_constants(
 
     pub const DEBUG: bool = cfg!(debug_assertions);
 
-    pub const MESSAGE_TYPE_AUTODETECT: u8 = 0;
-    pub const MESSAGE_TYPE_REQUEST: u8 = 1;
-    pub const MESSAGE_TYPE_RESPONSE: u8 = 2;
-
-    pub const CONNECTION_KEEPALIVE: u8 = 0;
-    pub const CONNECTION_CLOSE: u8 = 1;
-    pub const CONNECTION_UPGRADE: u8 = 2;
-
     #(#methods_consts)*
-    #methods_hash
-
     #(#errors_consts)*
-    #errors_hash
-
     #(#callbacks_consts)*
     #(#callbacks_bitmask)*
-    #callbacks_hash
-
     #(#states_consts)*
-    #states_hash
-
-    /// cbindgen:ignore
-    static DIGIT_TABLE: [bool; 256] = [#(#digit_table),*];
-
-    /// cbindgen:ignore
-    static TOKEN_TABLE: [bool; 256] = [#(#token_table),*];
-
-    /// cbindgen:ignore
-    static TOKEN_VALUE_TABLE: [bool; 256] = [#(#token_value_table),*];
-
-    /// cbindgen:ignore
-    static TOKEN_VALUE_QUOTED_TABLE: [bool; 256] = [#(#token_value_quoted_table),*];
-
-    /// cbindgen:ignore
-    static URL_TABLE: [bool; 256] = [#(#url_table),*];
-
-    /// cbindgen:ignore
-    static WS_TABLE: [bool; 256] = [#(#ws_table),*];
   })
 }
 
@@ -298,24 +201,6 @@ pub fn generate_enums(
     .collect();
 
   TokenStream::from(quote! {
-    // MessageType and Connection reflects the constants in generate_constants
-    // to allow easier interoperability, especially in WASM.
-    #[repr(u8)]
-    #[derive(Copy, Clone, Debug)]
-    pub enum MessageTypes {
-      AUTODETECT,
-      REQUEST,
-      RESPONSE,
-    }
-
-    #[repr(u8)]
-    #[derive(Copy, Clone, Debug)]
-    pub enum Connections {
-      KEEPALIVE,
-      CLOSE,
-      UPGRADE,
-    }
-
     #[repr(u8)]
     #[derive(Copy, Clone, Debug)]
     pub enum Methods {
@@ -338,32 +223,6 @@ pub fn generate_enums(
     #[derive(Copy, Clone, Debug)]
     pub enum States {
       #(#states),*
-    }
-
-    impl TryFrom<u8> for MessageTypes {
-      type Error = ();
-
-      fn try_from(value: u8) -> Result<Self, ()> {
-        match value {
-          0 => Ok(MessageTypes::AUTODETECT),
-          1 => Ok(MessageTypes::REQUEST),
-          2 => Ok(MessageTypes::RESPONSE),
-          _ => Err(())
-        }
-      }
-    }
-
-    impl TryFrom<u8> for Connections {
-      type Error = ();
-
-      fn try_from(value: u8) -> Result<Self, ()> {
-        match value {
-          0 => Ok(Connections::KEEPALIVE),
-          1 => Ok(Connections::CLOSE),
-          2 => Ok(Connections::UPGRADE),
-          _ => Err(())
-        }
-      }
     }
 
     impl TryFrom<u8> for Methods {
@@ -410,26 +269,6 @@ pub fn generate_enums(
       }
     }
 
-    impl From<MessageTypes> for &str {
-      fn from(value: MessageTypes) -> Self {
-        match value {
-          MessageTypes::AUTODETECT => "AUTODETECT",
-          MessageTypes::REQUEST => "REQUEST",
-          MessageTypes::RESPONSE => "RESPONSE"
-        }
-      }
-    }
-
-    impl From<Connections> for &str {
-      fn from(value: Connections) -> Self {
-        match value {
-          Connections::KEEPALIVE => "KEEPALIVE",
-          Connections::CLOSE => "CLOSE",
-          Connections::UPGRADE => "UPGRADE"
-        }
-      }
-    }
-
     impl From<Methods> for &str {
       fn from(value: Methods) -> Self {
         match value {
@@ -459,18 +298,6 @@ pub fn generate_enums(
         match value {
           #(#states_into),*
         }
-      }
-    }
-
-    impl MessageTypes {
-      pub fn as_str(self) -> &'static str {
-        self.into()
-      }
-    }
-
-    impl Connections {
-      pub fn as_str(self) -> &'static str {
-        self.into()
       }
     }
 
@@ -535,13 +362,6 @@ pub fn save_constants(methods: &Vec<String>, errors: &Vec<String>, callbacks: &V
       Value::Bool(false)
     },
   );
-  consts.insert("MESSAGE_TYPE_AUTODETECT".into(), 0.into());
-  consts.insert("MESSAGE_TYPE_REQUEST".into(), 1.into());
-  consts.insert("MESSAGE_TYPE_RESPONSE".into(), 2.into());
-  consts.insert("CONNECTION_KEEPALIVE".into(), 0.into());
-  consts.insert("CONNECTION_CLOSE".into(), 1.into());
-  consts.insert("CONNECTION_UPGRADE".into(), 2.into());
-
   for (i, x) in methods.iter().enumerate() {
     consts.insert(format!("METHOD_{}", x.replace('-', "_")), i.into());
   }

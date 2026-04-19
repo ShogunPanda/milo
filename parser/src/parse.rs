@@ -16,13 +16,9 @@ use std::time::Instant;
 
 use milo_macros::*;
 
+use crate::Methods::CONNECT;
+use crate::matchers::*;
 use crate::*;
-
-enum StateResult {
-  Continue,
-  Suspend,
-  Stop,
-}
 
 impl Parser {
   /// Parses a slice of characters.
@@ -98,30 +94,6 @@ impl Parser {
 
       'state: {
         match self.state {
-          // Depending on the mode flag, choose the initial state
-          STATE_START => {
-            match self.mode {
-              MESSAGE_TYPE_AUTODETECT => {
-                move_to!(autodetect);
-              }
-              MESSAGE_TYPE_REQUEST => {
-                self.message_type = MESSAGE_TYPE_REQUEST;
-                callback!(on_request);
-                callback!(on_message_start);
-                move_to!(request_line);
-              }
-              MESSAGE_TYPE_RESPONSE => {
-                self.message_type = MESSAGE_TYPE_RESPONSE;
-                callback!(on_response);
-                callback!(on_message_start);
-                move_to!(status_line);
-              }
-              _ => {
-                fail!(UNEXPECTED_CHARACTER, "Invalid mode");
-              }
-            }
-          }
-
           // If the parser has finished and it receives more data, error
           STATE_FINISH => {
             fail!(UNEXPECTED_CHARACTER, "Unexpected data");
@@ -132,10 +104,18 @@ impl Parser {
             suspend!();
           }
 
-          // Autodetect if there is a HTTP/RTSP method or a response
-          STATE_AUTODETECT => {
-            if data.len() >= 5 && data[4] == b'/' && (data.starts_with(b"HTTP") || data.starts_with(b"RTSP")) {
-              self.message_type = MESSAGE_TYPE_RESPONSE;
+          // Choose the initial state depending on the configured message type.
+          STATE_START => {
+            if !self.autodetect && self.is_request {
+              callback!(on_request);
+              callback!(on_message_start);
+              move_to!(request_line);
+            } else if !self.autodetect {
+              callback!(on_response);
+              callback!(on_message_start);
+              move_to!(status_line);
+            } else if data.len() >= 5 && data[4] == b'/' && data.starts_with(b"HTTP") {
+              self.is_request = false;
               callback!(on_response);
               callback!(on_message_start);
               move_to!(status_line);
@@ -145,7 +125,7 @@ impl Parser {
             } else {
               // For performance reason, we assume it's a request so we don't lookup the
               // method twice
-              self.message_type = MESSAGE_TYPE_REQUEST;
+              self.is_request = true;
               callback!(on_request);
               callback!(on_message_start);
               move_to!(request_line);
@@ -153,16 +133,16 @@ impl Parser {
           }
 
           STATE_REQUEST_LINE => {
-            match self.find_cr(data, available) {
+            match find_cr(data, available) {
               // // RFC 9112 section 3
               Some(cr) => {
-                match self.ensure_valid_line(data, cr, available) {
-                  StateResult::Continue => {}
-                  StateResult::Suspend => {
+                match ensure_valid_line(data, cr, available) {
+                  MatchResult::Continue => {}
+                  MatchResult::Suspend => {
                     suspend!();
                   }
-                  StateResult::Stop => {
-                    stop!();
+                  MatchResult::Stop => {
+                    fail!(UNEXPECTED_CHARACTER, "Expected CRLF");
                   }
                 }
 
@@ -181,7 +161,7 @@ impl Parser {
 
                 // RFC 9112 section 3.1
                 let method_start = 0;
-                let method_end = match self.find_char(data, method_start, cr, b' ') {
+                let method_end = match find_char(data, method_start, cr, b' ') {
                   Some(index) if index > method_start => index,
                   _ => {
                     fail!(UNEXPECTED_CHARACTER, "Expected space after method");
@@ -190,7 +170,7 @@ impl Parser {
 
                 // RFC 9112 section 3.2
                 let url_start = method_end + 1;
-                let url_end = match self.find_char(data, url_start, cr, b' ') {
+                let url_end = match find_char(data, url_start, cr, b' ') {
                   Some(index) if index > url_start => index,
                   _ => {
                     fail!(UNEXPECTED_CHARACTER, "Expected space after URL");
@@ -199,56 +179,85 @@ impl Parser {
 
                 // RFC 9112 section 2.3
                 let protocol_start = url_end + 1;
-                let protocol_end = match self.find_char(data, protocol_start, cr, b'/') {
+                let protocol_end = match find_char(data, protocol_start, cr, b'/') {
                   Some(index) if index > protocol_start => index,
                   _ => {
                     fail!(UNEXPECTED_CHARACTER, "Expected / after the protocol name");
                   }
                 };
 
-                if let Some(&method) = METHODS.get(&data[method_start..method_end]) {
-                  self.method = method;
-
-                  if method == METHOD_CONNECT {
-                    self.is_connect = true;
+                let method_slice = &data[method_start..method_end];
+                self.method = match method_slice.len() {
+                  3 => {
+                    match method_slice {
+                      b"GET" => METHOD_GET,
+                      b"PUT" => METHOD_PUT,
+                      b"PRI" => METHOD_PRI,
+                      _ => METHOD_OTHER,
+                    }
                   }
-                } else {
-                  fail!(UNEXPECTED_CHARACTER, "Invalid method");
+                  4 => {
+                    match method_slice {
+                      b"HEAD" => METHOD_HEAD,
+                      b"POST" => METHOD_POST,
+                      _ => METHOD_OTHER,
+                    }
+                  }
+                  5 => {
+                    match method_slice {
+                      b"PATCH" => METHOD_PATCH,
+                      b"TRACE" => METHOD_TRACE,
+                      _ => METHOD_OTHER,
+                    }
+                  }
+                  6 => {
+                    match method_slice {
+                      b"DELETE" => METHOD_DELETE,
+                      _ => METHOD_OTHER,
+                    }
+                  }
+                  7 => {
+                    match method_slice {
+                      b"CONNECT" => {
+                        self.is_connect = true;
+                        METHOD_CONNECT
+                      }
+                      b"OPTIONS" => METHOD_OPTIONS,
+                      _ => METHOD_OTHER,
+                    }
+                  }
+                  _ => METHOD_OTHER,
+                };
+
+                if self.method == METHOD_OTHER && !validate_token(data, method_start, method_end) {
+                  fail!(UNEXPECTED_CHARACTER, "Invalid method character");
                 }
 
-                if let StateResult::Stop = self.validate(data, &URL_TABLE, url_start, url_end, "Invalid URL character")
-                {
-                  stop!();
-                }
-
-                let protocol = &data[protocol_start..protocol_end];
-                if protocol_end - protocol_start != 4 || (protocol != b"HTTP" && protocol != b"RTSP") {
-                  fail!(UNEXPECTED_CHARACTER, "Invalid protocol name");
+                if !validate_url(data, url_start, url_end) {
+                  fail!(UNEXPECTED_CHARACTER, "Invalid URL character");
                 }
 
                 let version_start = protocol_end + 1;
-                let version_len = cr - version_start;
-
-                if version_len != 3
-                  || !DIGIT_TABLE[data[version_start] as usize]
-                  || data[version_start + 1] != b'.'
-                  || !DIGIT_TABLE[data[version_start + 2] as usize]
-                {
-                  fail!(UNEXPECTED_CHARACTER, "Invalid protocol version");
+                if cr != protocol_start + 8 {
+                  fail!(UNEXPECTED_CHARACTER, "Invalid protocol name");
                 }
 
-                if data[version_start] == b'1' && data[version_start + 2] == b'1' {
+                if &data[protocol_start..cr] == b"HTTP/1.1" {
+                  if self.method == METHOD_PRI {
+                    fail!(UNSUPPORTED_HTTP_VERSION, "PRI is only valid with HTTP/2.0");
+                  }
+
                   self.version_major = 1;
                   self.version_minor = 1;
-                } else if data[version_start] == b'2' && data[version_start + 2] == b'0' {
+                } else if &data[protocol_start..cr] == b"HTTP/2.0" {
+                  if self.method != METHOD_PRI {
+                    fail!(UNSUPPORTED_HTTP_VERSION, "Unsupported HTTP version");
+                  }
+
                   self.version_major = 2;
                   self.version_minor = 0;
-
-                  if self.method == METHOD_PRI {
-                    fail!(UNSUPPORTED_HTTP_VERSION, "HTTP/2.0 is not supported");
-                  }
                 } else {
-                  fail!(INVALID_VERSION, "Invalid HTTP version");
+                  fail!(UNEXPECTED_CHARACTER, "Invalid protocol");
                 }
 
                 callback!(on_method, method_start, method_end - method_start);
@@ -257,7 +266,12 @@ impl Parser {
                 callback!(on_version, version_start, 3);
 
                 advance!(cr + 2);
-                move_to!(header);
+
+                if self.method == METHOD_PRI {
+                  move_to!(http2_preface);
+                } else {
+                  move_to!(header);
+                }
               }
               None => {
                 if available >= self.max_start_line_length {
@@ -271,15 +285,15 @@ impl Parser {
 
           // RFC 9112 section 4
           STATE_STATUS_LINE => {
-            match self.find_cr(data, available) {
+            match find_cr(data, available) {
               Some(cr) => {
-                match self.ensure_valid_line(data, cr, available) {
-                  StateResult::Continue => {}
-                  StateResult::Suspend => {
+                match ensure_valid_line(data, cr, available) {
+                  MatchResult::Continue => {}
+                  MatchResult::Suspend => {
                     suspend!();
                   }
-                  StateResult::Stop => {
-                    stop!();
+                  MatchResult::Stop => {
+                    fail!(UNEXPECTED_CHARACTER, "Expected CRLF");
                   }
                 }
 
@@ -298,38 +312,24 @@ impl Parser {
 
                 let protocol_start = 0;
                 let protocol_end = 4;
-                if data[protocol_end] != b'/' {
-                  fail!(UNEXPECTED_CHARACTER, "Expected protocol");
-                }
-
-                if &data[protocol_start..protocol_end] != b"HTTP" && &data[protocol_start..protocol_end] != b"RTSP" {
-                  fail!(UNEXPECTED_CHARACTER, "Invalid protocol");
-                }
-
                 let version_start = protocol_end + 1;
-                let version_end = match self.find_char(data, version_start, cr, b' ') {
-                  Some(index) if index > version_start => index,
-                  _ => {
-                    fail!(UNEXPECTED_CHARACTER, "Expected space after protocol");
-                  }
-                };
+                let version_end = protocol_start + 8;
 
-                if version_end - version_start != 3
-                  || !DIGIT_TABLE[data[version_start] as usize]
-                  || data[version_start + 1] != b'.'
-                  || !DIGIT_TABLE[data[version_start + 2] as usize]
-                {
-                  fail!(UNEXPECTED_CHARACTER, "Expected HTTP version");
+                if cr < version_end || data[version_end] != b' ' {
+                  fail!(UNEXPECTED_CHARACTER, "Expected space after protocol");
                 }
 
-                if data[version_start] == b'1' && data[version_start + 2] == b'1' {
-                  self.version_major = 1;
-                  self.version_minor = 1;
-                } else if data[version_start] == b'2' && data[version_start + 2] == b'0' {
-                  self.version_major = 2;
-                  self.version_minor = 0;
-                } else {
-                  fail!(INVALID_VERSION, "Invalid HTTP version");
+                match &data[protocol_start..version_end] {
+                  b"HTTP/1.1" => {
+                    self.version_major = 1;
+                    self.version_minor = 1;
+                  }
+                  [b'H', b'T', b'T', b'P', b'/', ..] => {
+                    fail!(UNSUPPORTED_HTTP_VERSION, "Unsupported HTTP version");
+                  }
+                  _ => {
+                    fail!(UNEXPECTED_CHARACTER, "Invalid protocol");
+                  }
                 }
 
                 let status_start = version_end + 1;
@@ -340,9 +340,9 @@ impl Parser {
                   fail!(INVALID_STATUS, "Expected HTTP response status");
                 }
 
-                if !DIGIT_TABLE[data[status_start] as usize]
-                  || !DIGIT_TABLE[data[status_start + 1] as usize]
-                  || !DIGIT_TABLE[data[status_start + 2] as usize]
+                if !is_digit(data[status_start])
+                  || !is_digit(data[status_start + 1])
+                  || !is_digit(data[status_start + 2])
                 {
                   fail!(INVALID_STATUS, "Invalid HTTP response status");
                 }
@@ -353,14 +353,10 @@ impl Parser {
 
                 let reason_start = status_start + 4;
                 let reason_end = cr;
-                if let StateResult::Stop = self.validate(
-                  data,
-                  &TOKEN_VALUE_TABLE,
-                  reason_start,
-                  reason_end,
-                  "Invalid status reason character",
-                ) {
-                  stop!();
+                if reason_start != reason_end
+                  && unsafe { !validate_token_value(data.as_ptr().add(reason_start), reason_end - reason_start) }
+                {
+                  fail!(UNEXPECTED_CHARACTER, "Invalid status reason character");
                 }
 
                 self.status = ((data[status_start] - b'0') as u32) * 100
@@ -387,16 +383,27 @@ impl Parser {
             }
           }
 
+          STATE_HTTP2_PREFACE => {
+            if available < 8 {
+              suspend!();
+            } else if &data[..8] == b"\r\nSM\r\n\r\n" {
+              advance!(8);
+              move_to!(tunnel);
+            } else {
+              fail!(UNEXPECTED_CHARACTER, "Malformed HTTP/2.0 preface");
+            }
+          }
+
           STATE_HEADER => {
-            match self.find_cr(data, available) {
-              Some(cr) => {
-                match self.ensure_valid_line(data, cr, available) {
-                  StateResult::Continue => {}
-                  StateResult::Suspend => {
+            match find_header_line_end(data.as_ptr(), available) {
+              HeaderLineScanResult::Cr(cr) => {
+                match ensure_valid_line(data, cr, available) {
+                  MatchResult::Continue => {}
+                  MatchResult::Suspend => {
                     suspend!();
                   }
-                  StateResult::Stop => {
-                    stop!();
+                  MatchResult::Stop => {
+                    fail!(UNEXPECTED_CHARACTER, "Expected CRLF");
                   }
                 }
 
@@ -411,113 +418,248 @@ impl Parser {
                 // RFC 9112 section.4
                 // RFC 9110 section 5.5 and 5.6
                 let header_name_start = 0;
-                let header_name_end = match self.find_char(data, header_name_start, cr, b':') {
+                let header_name_end = match find_char(data, header_name_start, cr, b':') {
                   Some(index) if index > header_name_start => index,
                   _ => {
                     fail!(UNEXPECTED_CHARACTER, "Invalid header field name character");
                   }
                 };
-                let header_name_len = header_name_end - header_name_start;
-
                 let mut header_value_start = header_name_end + 1;
                 let mut header_value_end = cr;
 
                 let status = self.status;
-                match &data[header_name_start..header_name_end] {
-                  // RFC 9112 section 6.2
-                  case_insensitive_string!("content-length") => {
-                    // It just matched a prefix, invalid header
-                    if header_name_len > 14 {
-                      fail!(UNEXPECTED_CHARACTER, "Invalid header field name");
-                    } else if self.has_chunked_transfer_encoding {
-                      fail!(
-                        UNEXPECTED_CONTENT_LENGTH,
-                        "Unexpected Content-Length header when Transfer-Encoding header is present"
-                      );
-                    } else if status == 204 || status / 100 == 1 {
-                      fail!(
-                        UNEXPECTED_CONTENT_LENGTH,
-                        "Unexpected Content-Length header for a response with status 204 or 1xx"
-                      );
-                    } else if self.has_content_length {
-                      fail!(INVALID_CONTENT_LENGTH, "Invalid duplicate Content-Length header");
-                    }
+                let first_header_byte = data[header_name_start].to_ascii_lowercase();
+                if !matches!(first_header_byte, b'c' | b't' | b'u') {
+                  if !validate_token(data, header_name_start, header_name_end) {
+                    fail!(UNEXPECTED_CHARACTER, "Invalid header field name character");
+                  }
 
-                    if let StateResult::Stop = self.strip_ows(
-                      data,
-                      &mut header_value_start,
-                      &mut header_value_end,
-                      "Expected Content-Length header value",
-                    ) {
-                      stop!();
-                    }
+                  strip_ows_fast(data, &mut header_value_start, &mut header_value_end, true);
+                } else {
+                  let header_name_len = header_name_end - header_name_start;
+                  match (header_name_len, &data[header_name_start..header_name_end]) {
+                    // RFC 9112 section 6.2
+                    (14, case_insensitive_string!("content-length")) => {
+                      if self.has_transfer_encoding {
+                        fail!(
+                          UNEXPECTED_CONTENT_LENGTH,
+                          "Unexpected Content-Length header when Transfer-Encoding header is present"
+                        );
+                      } else if status == 205 || status == 204 || status / 100 == 1 {
+                        fail!(
+                          UNEXPECTED_CONTENT_LENGTH,
+                          "Unexpected Content-Length header for a response without body"
+                        );
+                      } else if self.has_content_length {
+                        fail!(INVALID_CONTENT_LENGTH, "Invalid duplicate Content-Length header");
+                      }
 
-                    let mut i = header_value_start;
-                    let mut content_length = 0u64;
+                      if header_value_start < cr && !is_ws(data[cr - 1]) {
+                        let value_start = if data[header_value_start] == b' ' {
+                          header_value_start + 1
+                        } else {
+                          header_value_start
+                        };
 
-                    if header_value_end - header_value_start > 19 {
-                      // 19 digits are enough to represent 2^63-1, which is the maximum value we allow
-                      // for
-                      fail!(INVALID_CONTENT_LENGTH, "Invalid Content-Length header");
-                    }
+                        if value_start < cr && !is_ws(data[value_start]) {
+                          header_value_start = value_start;
+                        } else if !strip_ows_fast(data, &mut header_value_start, &mut header_value_end, false) {
+                          fail!(UNEXPECTED_CHARACTER, "Expected Content-Length header value");
+                        }
+                      } else if !strip_ows_fast(data, &mut header_value_start, &mut header_value_end, false) {
+                        fail!(UNEXPECTED_CHARACTER, "Expected Content-Length header value");
+                      }
 
-                    while i < header_value_end {
-                      let current = data[i];
-                      if !DIGIT_TABLE[current as usize] {
+                      let mut i = header_value_start;
+                      let mut content_length = 0u64;
+
+                      if header_value_end - header_value_start > 19 {
+                        // Milo caps Content-Length at 19 digits as a practical limit. This keeps
+                        // parsing overflow-safe while allowing values far
+                        // beyond realistic message sizes.
                         fail!(INVALID_CONTENT_LENGTH, "Invalid Content-Length header");
                       }
 
-                      content_length = content_length * 10 + (current - b'0') as u64;
-                      i += 1;
-                    }
+                      while i < header_value_end {
+                        let current = data[i];
+                        if !is_digit(current) {
+                          fail!(INVALID_CONTENT_LENGTH, "Invalid Content-Length header");
+                        }
 
-                    self.has_content_length = true;
-                    self.content_length = content_length;
-                    self.remaining_content_length = content_length;
-                  }
-                  // RFC 9112 section 6.1
-                  case_insensitive_string!("transfer-encoding") => {
-                    // It just matched a prefix, invalid header
-                    if header_name_len > 17 {
-                      fail!(UNEXPECTED_CHARACTER, "Invalid header field name");
-                    } else if self.has_content_length {
-                      fail!(
-                        UNEXPECTED_TRANSFER_ENCODING,
-                        "Unexpected Transfer-Encoding header when Content-Length header is present"
-                      );
-                    } else if status == 304 {
-                      fail!(
-                        UNEXPECTED_TRANSFER_ENCODING,
-                        "Unexpected Transfer-Encoding header for a response with status 304"
-                      );
-                    }
+                        content_length = content_length * 10 + (current - b'0') as u64;
+                        i += 1;
+                      }
 
-                    if let StateResult::Stop = self.strip_ows(
-                      data,
-                      &mut header_value_start,
-                      &mut header_value_end,
-                      "Expected Transfer-Encoding header value",
-                    ) {
-                      stop!();
+                      self.has_content_length = true;
+                      self.content_length = content_length;
+                      self.remaining_content_length = content_length;
                     }
-
-                    if &data[header_value_start..header_value_end] == b"chunked" {
-                      // If this is true, it means the Transfer-Encoding header was specified more
-                      // than once. This is the second repetition and therefore, the previous one is
-                      // no longer the last one, making it invalid.
-                      if self.has_chunked_transfer_encoding {
+                    // RFC 9112 section 6.1
+                    (17, case_insensitive_string!("transfer-encoding")) => {
+                      if self.has_content_length {
                         fail!(
-                          INVALID_TRANSFER_ENCODING,
-                          "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can be \
-                           provided only once"
+                          UNEXPECTED_TRANSFER_ENCODING,
+                          "Unexpected Transfer-Encoding header when Content-Length header is present"
+                        );
+                      } else if status == 304 || status == 205 || status == 204 || status / 100 == 1 {
+                        fail!(
+                          UNEXPECTED_TRANSFER_ENCODING,
+                          "Unexpected Transfer-Encoding header for a response without body"
                         );
                       }
 
-                      self.has_chunked_transfer_encoding = true;
-                    } else {
+                      if !strip_ows_fast(data, &mut header_value_start, &mut header_value_end, false) {
+                        fail!(UNEXPECTED_CHARACTER, "Expected Transfer-Encoding header value");
+                      }
+
+                      self.has_transfer_encoding = true;
+
+                      if &data[header_value_start..header_value_end] == b"chunked" {
+                        // If this is true, it means the Transfer-Encoding header was specified more
+                        // than once. This is the second repetition and therefore, the previous one is
+                        // no longer the last one, making it invalid.
+                        if self.has_chunked_transfer_encoding {
+                          fail!(
+                            INVALID_TRANSFER_ENCODING,
+                            "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can \
+                             be provided only once"
+                          );
+                        }
+
+                        self.has_chunked_transfer_encoding = true;
+                      } else {
+                        let mut token_start = header_value_start;
+                        loop {
+                          while token_start < header_value_end && is_ws(data[token_start]) {
+                            token_start += 1;
+                          }
+
+                          if token_start == header_value_end {
+                            break;
+                          }
+
+                          let token_end_raw = match find_char(data, token_start, header_value_end, b',') {
+                            Some(comma) => comma,
+                            None => header_value_end,
+                          };
+                          let mut token_end = token_end_raw;
+
+                          if !strip_ows_fast(data, &mut token_start, &mut token_end, false) {
+                            fail!(UNEXPECTED_CHARACTER, "Expected Transfer-Encoding header value");
+                          }
+
+                          self.has_transfer_encoding = true;
+
+                          if let case_insensitive_string!("chunked") = data[token_start..token_end] {
+                            // If this is true, it means the Transfer-Encoding header was specified more
+                            // than once. This is the second repetition and therefore, the previous one is
+                            // no longer the last one, making it invalid.
+                            if self.has_chunked_transfer_encoding {
+                              fail!(
+                                INVALID_TRANSFER_ENCODING,
+                                "The value \"chunked\" in the Transfer-Encoding header must be the last provided and \
+                                 can be provided only once"
+                              );
+                            }
+
+                            self.has_chunked_transfer_encoding = true;
+                          } else {
+                            if self.has_chunked_transfer_encoding {
+                              // Any other value when chunked was already specified is invalid as the previous
+                              // chunked would not be the last one anymore
+                              fail!(
+                                INVALID_TRANSFER_ENCODING,
+                                "The value \"chunked\" in the Transfer-Encoding header must be the last provided"
+                              );
+                            }
+                          }
+
+                          if token_end_raw == header_value_end {
+                            break;
+                          } else {
+                            token_start = token_end_raw + 1;
+                          }
+                        }
+                      }
+                    }
+                    // RFC 9112 section 9.6
+                    (10, case_insensitive_string!("connection")) => {
+                      if !strip_ows_fast(data, &mut header_value_start, &mut header_value_end, false) {
+                        fail!(UNEXPECTED_CHARACTER, "Expected Connection header value");
+                      }
+
+                      match data[header_value_start..header_value_end] {
+                        case_insensitive_string!("close") => {
+                          self.has_connection_close = true;
+                        }
+                        case_insensitive_string!("keep-alive") => {
+                          // Keep-alive is implicit unless Connection: close is
+                          // present.
+                        }
+                        case_insensitive_string!("upgrade") => {
+                          self.has_connection_upgrade = true;
+                        }
+                        _ => {
+                          // Comma separated values
+                          let mut token_start = header_value_start;
+                          loop {
+                            while token_start < header_value_end && is_ws(data[token_start]) {
+                              token_start += 1;
+                            }
+
+                            if token_start == header_value_end {
+                              break;
+                            }
+
+                            let token_end_raw = match find_char(data, token_start, header_value_end, b',') {
+                              Some(comma) => comma,
+                              None => header_value_end,
+                            };
+                            let mut token_end = token_end_raw;
+
+                            if !strip_ows_fast(data, &mut token_start, &mut token_end, false) {
+                              fail!(UNEXPECTED_CHARACTER, "Expected Connection header value");
+                            }
+
+                            match data[token_start..token_end] {
+                              case_insensitive_string!("close") => {
+                                self.has_connection_close = true;
+                              }
+                              case_insensitive_string!("upgrade") => {
+                                self.has_connection_upgrade = true;
+                              }
+                              case_insensitive_string!("keep-alive") => {}
+                              _ => {
+                                if !validate_token(data, token_start, token_end) {
+                                  fail!(UNEXPECTED_CHARACTER, "Invalid Connection header value");
+                                }
+                              }
+                            }
+
+                            if token_end_raw == header_value_end {
+                              break;
+                            } else {
+                              token_start = token_end_raw + 1;
+                            }
+                          }
+                        }
+                      }
+                    }
+                    (7, case_insensitive_string!("trailer")) => {
+                      self.has_trailers = true;
+
+                      if !strip_ows_fast(data, &mut header_value_start, &mut header_value_end, false) {
+                        fail!(UNEXPECTED_CHARACTER, "Expected Trailer header value");
+                      }
+                    }
+                    (7, case_insensitive_string!("upgrade")) => {
+                      if !strip_ows_fast(data, &mut header_value_start, &mut header_value_end, false) {
+                        fail!(UNEXPECTED_CHARACTER, "Expected Upgrade header value");
+                      }
+
                       let mut token_start = header_value_start;
                       loop {
-                        while token_start < header_value_end && WS_TABLE[data[token_start] as usize] {
+                        while token_start < header_value_end && is_ws(data[token_start]) {
                           token_start += 1;
                         }
 
@@ -525,52 +667,27 @@ impl Parser {
                           break;
                         }
 
-                        let token_end_raw = match self.find_char(data, token_start, header_value_end, b',') {
+                        let token_end_raw = match find_char(data, token_start, header_value_end, b',') {
                           Some(comma) => comma,
                           None => header_value_end,
                         };
                         let mut token_end = token_end_raw;
 
-                        if let StateResult::Stop = self.strip_ows(
-                          data,
-                          &mut token_start,
-                          &mut token_end,
-                          "Expected Transfer-Encoding header value",
-                        ) {
-                          stop!();
+                        if !strip_ows_fast(data, &mut token_start, &mut token_end, false) {
+                          fail!(UNEXPECTED_CHARACTER, "Expected Upgrade header value");
                         }
 
-                        if let case_insensitive_string!("chunked") = data[token_start..token_end] {
-                          // If this is true, it means the Transfer-Encoding header was specified more
-                          // than once. This is the second repetition and therefore, the previous one is
-                          // no longer the last one, making it invalid.
-                          if self.has_chunked_transfer_encoding {
-                            fail!(
-                              INVALID_TRANSFER_ENCODING,
-                              "The value \"chunked\" in the Transfer-Encoding header must be the last provided and \
-                               can be provided only once"
-                            );
-                          }
+                        let protocol_name_end = find_char(data, token_start, token_end, b'/').unwrap_or(token_end);
+                        if !validate_token(data, token_start, protocol_name_end) {
+                          fail!(UNEXPECTED_CHARACTER, "Invalid Upgrade header value");
+                        }
 
-                          self.has_chunked_transfer_encoding = true;
-                        } else {
-                          if self.has_chunked_transfer_encoding {
-                            // Any other value when chunked was already specified is invalid as the previous
-                            // chunked would not be the last one anymore
-                            fail!(
-                              INVALID_TRANSFER_ENCODING,
-                              "The value \"chunked\" in the Transfer-Encoding header must be the last provided"
-                            );
-                          }
-
-                          if let StateResult::Stop = self.validate(
-                            data,
-                            &TOKEN_TABLE,
-                            token_start,
-                            token_end,
-                            "Invalid Transfer-Encoding header value character",
-                          ) {
-                            stop!();
+                        if protocol_name_end < token_end {
+                          let protocol_version_start = protocol_name_end + 1;
+                          if find_char(data, protocol_version_start, token_end, b'/').is_some()
+                            || !validate_token(data, protocol_version_start, token_end)
+                          {
+                            fail!(UNEXPECTED_CHARACTER, "Invalid Upgrade header value");
                           }
                         }
 
@@ -580,83 +697,15 @@ impl Parser {
                           token_start = token_end_raw + 1;
                         }
                       }
-                    }
-                  }
-                  // RFC 9112 section 9.6
-                  case_insensitive_string!("connection") => {
-                    // It just matched a prefix, invalid header
-                    if header_name_len > 10 {
-                      fail!(UNEXPECTED_CHARACTER, "Invalid header field name");
-                    }
 
-                    if let StateResult::Stop = self.strip_ows(
-                      data,
-                      &mut header_value_start,
-                      &mut header_value_end,
-                      "Expected Connection header value",
-                    ) {
-                      stop!();
+                      self.has_upgrade = true;
                     }
-
-                    match data[header_value_start..header_value_end] {
-                      case_insensitive_string!("close") => {
-                        self.connection = CONNECTION_CLOSE;
+                    _ => {
+                      if !validate_token(data, header_name_start, header_name_end) {
+                        fail!(UNEXPECTED_CHARACTER, "Invalid header field name character");
                       }
-                      case_insensitive_string!("keep-alive") => {
-                        self.connection = CONNECTION_KEEPALIVE;
-                      }
-                      case_insensitive_string!("upgrade") => {
-                        self.connection = CONNECTION_UPGRADE;
-                      }
-                      _ => {}
-                    }
-                  }
-                  case_insensitive_string!("trailer") => {
-                    // It just matched a prefix, invalid header
-                    if header_name_len > 7 {
-                      fail!(UNEXPECTED_CHARACTER, "Invalid header field name");
-                    }
 
-                    self.has_trailers = true;
-
-                    if let StateResult::Stop = self.strip_ows(
-                      data,
-                      &mut header_value_start,
-                      &mut header_value_end,
-                      "Expected Trailer header value",
-                    ) {
-                      stop!();
-                    }
-                  }
-                  case_insensitive_string!("upgrade") => {
-                    // It just matched a prefix, invalid header
-                    if header_name_len > 7 {
-                      fail!(UNEXPECTED_CHARACTER, "Invalid header field name");
-                    }
-
-                    self.has_upgrade = true;
-
-                    if let StateResult::Stop =
-                      self.strip_ows_allowing_empty(data, &mut header_value_start, &mut header_value_end)
-                    {
-                      stop!();
-                    }
-                  }
-                  _ => {
-                    if let StateResult::Stop = self.validate(
-                      data,
-                      &TOKEN_TABLE,
-                      header_name_start,
-                      header_name_end,
-                      "Invalid header field name character",
-                    ) {
-                      stop!();
-                    }
-
-                    if let StateResult::Stop =
-                      self.strip_ows_allowing_empty(data, &mut header_value_start, &mut header_value_end)
-                    {
-                      stop!();
+                      strip_ows_fast(data, &mut header_value_start, &mut header_value_end, true);
                     }
                   }
                 }
@@ -670,7 +719,17 @@ impl Parser {
 
                 advance!(cr + 2);
               }
-              None => {
+              HeaderLineScanResult::Invalid(invalid) => {
+                match find_char(data, 0, invalid, b':') {
+                  Some(_) => {
+                    fail!(UNEXPECTED_CHARACTER, "Invalid header field value character");
+                  }
+                  None => {
+                    fail!(UNEXPECTED_CHARACTER, "Invalid header field name character");
+                  }
+                }
+              }
+              HeaderLineScanResult::Incomplete => {
                 if available >= self.max_header_length {
                   fail!(UNEXPECTED_CHARACTER, "Header line too long");
                 } else {
@@ -688,21 +747,19 @@ impl Parser {
             let method = self.method;
             let status = self.status;
 
-            if self.has_upgrade {
-              if self.connection != CONNECTION_UPGRADE {
-                fail!(
-                  MISSING_CONNECTION_UPGRADE,
-                  "Missing Connection header set to \"upgrade\" when using the Upgrade header"
-                );
-              }
-            } else if self.has_trailers && !self.has_chunked_transfer_encoding {
-              {
-                fail!(
-                  UNEXPECTED_TRAILERS,
-                  "Trailers are not allowed when not using chunked transfer encoding"
-                );
-              }
-            } else if (method == METHOD_GET || method == METHOD_HEAD) && self.content_length > 0 {
+            if self.has_upgrade && !self.has_connection_upgrade {
+              fail!(
+                MISSING_CONNECTION_UPGRADE,
+                "Missing Connection header set to \"upgrade\" when using the Upgrade header"
+              );
+            }
+
+            if self.has_trailers && !self.has_chunked_transfer_encoding {
+              fail!(
+                UNEXPECTED_TRAILERS,
+                "Trailers are not allowed when not using chunked transfer encoding"
+              );
+            } else if self.is_request && (method == METHOD_GET || method == METHOD_HEAD) && self.content_length > 0 {
               fail!(UNEXPECTED_CONTENT, "Unexpected content for the request (GET or HEAD)");
             }
 
@@ -711,12 +768,20 @@ impl Parser {
               // In case of CONNECT method
               callback!(on_connect);
               move_to!(tunnel);
-            } else if self.has_upgrade {
+            } else if self.has_upgrade && !self.is_request && status == 101 {
               callback!(on_upgrade);
               move_to!(tunnel);
-            } else if self.message_type == MESSAGE_TYPE_REQUEST {
-              // RFC 9110 section 6.3
-              if self.has_content_length {
+            } else if self.is_request {
+              if self.has_transfer_encoding && !self.has_chunked_transfer_encoding {
+                fail!(
+                  UNEXPECTED_CONTENT_LENGTH,
+                  "Transfer-Encoding last header value must be \"chunked\" if the header is present"
+                );
+              } else if self.skip_body {
+                self.continue_without_data = true;
+                self.complete(0);
+              } else if self.has_content_length {
+                // RFC 9110 section 6.3
                 if self.content_length == 0 {
                   self.continue_without_data = true;
                   self.complete(0);
@@ -732,7 +797,7 @@ impl Parser {
             } else {
               // Response
               // RFC 9110 section 15.4.5
-              if (status < 200 && status != 101) || method == METHOD_HEAD || self.skip_body || status == 304 {
+              if self.skip_body || (status < 200 && status != 101) || status == 204 || status == 205 || status == 304 {
                 self.continue_without_data = true;
                 self.complete(0);
               } else if self.has_content_length {
@@ -785,21 +850,21 @@ impl Parser {
 
           // RFC 9112 section 7.1
           STATE_CHUNK_HEADER => {
-            match self.find_cr(data, available) {
+            match find_cr(data, available) {
               Some(cr) => {
-                match self.ensure_valid_line(data, cr, available) {
-                  StateResult::Continue => {}
-                  StateResult::Suspend => {
+                match ensure_valid_line(data, cr, available) {
+                  MatchResult::Continue => {}
+                  MatchResult::Suspend => {
                     suspend!();
                   }
-                  StateResult::Stop => {
-                    stop!();
+                  MatchResult::Stop => {
+                    fail!(UNEXPECTED_CHARACTER, "Expected CRLF");
                   }
                 }
 
                 let chunk_length_start = 0;
                 // Note, the character is optional since chunk extensions are not required
-                let chunk_length_end = match self.find_char(data, chunk_length_start, cr, b';') {
+                let chunk_length_end = match find_char(data, chunk_length_start, cr, b';') {
                   Some(index) => index,
                   None => cr,
                 };
@@ -866,37 +931,29 @@ impl Parser {
           }
 
           STATE_CHUNK_EXTENSIONS => {
-            match self.find_cr(data, available) {
+            match find_cr(data, available) {
               Some(cr) => {
-                match self.ensure_valid_line(data, cr, available) {
-                  StateResult::Continue => {}
-                  StateResult::Suspend => {
+                match ensure_valid_line(data, cr, available) {
+                  MatchResult::Continue => {}
+                  MatchResult::Suspend => {
                     suspend!();
                   }
-                  StateResult::Stop => {
-                    stop!();
+                  MatchResult::Stop => {
+                    fail!(UNEXPECTED_CHARACTER, "Expected CRLF");
                   }
                 }
 
                 let mut name_start = 0;
                 // Find the first between = or ;
-                let name_end_raw = self.find_char2(data, name_start, cr, b'=', b';').unwrap_or(cr);
+                let name_end_raw = find_char2(data, name_start, cr, b'=', b';').unwrap_or(cr);
                 let mut name_end = name_end_raw;
 
-                if let StateResult::Stop =
-                  self.strip_ows(data, &mut name_start, &mut name_end, "Expected chunk extension name")
-                {
-                  stop!();
+                if !strip_ows(data, &mut name_start, &mut name_end, false) {
+                  fail!(UNEXPECTED_CHARACTER, "Expected chunk extension name");
                 }
 
-                if let StateResult::Stop = self.validate(
-                  data,
-                  &TOKEN_TABLE,
-                  name_start,
-                  name_end,
-                  "Invalid chunk extension name character",
-                ) {
-                  stop!();
+                if !validate_token(data, name_start, name_end) {
+                  fail!(UNEXPECTED_CHARACTER, "Invalid chunk extension name character");
                 }
 
                 // No value
@@ -923,7 +980,7 @@ impl Parser {
                   let next_extension: usize;
 
                   // Strip OWS before the value
-                  while value_start < cr && WS_TABLE[data[value_start] as usize] {
+                  while value_start < cr && is_ws(data[value_start]) {
                     value_start += 1;
                   }
 
@@ -933,12 +990,15 @@ impl Parser {
 
                   // Quoted string
                   // RFC 9110 section 5.6.4
+                  let mut quoted = false;
+                  let quote_start = value_start;
                   if data[value_start] == b'"' {
+                    quoted = true;
                     value_start += 1;
                     let mut quote_start = value_start;
 
                     loop {
-                      match self.find_char(data, quote_start, cr, b'"') {
+                      match find_char(data, quote_start, cr, b'"') {
                         Some(index) => {
                           // Count consecutive backslashes immediately before the quote
                           let mut backslash_count = 0usize;
@@ -964,46 +1024,39 @@ impl Parser {
                       };
                     }
 
-                    if let StateResult::Stop = self.validate(
-                      data,
-                      &TOKEN_VALUE_QUOTED_TABLE,
-                      value_start,
-                      value_end,
-                      "Invalid chunk extension quoted value character",
-                    ) {
-                      stop!();
+                    // TODO@PI: Replace me with a similar validation to token_value but allowing
+                    // quoted string characters
+                    if !validate_quoted_token_value(data, value_start, value_end) {
+                      fail!(UNEXPECTED_CHARACTER, "Invalid chunk extension quoted value character");
                     }
 
                     next_extension = value_end + 1;
                   } else {
-                    value_end = self.find_char(data, value_start, cr, b';').unwrap_or(cr);
-                    next_extension = if value_end == cr { cr } else { value_end + 1 };
+                    value_end = find_char(data, value_start, cr, b';').unwrap_or(cr);
+                    next_extension = if value_end == cr { cr } else { value_end };
 
-                    if let StateResult::Stop =
-                      self.strip_ows(data, &mut value_start, &mut value_end, "Expected chunk extension value")
-                    {
-                      stop!();
+                    if !strip_ows(data, &mut value_start, &mut value_end, false) {
+                      fail!(UNEXPECTED_CHARACTER, "Expected chunk extension value");
                     }
 
-                    if let StateResult::Stop = self.validate(
-                      data,
-                      &TOKEN_TABLE,
-                      value_start,
-                      value_end,
-                      "Invalid chunk extension value character",
-                    ) {
-                      stop!();
+                    if value_start != value_end && !validate_token(data, value_start, value_end) {
+                      fail!(UNEXPECTED_CHARACTER, "Invalid chunk extension value character");
                     }
                   }
 
                   callback!(on_chunk_extension_name, name_start, name_end - name_start);
-                  callback!(on_chunk_extension_value, value_start, value_end - value_start);
 
-                  let next_semicolon = self.find_char(data, next_extension, cr, b';').unwrap_or(cr);
+                  if quoted {
+                    callback!(on_chunk_extension_value, quote_start, value_end - quote_start + 1);
+                  } else {
+                    callback!(on_chunk_extension_value, value_start, value_end - value_start);
+                  }
+
+                  let next_semicolon = find_char(data, next_extension, cr, b';').unwrap_or(cr);
 
                   let mut i = next_extension;
                   while i < next_semicolon {
-                    if !WS_TABLE[data[i] as usize] {
+                    if !is_ws(data[i]) {
                       fail!(UNEXPECTED_CHARACTER, "Invalid chunk extension character after value");
                     }
                     i += 1;
@@ -1068,15 +1121,15 @@ impl Parser {
 
           // RFC 9112 section 7.1.2
           STATE_TRAILER => {
-            match self.find_cr(data, available) {
-              Some(cr) => {
-                match self.ensure_valid_line(data, cr, available) {
-                  StateResult::Continue => {}
-                  StateResult::Suspend => {
+            match find_header_line_end(data.as_ptr(), available) {
+              HeaderLineScanResult::Cr(cr) => {
+                match ensure_valid_line(data, cr, available) {
+                  MatchResult::Continue => {}
+                  MatchResult::Suspend => {
                     suspend!();
                   }
-                  StateResult::Stop => {
-                    stop!();
+                  MatchResult::Stop => {
+                    fail!(UNEXPECTED_CHARACTER, "Expected CRLF");
                   }
                 }
 
@@ -1090,7 +1143,7 @@ impl Parser {
                 }
 
                 let trailer_name_start = 0;
-                let trailer_name_end = match self.find_char(data, trailer_name_start, cr, b':') {
+                let trailer_name_end = match find_char(data, trailer_name_start, cr, b':') {
                   Some(index) if index > trailer_name_start => index,
                   _ => {
                     fail!(UNEXPECTED_CHARACTER, "Invalid trailer field name character");
@@ -1099,31 +1152,11 @@ impl Parser {
 
                 let mut trailer_value_start = trailer_name_end + 1;
                 let mut trailer_value_end = cr;
-                if let StateResult::Stop =
-                  self.strip_ows_allowing_empty(data, &mut trailer_value_start, &mut trailer_value_end)
-                {
-                  stop!();
-                }
+                strip_ows_fast(data, &mut trailer_value_start, &mut trailer_value_end, true);
 
                 // Validate
-                if let StateResult::Stop = self.validate(
-                  data,
-                  &TOKEN_TABLE,
-                  trailer_name_start,
-                  trailer_name_end,
-                  "Invalid trailer field name character",
-                ) {
-                  stop!();
-                }
-
-                if let StateResult::Stop = self.validate_allowing_empty(
-                  data,
-                  &TOKEN_VALUE_TABLE,
-                  trailer_value_start,
-                  trailer_value_end,
-                  "Invalid trailer field value character",
-                ) {
-                  stop!();
+                if !validate_token(data, trailer_name_start, trailer_name_end) {
+                  fail!(UNEXPECTED_CHARACTER, "Invalid trailer field name character");
                 }
 
                 callback!(
@@ -1138,7 +1171,17 @@ impl Parser {
                 );
                 advance!(cr + 2);
               }
-              None => {
+              HeaderLineScanResult::Invalid(invalid) => {
+                match find_char(data, 0, invalid, b':') {
+                  Some(_) => {
+                    fail!(UNEXPECTED_CHARACTER, "Invalid trailer field value character");
+                  }
+                  None => {
+                    fail!(UNEXPECTED_CHARACTER, "Invalid trailer field name character");
+                  }
+                }
+              }
+              HeaderLineScanResult::Incomplete => {
                 if available >= self.max_header_length {
                   fail!(UNEXPECTED_CHARACTER, "Trailer line too long");
                 } else {
@@ -1254,139 +1297,15 @@ impl Parser {
     callback!(on_reset, offset, 0);
 
     self.continue_without_data = false;
+    self.skip_body = false;
 
-    if self.connection == CONNECTION_CLOSE {
+    if self.has_upgrade && self.is_request {
+      move_to!(tunnel);
+    } else if self.has_connection_close {
       callback!(on_finish);
       move_to!(finish);
     } else {
       move_to!(start);
     }
-  }
-
-  #[inline(always)]
-  fn find_cr(&self, data: &[u8], available: usize) -> Option<usize> {
-    if available == 0 {
-      None
-    } else {
-      self.find_char(data, 0, available - 1, b'\r')
-    }
-  }
-
-  #[inline(always)]
-  fn find_char(&self, buf: &[u8], start: usize, end: usize, needle: u8) -> Option<usize> {
-    if start > end || end >= buf.len() {
-      return None;
-    }
-
-    memchr::memchr(needle, &buf[start..=end]).map(|i| start + i)
-  }
-
-  #[inline(always)]
-  fn find_char2(&self, buf: &[u8], start: usize, end: usize, needle1: u8, needle2: u8) -> Option<usize> {
-    if start > end || end >= buf.len() {
-      return None;
-    }
-
-    memchr::memchr2(needle1, needle2, &buf[start..=end]).map(|i| start + i)
-  }
-
-  #[inline(always)]
-  fn ensure_valid_line(&mut self, data: &[u8], cr: usize, available: usize) -> StateResult {
-    if cr + 1 == available {
-      StateResult::Suspend
-    } else if data[cr + 1] != b'\n' {
-      self.fail(ERROR_UNEXPECTED_CHARACTER, "Expected CRLF");
-      StateResult::Stop
-    } else {
-      StateResult::Continue
-    }
-  }
-
-  #[inline(always)]
-  fn validate(
-    self: &mut Parser,
-    data: &[u8],
-    range: &[bool; 256],
-    start: usize,
-    end: usize,
-    message: &str,
-  ) -> StateResult {
-    if start == end {
-      self.fail(ERROR_UNEXPECTED_CHARACTER, message);
-      return StateResult::Stop;
-    }
-
-    let mut i = start;
-    while i < end {
-      if !range[data[i] as usize] {
-        self.fail(ERROR_UNEXPECTED_CHARACTER, message);
-        return StateResult::Stop;
-      }
-      i += 1;
-    }
-
-    StateResult::Continue
-  }
-
-  #[inline(always)]
-  fn validate_allowing_empty(
-    self: &mut Parser,
-    data: &[u8],
-    range: &[bool; 256],
-    start: usize,
-    end: usize,
-    message: &str,
-  ) -> StateResult {
-    let mut i = start;
-    while i < end {
-      if !range[data[i] as usize] {
-        self.fail(ERROR_UNEXPECTED_CHARACTER, message);
-        return StateResult::Stop;
-      }
-      i += 1;
-    }
-
-    StateResult::Continue
-  }
-
-  #[inline(always)]
-  fn strip_ows(&mut self, data: &[u8], start_ref: &mut usize, end_ref: &mut usize, message: &str) -> StateResult {
-    let mut start = *start_ref;
-    let mut end = *end_ref;
-
-    while start < end && WS_TABLE[data[start] as usize] {
-      start += 1;
-    }
-
-    while end > start && WS_TABLE[data[end - 1] as usize] {
-      end -= 1;
-    }
-
-    if start == end {
-      self.fail(ERROR_UNEXPECTED_CHARACTER, message);
-      return StateResult::Stop;
-    }
-
-    *start_ref = start;
-    *end_ref = end;
-    StateResult::Continue
-  }
-
-  #[inline(always)]
-  fn strip_ows_allowing_empty(&self, data: &[u8], start_ref: &mut usize, end_ref: &mut usize) -> StateResult {
-    let mut start = *start_ref;
-    let mut end = *end_ref;
-
-    while start < end && WS_TABLE[data[start] as usize] {
-      start += 1;
-    }
-
-    while end > start && WS_TABLE[data[end - 1] as usize] {
-      end -= 1;
-    }
-
-    *start_ref = start;
-    *end_ref = end;
-    StateResult::Continue
   }
 }

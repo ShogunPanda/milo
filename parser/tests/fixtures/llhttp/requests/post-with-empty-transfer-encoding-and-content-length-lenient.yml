@@ -1,0 +1,76 @@
+path: tests/fixtures/llhttp/request/post-with-empty-transfer-encoding-and-content-length-lenient.yml
+name: POST With Empty Transfer-Encoding And Content-Length (lenient)
+checked: true
+source:
+  path: test/request/transfer-encoding.md
+  line: 574
+meta:
+  type: request
+input:
+- POST / HTTP/1.1
+- 'Host: foo'
+- 'Content-Length: 10'
+- 'Transfer-Encoding:'
+- 'Transfer-Encoding:'
+- 'Transfer-Encoding:'
+- ''
+- '2'
+- AA
+- '0'
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[method]="POST"
+- off=4 method complete
+- off=5 len=1 span[url]="/"
+- off=7 url complete
+- off=7 len=4 span[protocol]="HTTP"
+- off=11 protocol complete
+- off=12 len=3 span[version]="1.1"
+- off=15 version complete
+- off=17 len=4 span[header_field]="Host"
+- off=22 header_field complete
+- off=23 len=3 span[header_value]="foo"
+- off=28 header_value complete
+- off=28 len=14 span[header_field]="Content-Length"
+- off=43 header_field complete
+- off=44 len=2 span[header_value]="10"
+- off=48 header_value complete
+- off=48 len=17 span[header_field]="Transfer-Encoding"
+- off=66 header_field complete
+- off=66 error code=15 reason="Transfer-Encoding can't be present with Content-Length"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: POST
+- offset: 5
+  type: url
+  payload: /
+- offset: 7
+  type: protocol
+  payload: HTTP
+- offset: 12
+  type: version
+  payload: '1.1'
+- offset: 17
+  type: header_name
+  payload: Host
+- offset: 23
+  type: header_value
+  payload: foo
+- offset: 28
+  type: header_name
+  payload: Content-Length
+- offset: 44
+  type: header_value
+  payload: '10'
+- offset: 48
+  type: error
+  payload:
+    code: UNEXPECTED_TRANSFER_ENCODING
+    description: Unexpected Transfer-Encoding header when Content-Length header is present

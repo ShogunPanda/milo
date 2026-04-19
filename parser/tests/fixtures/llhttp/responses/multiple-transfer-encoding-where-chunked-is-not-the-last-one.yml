@@ -1,0 +1,73 @@
+path: tests/fixtures/llhttp/response/multiple-transfer-encoding-where-chunked-is-not-the-last-one.yml
+name: Multiple Transfer-encoding Where Chunked Is Not The Last One
+checked: true
+source:
+  path: test/response/transfer-encoding.md
+  line: 74
+meta:
+  type: response
+input:
+- HTTP/1.1 200 OK
+- 'Accept: */*'
+- 'Transfer-Encoding: chunked'
+- 'Transfer-Encoding: identity'
+- ''
+- World
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=2 span[status]="OK"
+- off=17 status complete
+- off=17 len=6 span[header_field]="Accept"
+- off=24 header_field complete
+- off=25 len=3 span[header_value]="*/*"
+- off=30 header_value complete
+- off=30 len=17 span[header_field]="Transfer-Encoding"
+- off=48 header_field complete
+- off=49 len=7 span[header_value]="chunked"
+- off=58 header_value complete
+- off=58 len=17 span[header_field]="Transfer-Encoding"
+- off=76 header_field complete
+- off=77 len=8 span[header_value]="identity"
+- off=87 header_value complete
+- off=89 headers complete status=200 v=1/1 flags=200 content_length=0
+- off=89 len=5 span[body]="World"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '200'
+- offset: 13
+  type: reason
+  payload: OK
+- offset: 17
+  type: header_name
+  payload: Accept
+- offset: 25
+  type: header_value
+  payload: '*/*'
+- offset: 30
+  type: header_name
+  payload: Transfer-Encoding
+- offset: 49
+  type: header_value
+  payload: chunked
+- offset: 58
+  type: error
+  payload:
+    code: INVALID_TRANSFER_ENCODING
+    description: The value "chunked" in the Transfer-Encoding header must be the last provided

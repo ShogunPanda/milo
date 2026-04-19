@@ -1,0 +1,75 @@
+path: tests/fixtures/llhttp/response/http-200-response-with-upgrade-header.yml
+name: HTTP 200 Response With Upgrade Header
+checked: true
+source:
+  path: test/response/connection.md
+  line: 374
+meta:
+  type: response
+input:
+- HTTP/1.1 200 OK
+- 'Connection: upgrade'
+- 'Upgrade: h2c'
+- ''
+- body
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=2 span[status]="OK"
+- off=17 status complete
+- off=17 len=10 span[header_field]="Connection"
+- off=28 header_field complete
+- off=29 len=7 span[header_value]="upgrade"
+- off=38 header_value complete
+- off=38 len=7 span[header_field]="Upgrade"
+- off=46 header_field complete
+- off=47 len=3 span[header_value]="h2c"
+- off=52 header_value complete
+- off=54 headers complete status=200 v=1/1 flags=14 content_length=0
+- off=54 len=4 span[body]="body"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '200'
+- offset: 13
+  type: reason
+  payload: OK
+- offset: 17
+  type: header_name
+  payload: Connection
+- offset: 29
+  type: header_value
+  payload: upgrade
+- offset: 38
+  type: header_name
+  payload: Upgrade
+- offset: 47
+  type: header_value
+  payload: h2c
+- offset: 54
+  type: headers
+  payload:
+    method: null
+    status: 200
+    url: null
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 54
+  type: data
+  payload: body

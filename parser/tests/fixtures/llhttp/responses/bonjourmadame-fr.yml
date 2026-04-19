@@ -1,0 +1,79 @@
+path: tests/fixtures/llhttp/response/bonjourmadame-fr.yml
+name: Bonjourmadame.fr
+checked: true
+source:
+  path: test/response/sample.md
+  line: 425
+meta:
+  type: response
+input:
+- HTTP/1.0 301 Moved Permanently
+- 'Date: Thu, 03 Jun 2010 09:56:32 GMT'
+- 'Server: Apache/2.2.3 (Red Hat)'
+- 'Cache-Control: public'
+- 'Pragma: \r\n\'
+- 'Location: http://www.bonjourmadame.fr/'
+- 'Vary: Accept-Encoding'
+- 'Content-Length: 0'
+- 'Content-Type: text/html; charset=UTF-8'
+- 'Connection: keep-alive'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.0"
+- off=8 version complete
+- off=13 len=17 span[status]="Moved Permanently"
+- off=32 status complete
+- off=32 len=4 span[header_field]="Date"
+- off=37 header_field complete
+- off=38 len=29 span[header_value]="Thu, 03 Jun 2010 09:56:32 GMT"
+- off=69 header_value complete
+- off=69 len=6 span[header_field]="Server"
+- off=76 header_field complete
+- off=77 len=22 span[header_value]="Apache/2.2.3 (Red Hat)"
+- off=101 header_value complete
+- off=101 len=13 span[header_field]="Cache-Control"
+- off=115 header_field complete
+- off=116 len=6 span[header_value]="public"
+- off=124 header_value complete
+- off=124 len=6 span[header_field]="Pragma"
+- off=131 header_field complete
+- off=134 len=0 span[header_value]=""
+- off=134 header_value complete
+- off=134 len=8 span[header_field]="Location"
+- off=143 header_field complete
+- off=144 len=28 span[header_value]="http://www.bonjourmadame.fr/"
+- off=174 header_value complete
+- off=174 len=4 span[header_field]="Vary"
+- off=179 header_field complete
+- off=180 len=15 span[header_value]="Accept-Encoding"
+- off=197 header_value complete
+- off=197 len=14 span[header_field]="Content-Length"
+- off=212 header_field complete
+- off=213 len=1 span[header_value]="0"
+- off=216 header_value complete
+- off=216 len=12 span[header_field]="Content-Type"
+- off=229 header_field complete
+- off=230 len=24 span[header_value]="text/html; charset=UTF-8"
+- off=256 header_value complete
+- off=256 len=10 span[header_field]="Connection"
+- off=267 header_field complete
+- off=268 len=10 span[header_value]="keep-alive"
+- off=280 header_value complete
+- off=282 headers complete status=301 v=1/0 flags=21 content_length=0
+- off=282 message complete
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNSUPPORTED_HTTP_VERSION
+    description: Unsupported HTTP version

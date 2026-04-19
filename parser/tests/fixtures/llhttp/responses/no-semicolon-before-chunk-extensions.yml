@@ -1,0 +1,81 @@
+path: tests/fixtures/llhttp/response/no-semicolon-before-chunk-extensions.yml
+name: No Semicolon Before Chunk Extensions
+checked: true
+source:
+  path: test/response/transfer-encoding.md
+  line: 212
+meta:
+  type: response
+input:
+- HTTP/1.1 200 OK
+- 'Host: localhost'
+- 'Transfer-encoding: chunked'
+- ''
+- 2 erfrferferf
+- aa
+- 0 rrrr
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=2 span[status]="OK"
+- off=17 status complete
+- off=17 len=4 span[header_field]="Host"
+- off=22 header_field complete
+- off=23 len=9 span[header_value]="localhost"
+- off=34 header_value complete
+- off=34 len=17 span[header_field]="Transfer-encoding"
+- off=52 header_field complete
+- off=53 len=7 span[header_value]="chunked"
+- off=62 header_value complete
+- off=64 headers complete status=200 v=1/1 flags=208 content_length=0
+- off=66 error code=12 reason="Invalid character in chunk size"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '200'
+- offset: 13
+  type: reason
+  payload: OK
+- offset: 17
+  type: header_name
+  payload: Host
+- offset: 23
+  type: header_value
+  payload: localhost
+- offset: 34
+  type: header_name
+  payload: Transfer-encoding
+- offset: 53
+  type: header_value
+  payload: chunked
+- offset: 64
+  type: headers
+  payload:
+    method: null
+    status: 200
+    url: null
+    protocol: HTTP
+    version: '1.1'
+    body: chunked
+- offset: 64
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid chunk length character

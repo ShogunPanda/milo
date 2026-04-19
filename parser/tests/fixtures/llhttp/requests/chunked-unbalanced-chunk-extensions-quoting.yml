@@ -1,0 +1,89 @@
+path: tests/fixtures/llhttp/request/chunked-unbalanced-chunk-extensions-quoting.yml
+name: chunked / Unbalanced Chunk Extensions Quoting
+checked: true
+source:
+  path: test/request/transfer-encoding.md
+  line: 424
+meta:
+  type: request
+input:
+- POST /chunked_w_unicorns_after_length HTTP/1.1
+- 'Transfer-Encoding: chunked'
+- ''
+- 5;ilovew3="abc";somuchlove="def; ghi
+- hello
+- 6;blahblah;blah
+- ' world'
+- '0'
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[method]="POST"
+- off=4 method complete
+- off=5 len=32 span[url]="/chunked_w_unicorns_after_length"
+- off=38 url complete
+- off=38 len=4 span[protocol]="HTTP"
+- off=42 protocol complete
+- off=43 len=3 span[version]="1.1"
+- off=46 version complete
+- off=48 len=17 span[header_field]="Transfer-Encoding"
+- off=66 header_field complete
+- off=67 len=7 span[header_value]="chunked"
+- off=76 header_value complete
+- off=78 headers complete method=3 v=1/1 flags=208 content_length=0
+- off=80 len=7 span[chunk_extension_name]="ilovew3"
+- off=88 chunk_extension_name complete
+- off=88 len=5 span[chunk_extension_value]=""abc""
+- off=93 chunk_extension_value complete
+- off=94 len=10 span[chunk_extension_name]="somuchlove"
+- off=105 chunk_extension_name complete
+- off=105 len=9 span[chunk_extension_value]=""def; ghi"
+- off=115 error code=2 reason="Invalid character in chunk extensions quoted value"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: POST
+- offset: 5
+  type: url
+  payload: /chunked_w_unicorns_after_length
+- offset: 38
+  type: protocol
+  payload: HTTP
+- offset: 43
+  type: version
+  payload: '1.1'
+- offset: 48
+  type: header_name
+  payload: Transfer-Encoding
+- offset: 67
+  type: header_value
+  payload: chunked
+- offset: 78
+  type: headers
+  payload:
+    method: POST
+    status: null
+    url: /chunked_w_unicorns_after_length
+    protocol: HTTP
+    version: '1.1'
+    body: chunked
+- offset: 78
+  type: chunk_length
+  payload: '5'
+- offset: 80
+  type: chunk_extension_name
+  payload: ilovew3
+- offset: 88
+  type: chunk_extension_value
+  payload: '"abc"'
+- offset: 94
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Expected closing quote for chunk extension value

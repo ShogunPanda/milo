@@ -1,0 +1,48 @@
+path: tests/fixtures/llhttp/request/invalid-method.yml
+name: Invalid Method
+checked: true
+source:
+  path: test/request/invalid.md
+  line: 356
+meta:
+  type: request
+input:
+- MKCOLA / HTTP/1.1
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=5 span[method]="MKCOL"
+- off=5 method complete
+- off=5 error code=6 reason="Expected space after method"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: MKCOLA
+- offset: 7
+  type: url
+  payload: /
+- offset: 9
+  type: protocol
+  payload: HTTP
+- offset: 14
+  type: version
+  payload: '1.1'
+- offset: 21
+  type: headers
+  payload:
+    method: MKCOLA
+    status: null
+    url: /
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 21
+  type: complete
+  payload: null

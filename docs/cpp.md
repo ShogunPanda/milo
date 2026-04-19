@@ -43,10 +43,8 @@ The file `milo.h` defines several constants (`*` is used to denote a family pref
 - `MILO_VERSION_MINOR`: The current Milo minor version.
 - `MILO_VERSION_PATCH` The current Milo patch version.
 - `DEBUG`: If the debug informations are enabled or not.
-- `MESSAGE_TYPE_*`: The type of the parser: it can autodetect (default) or only parse requests or response.
 - `ERROR_*`: An error code.
 - `METHOD_*`: An HTTP/RTSP request method.
-- `CONNECTION_*`: A `Connection` header value.
 - `CALLBACK_*`: A parser callback.
 - `CALLBACK_ACTIVE_*`: A callback activation flag.
 - `STATE_*`: A parser state.
@@ -99,7 +97,8 @@ If you want to remove a previously set callback, you can use `milo::milo_noop`.
 
 A struct representing a parser. It has the following fields:
 
-- `mode` (`uint8_t`): The current parser mode. Can be `MESSAGE_TYPE_AUTODETECT`, `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`,
+- `autodetect` (`bool`): If the parser should autodetect requests and responses. Enabled by default.
+- `is_request` (`bool`): The configured or detected message type. Set this when `autodetect` is `false`.
 - `paused` (`bool`): If the parser is paused.
 - `manage_unconsumed` (`bool`): If the parser should automatically copy and prepend unconsumed data.
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
@@ -112,18 +111,19 @@ A struct representing a parser. It has the following fields:
 - `position` (`uintptr_t`): The current parser position in the slice in the current execution of `milo_parse`.
 - `parsed` (`uint64_t`): The total bytes consumed from this parser.
 - `error_code` (`uint8_t`): The parser error. By default is `ERROR_NONE`.
-- `message_type` (`uint8_t`): The current message type. Can be `MESSAGE_TYPE_REQUEST` or `MESSAGE_TYPE_RESPONSE`.
 - `method` (`uint8_t`): The current request method.
 - `status` (`uint32_t`): The current response status.
 - `version_major` (`uint8_t`): The current message HTTP version major version.
 - `version_minor` (`uint8_t`): The current message HTTP version minor version.
-- `connection` (`uint8_t`): The value for the connection header. Can be `CONNECTION_CLOSE`, `CONNECTION_UPGRADE` or `CONNECTION_KEEPALIVE` (which is the default when no header is set).
 - `content_length` (`uint64_t`): The value of the `Content-Length` header.
 - `chunk_size` (`uint64_t`): The expected length of the next chunk.
 - `remaining_content_length` (`uint64_t`): The missing data length of the body according to the `content_length` field.
 - `remaining_chunk_size` (`uint64_t`): The missing data length of the next chunk according to the `chunk_size` field.
 - `has_content_length` (`bool`): If the current message has a `Content-Length` header.
-- `has_chunked_transfer_encoding` (`bool`): If the current message has a `Transfer-Encoding` header.
+- `has_transfer_encoding` (`bool`): If the current message has a `Transfer-Encoding` header.
+- `has_chunked_transfer_encoding` (`bool`): If the current message is using chunked encoding.
+- `has_connection_close` (`bool`): If the current message has a `Connection: close` token.
+- `has_connection_upgrade` (`bool`): If the current message has a `Connection: upgrade` token.
 - `has_upgrade` (`bool`): If the current message has a `Connection: upgrade` header.
 - `has_trailers` (`bool`): If the current message has a `Trailers` header.
 - `active_callbacks` (`uint64_t`): Active callback bitmask. Set to one or more `CALLBACK_ACTIVE_*` values.
@@ -135,7 +135,8 @@ A struct representing a parser. It has the following fields:
 
 All the fields **MUST** be considered readonly, with the following exceptions:
 
-- `mode`
+- `autodetect`
+- `is_request`
 - `manage_unconsumed`
 - `continue_without_data`
 - `is_connect`
@@ -148,10 +149,6 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 
 ## Enumerations
 
-### `milo::MessageTypes`
-
-An enum listing all possible message types.
-
 ### `milo::Errors`
 
 An enum listing all possible parser errors.
@@ -159,10 +156,6 @@ An enum listing all possible parser errors.
 ### `milo::Methods`
 
 An enum listing all possible HTTP/RTSP methods.
-
-### `milo::Connections`
-
-An enum listing all possible connection (`Connection` header value) types.
 
 ### `milo::Callbacks`
 
@@ -211,7 +204,8 @@ The following fields are not modified:
 
 - `position`
 - `context`
-- `mode`
+- `autodetect`
+- `is_request`
 - `manage_unconsumed`
 - `continue_without_data`
 - `max_start_line_length`
@@ -224,7 +218,7 @@ The following fields are not modified:
 
 Clears all values about the message in the parser.
 
-The connection and message type fields are not cleared.
+The `autodetect` and `is_request` fields are not cleared.
 
 ### `void milo_pause(Parser *parser)`
 

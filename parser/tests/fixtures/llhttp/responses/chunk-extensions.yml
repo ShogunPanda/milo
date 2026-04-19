@@ -1,0 +1,144 @@
+path: tests/fixtures/llhttp/response/chunk-extensions.yml
+name: Chunk Extensions
+checked: true
+source:
+  path: test/response/transfer-encoding.md
+  line: 157
+meta:
+  type: response
+input:
+- HTTP/1.1 200 OK
+- 'Host: localhost'
+- 'Transfer-encoding: chunked'
+- ''
+- 5;ilovew3;somuchlove=aretheseparametersfor
+- hello
+- 6;blahblah;blah
+- ' world'
+- '0'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=2 span[status]="OK"
+- off=17 status complete
+- off=17 len=4 span[header_field]="Host"
+- off=22 header_field complete
+- off=23 len=9 span[header_value]="localhost"
+- off=34 header_value complete
+- off=34 len=17 span[header_field]="Transfer-encoding"
+- off=52 header_field complete
+- off=53 len=7 span[header_value]="chunked"
+- off=62 header_value complete
+- off=64 headers complete status=200 v=1/1 flags=208 content_length=0
+- off=66 len=7 span[chunk_extension_name]="ilovew3"
+- off=74 chunk_extension_name complete
+- off=74 len=10 span[chunk_extension_name]="somuchlove"
+- off=85 chunk_extension_name complete
+- off=85 len=21 span[chunk_extension_value]="aretheseparametersfor"
+- off=107 chunk_extension_value complete
+- off=108 chunk header len=5
+- off=108 len=5 span[body]="hello"
+- off=115 chunk complete
+- off=117 len=8 span[chunk_extension_name]="blahblah"
+- off=126 chunk_extension_name complete
+- off=126 len=4 span[chunk_extension_name]="blah"
+- off=131 chunk_extension_name complete
+- off=132 chunk header len=6
+- off=132 len=6 span[body]=" world"
+- off=140 chunk complete
+- off=143 chunk header len=0
+- off=145 chunk complete
+- off=145 message complete
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '200'
+- offset: 13
+  type: reason
+  payload: OK
+- offset: 17
+  type: header_name
+  payload: Host
+- offset: 23
+  type: header_value
+  payload: localhost
+- offset: 34
+  type: header_name
+  payload: Transfer-encoding
+- offset: 53
+  type: header_value
+  payload: chunked
+- offset: 64
+  type: headers
+  payload:
+    method: null
+    status: 200
+    url: null
+    protocol: HTTP
+    version: '1.1'
+    body: chunked
+- offset: 64
+  type: chunk_length
+  payload: '5'
+- offset: 66
+  type: chunk_extension_name
+  payload: ilovew3
+- offset: 74
+  type: chunk_extension_name
+  payload: somuchlove
+- offset: 85
+  type: chunk_extension_value
+  payload: aretheseparametersfor
+- offset: 108
+  type: chunk
+  payload: hello
+- offset: 108
+  type: data
+  payload: hello
+- offset: 115
+  type: chunk_length
+  payload: '6'
+- offset: 117
+  type: chunk_extension_name
+  payload: blahblah
+- offset: 126
+  type: chunk_extension_name
+  payload: blah
+- offset: 132
+  type: chunk
+  payload: ' world'
+- offset: 132
+  type: data
+  payload: ' world'
+- offset: 140
+  type: chunk_length
+  payload: '0'
+- offset: 143
+  type: chunk
+  payload: null
+- offset: 143
+  type: body
+  payload: null
+- offset: 145
+  type: trailers
+  payload: null
+- offset: 145
+  type: complete
+  payload: null

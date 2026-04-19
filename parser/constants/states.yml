@@ -2,9 +2,9 @@
 - start
 - finish
 - error
-- autodetect
 - request_line
 - status_line
+- http2_preface
 - header
 - body_decision
 - body_via_content_length

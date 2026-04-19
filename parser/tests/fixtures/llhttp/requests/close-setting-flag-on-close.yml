@@ -1,0 +1,69 @@
+path: tests/fixtures/llhttp/request/close-setting-flag-on-close.yml
+name: close / Setting Flag On Close
+checked: true
+source:
+  path: test/request/connection.md
+  line: 236
+meta:
+  type: request
+input:
+- PUT /url HTTP/1.1
+- 'Connection: close'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="PUT"
+- off=3 method complete
+- off=4 len=4 span[url]="/url"
+- off=9 url complete
+- off=9 len=4 span[protocol]="HTTP"
+- off=13 protocol complete
+- off=14 len=3 span[version]="1.1"
+- off=17 version complete
+- off=19 len=10 span[header_field]="Connection"
+- off=30 header_field complete
+- off=31 len=5 span[header_value]="close"
+- off=38 header_value complete
+- off=40 headers complete method=4 v=1/1 flags=2 content_length=0
+- off=40 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: PUT
+- offset: 4
+  type: url
+  payload: /url
+- offset: 9
+  type: protocol
+  payload: HTTP
+- offset: 14
+  type: version
+  payload: '1.1'
+- offset: 19
+  type: header_name
+  payload: Connection
+- offset: 31
+  type: header_value
+  payload: close
+- offset: 40
+  type: headers
+  payload:
+    method: PUT
+    status: null
+    url: /url
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 40
+  type: complete
+  payload: null
+- offset: 40
+  type: finish
+  payload: null

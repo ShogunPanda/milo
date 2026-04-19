@@ -1,0 +1,73 @@
+path: tests/fixtures/llhttp/response/spaces-in-header-name.yml
+name: Spaces In Header Name
+checked: true
+source:
+  path: test/response/sample.md
+  line: 574
+meta:
+  noScan: true
+  type: response
+input:
+- HTTP/1.1 200 OK
+- 'Server: Microsoft-IIS/6.0'
+- 'X-Powered-By: ASP.NET'
+- 'en-US Content-Type: text/xml'
+- 'Content-Type: text/xml'
+- 'Content-Length: 16'
+- 'Date: Fri, 23 Jul 2010 18:45:38 GMT'
+- 'Connection: keep-alive'
+- ''
+- <xml>hello</xml>
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=2 span[status]="OK"
+- off=17 status complete
+- off=17 len=6 span[header_field]="Server"
+- off=24 header_field complete
+- off=25 len=17 span[header_value]="Microsoft-IIS/6.0"
+- off=44 header_value complete
+- off=44 len=12 span[header_field]="X-Powered-By"
+- off=57 header_field complete
+- off=58 len=7 span[header_value]="ASP.NET"
+- off=67 header_value complete
+- off=72 error code=10 reason="Invalid header token"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '200'
+- offset: 13
+  type: reason
+  payload: OK
+- offset: 17
+  type: header_name
+  payload: Server
+- offset: 25
+  type: header_value
+  payload: Microsoft-IIS/6.0
+- offset: 44
+  type: header_name
+  payload: X-Powered-By
+- offset: 58
+  type: header_value
+  payload: ASP.NET
+- offset: 67
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid header field name character

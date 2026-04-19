@@ -1,0 +1,30 @@
+path: tests/fixtures/llhttp/response/extra-digit-in-http-major-version.yml
+name: Extra Digit In HTTP Major Version
+checked: true
+source:
+  path: test/response/invalid.md
+  line: 19
+meta:
+  type: response
+input:
+- HTTP/01.1 200 OK
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=1 span[version]="0"
+- off=6 error code=9 reason="Expected dot"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Expected space after protocol

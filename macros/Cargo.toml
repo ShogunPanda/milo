@@ -18,5 +18,3 @@
   serde_yaml  = "0.9.34"
   syn         = { version = "2.0.117", features = ["full", "extra-traits"] }
   toml        = "1.0.7"
-  phf         = { version = "0.13.1", default-features = false }
-  phf_codegen = "0.13.1"

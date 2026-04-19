@@ -1,0 +1,88 @@
+path: tests/fixtures/llhttp/request/m-search-request.yml
+name: M-SEARCH Request
+checked: true
+source:
+  path: test/request/method.md
+  line: 135
+meta:
+  type: request
+input:
+- M-SEARCH * HTTP/1.1
+- 'HOST: 239.255.255.250:1900'
+- 'MAN: "ssdp:discover"'
+- 'ST: "ssdp:all"'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=8 span[method]="M-SEARCH"
+- off=8 method complete
+- off=9 len=1 span[url]="*"
+- off=11 url complete
+- off=11 len=4 span[protocol]="HTTP"
+- off=15 protocol complete
+- off=16 len=3 span[version]="1.1"
+- off=19 version complete
+- off=21 len=4 span[header_field]="HOST"
+- off=26 header_field complete
+- off=27 len=20 span[header_value]="239.255.255.250:1900"
+- off=49 header_value complete
+- off=49 len=3 span[header_field]="MAN"
+- off=53 header_field complete
+- off=54 len=15 span[header_value]=""ssdp:discover""
+- off=71 header_value complete
+- off=71 len=2 span[header_field]="ST"
+- off=74 header_field complete
+- off=75 len=10 span[header_value]=""ssdp:all""
+- off=87 header_value complete
+- off=89 headers complete method=24 v=1/1 flags=0 content_length=0
+- off=89 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: M-SEARCH
+- offset: 9
+  type: url
+  payload: '*'
+- offset: 11
+  type: protocol
+  payload: HTTP
+- offset: 16
+  type: version
+  payload: '1.1'
+- offset: 21
+  type: header_name
+  payload: HOST
+- offset: 27
+  type: header_value
+  payload: 239.255.255.250:1900
+- offset: 49
+  type: header_name
+  payload: MAN
+- offset: 54
+  type: header_value
+  payload: '"ssdp:discover"'
+- offset: 71
+  type: header_name
+  payload: ST
+- offset: 75
+  type: header_value
+  payload: '"ssdp:all"'
+- offset: 89
+  type: headers
+  payload:
+    method: M-SEARCH
+    status: null
+    url: '*'
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 89
+  type: complete
+  payload: null

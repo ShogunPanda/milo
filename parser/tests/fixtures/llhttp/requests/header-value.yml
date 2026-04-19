@@ -1,0 +1,52 @@
+path: tests/fixtures/llhttp/request/header-value.yml
+name: Header Value
+checked: true
+source:
+  path: test/request/lenient-headers.md
+  line: 82
+meta:
+  type: request
+input:
+- GET /url HTTP/1.1
+- 'Header1: \f'
+- ''
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=4 span[url]="/url"
+- off=9 url complete
+- off=9 len=4 span[protocol]="HTTP"
+- off=13 protocol complete
+- off=14 len=3 span[version]="1.1"
+- off=17 version complete
+- off=19 len=7 span[header_field]="Header1"
+- off=27 header_field complete
+- off=28 len=0 span[header_value]=""
+- off=28 error code=10 reason="Invalid header value char"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: GET
+- offset: 4
+  type: url
+  payload: /url
+- offset: 9
+  type: protocol
+  payload: HTTP
+- offset: 14
+  type: version
+  payload: '1.1'
+- offset: 19
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid header field value character

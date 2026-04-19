@@ -1,0 +1,76 @@
+path: tests/fixtures/llhttp/request/space-after-chunk-header-lenient.yml
+name: Space After Chunk Header (lenient)
+checked: true
+source:
+  path: test/request/transfer-encoding.md
+  line: 1215
+meta:
+  type: request-lenient-spaces-after-chunk-size
+input:
+- PUT /url HTTP/1.1
+- 'Transfer-Encoding: chunked'
+- ''
+- a \r\n0123456789
+- '0'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="PUT"
+- off=3 method complete
+- off=4 len=4 span[url]="/url"
+- off=9 url complete
+- off=9 len=4 span[protocol]="HTTP"
+- off=13 protocol complete
+- off=14 len=3 span[version]="1.1"
+- off=17 version complete
+- off=19 len=17 span[header_field]="Transfer-Encoding"
+- off=37 header_field complete
+- off=38 len=7 span[header_value]="chunked"
+- off=47 header_value complete
+- off=49 headers complete method=4 v=1/1 flags=208 content_length=0
+- off=53 chunk header len=10
+- off=53 len=10 span[body]="0123456789"
+- off=65 chunk complete
+- off=68 chunk header len=0
+- off=70 chunk complete
+- off=70 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: PUT
+- offset: 4
+  type: url
+  payload: /url
+- offset: 9
+  type: protocol
+  payload: HTTP
+- offset: 14
+  type: version
+  payload: '1.1'
+- offset: 19
+  type: header_name
+  payload: Transfer-Encoding
+- offset: 38
+  type: header_value
+  payload: chunked
+- offset: 49
+  type: headers
+  payload:
+    method: PUT
+    status: null
+    url: /url
+    protocol: HTTP
+    version: '1.1'
+    body: chunked
+- offset: 49
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid chunk length character

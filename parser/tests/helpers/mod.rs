@@ -1,6 +1,6 @@
-use std::{env, ffi::c_void};
+use std::ffi::c_void;
 
-use milo::Parser;
+use milo::{CALLBACK_ACTIVE_ALL, Parser};
 use regex::Regex;
 
 pub mod callbacks;
@@ -13,10 +13,6 @@ pub fn create_parser() -> Parser {
   let mut parser = Parser::new();
   let context = Box::new(context::Context::new());
   parser.context = Box::into_raw(context) as *mut c_void;
-
-  if env::var_os("DEBUG_TESTS").unwrap_or("false".into()) == "true" {
-    parser.callbacks.on_state_change = callbacks::on_state_change;
-  }
 
   parser.callbacks.on_error = callbacks::on_error;
   parser.callbacks.on_finish = callbacks::on_finish;
@@ -43,6 +39,8 @@ pub fn create_parser() -> Parser {
   parser.callbacks.on_trailer_name = callbacks::on_trailer_name;
   parser.callbacks.on_trailer_value = callbacks::on_trailer_value;
   parser.callbacks.on_trailers = callbacks::on_trailers;
+
+  parser.active_callbacks = CALLBACK_ACTIVE_ALL;
 
   parser
 }

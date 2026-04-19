@@ -135,7 +135,7 @@ function onHeaders(context, parser, from, size) {
   const protocol = context.protocol
   const version = context.version
 
-  if (context.milo.getMessageType(parser) === context.milo.MESSAGE_TYPE_RESPONSE) {
+  if (!context.milo.isRequest(parser)) {
     const status = context.milo.getStatus(parser)
     const heading = sprintf('"pos": {}, "event": {}, "type": "response", ', position, formatEvent('headers'))
 

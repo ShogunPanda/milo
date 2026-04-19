@@ -1,0 +1,51 @@
+path: tests/fixtures/llhttp/request/apache-bench-get.yml
+name: Apache Bench GET
+checked: true
+source:
+  path: test/request/sample.md
+  line: 247
+meta:
+  type: request
+input:
+- GET /test HTTP/1.0
+- 'Host: 0.0.0.0:5000'
+- 'User-Agent: ApacheBench/2.3'
+- 'Accept: */*'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=5 span[url]="/test"
+- off=10 url complete
+- off=10 len=4 span[protocol]="HTTP"
+- off=14 protocol complete
+- off=15 len=3 span[version]="1.0"
+- off=18 version complete
+- off=20 len=4 span[header_field]="Host"
+- off=25 header_field complete
+- off=26 len=12 span[header_value]="0.0.0.0:5000"
+- off=40 header_value complete
+- off=40 len=10 span[header_field]="User-Agent"
+- off=51 header_field complete
+- off=52 len=15 span[header_value]="ApacheBench/2.3"
+- off=69 header_value complete
+- off=69 len=6 span[header_field]="Accept"
+- off=76 header_field complete
+- off=77 len=3 span[header_value]="*/*"
+- off=82 header_value complete
+- off=84 headers complete method=1 v=1/0 flags=0 content_length=0
+- off=84 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid protocol

@@ -1,0 +1,132 @@
+path: tests/fixtures/llhttp/request/chunked-trailing-headers.yml
+name: chunked / Trailing Headers
+checked: true
+source:
+  path: test/request/transfer-encoding.md
+  line: 186
+meta:
+  type: request
+input:
+- POST /chunked_w_trailing_headers HTTP/1.1
+- 'Transfer-Encoding: chunked'
+- ''
+- '5'
+- hello
+- '6'
+- ' world'
+- '0'
+- 'Vary: *'
+- 'Content-Type: text/plain'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[method]="POST"
+- off=4 method complete
+- off=5 len=27 span[url]="/chunked_w_trailing_headers"
+- off=33 url complete
+- off=33 len=4 span[protocol]="HTTP"
+- off=37 protocol complete
+- off=38 len=3 span[version]="1.1"
+- off=41 version complete
+- off=43 len=17 span[header_field]="Transfer-Encoding"
+- off=61 header_field complete
+- off=62 len=7 span[header_value]="chunked"
+- off=71 header_value complete
+- off=73 headers complete method=3 v=1/1 flags=208 content_length=0
+- off=76 chunk header len=5
+- off=76 len=5 span[body]="hello"
+- off=83 chunk complete
+- off=86 chunk header len=6
+- off=86 len=6 span[body]=" world"
+- off=94 chunk complete
+- off=97 chunk header len=0
+- off=97 len=4 span[header_field]="Vary"
+- off=102 header_field complete
+- off=103 len=1 span[header_value]="*"
+- off=106 header_value complete
+- off=106 len=12 span[header_field]="Content-Type"
+- off=119 header_field complete
+- off=120 len=10 span[header_value]="text/plain"
+- off=132 header_value complete
+- off=134 chunk complete
+- off=134 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: POST
+- offset: 5
+  type: url
+  payload: /chunked_w_trailing_headers
+- offset: 33
+  type: protocol
+  payload: HTTP
+- offset: 38
+  type: version
+  payload: '1.1'
+- offset: 43
+  type: header_name
+  payload: Transfer-Encoding
+- offset: 62
+  type: header_value
+  payload: chunked
+- offset: 73
+  type: headers
+  payload:
+    method: POST
+    status: null
+    url: /chunked_w_trailing_headers
+    protocol: HTTP
+    version: '1.1'
+    body: chunked
+- offset: 73
+  type: chunk_length
+  payload: '5'
+- offset: 76
+  type: chunk
+  payload: hello
+- offset: 76
+  type: data
+  payload: hello
+- offset: 83
+  type: chunk_length
+  payload: '6'
+- offset: 86
+  type: chunk
+  payload: ' world'
+- offset: 86
+  type: data
+  payload: ' world'
+- offset: 94
+  type: chunk_length
+  payload: '0'
+- offset: 97
+  type: chunk
+  payload: null
+- offset: 97
+  type: body
+  payload: null
+- offset: 97
+  type: trailer_name
+  payload: Vary
+- offset: 103
+  type: trailer_value
+  payload: '*'
+- offset: 106
+  type: trailer_name
+  payload: Content-Type
+- offset: 120
+  type: trailer_value
+  payload: text/plain
+- offset: 134
+  type: trailers
+  payload: null
+- offset: 134
+  type: complete
+  payload: null

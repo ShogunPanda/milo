@@ -1,0 +1,110 @@
+path: tests/fixtures/llhttp/request/chunked-two-chunks-and-triple-zero-prefixed-end-chunk.yml
+name: chunked / Two Chunks And Triple Zero Prefixed End Chunk
+checked: true
+source:
+  path: test/request/transfer-encoding.md
+  line: 144
+meta:
+  type: request
+input:
+- POST /two_chunks_mult_zero_end HTTP/1.1
+- 'Transfer-Encoding: chunked'
+- ''
+- '5'
+- hello
+- '6'
+- ' world'
+- '000'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[method]="POST"
+- off=4 method complete
+- off=5 len=25 span[url]="/two_chunks_mult_zero_end"
+- off=31 url complete
+- off=31 len=4 span[protocol]="HTTP"
+- off=35 protocol complete
+- off=36 len=3 span[version]="1.1"
+- off=39 version complete
+- off=41 len=17 span[header_field]="Transfer-Encoding"
+- off=59 header_field complete
+- off=60 len=7 span[header_value]="chunked"
+- off=69 header_value complete
+- off=71 headers complete method=3 v=1/1 flags=208 content_length=0
+- off=74 chunk header len=5
+- off=74 len=5 span[body]="hello"
+- off=81 chunk complete
+- off=84 chunk header len=6
+- off=84 len=6 span[body]=" world"
+- off=92 chunk complete
+- off=97 chunk header len=0
+- off=99 chunk complete
+- off=99 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: POST
+- offset: 5
+  type: url
+  payload: /two_chunks_mult_zero_end
+- offset: 31
+  type: protocol
+  payload: HTTP
+- offset: 36
+  type: version
+  payload: '1.1'
+- offset: 41
+  type: header_name
+  payload: Transfer-Encoding
+- offset: 60
+  type: header_value
+  payload: chunked
+- offset: 71
+  type: headers
+  payload:
+    method: POST
+    status: null
+    url: /two_chunks_mult_zero_end
+    protocol: HTTP
+    version: '1.1'
+    body: chunked
+- offset: 71
+  type: chunk_length
+  payload: '5'
+- offset: 74
+  type: chunk
+  payload: hello
+- offset: 74
+  type: data
+  payload: hello
+- offset: 81
+  type: chunk_length
+  payload: '6'
+- offset: 84
+  type: chunk
+  payload: ' world'
+- offset: 84
+  type: data
+  payload: ' world'
+- offset: 92
+  type: chunk_length
+  payload: '000'
+- offset: 95
+  type: chunk
+  payload: null
+- offset: 95
+  type: body
+  payload: null
+- offset: 99
+  type: trailers
+  payload: null
+- offset: 99
+  type: complete
+  payload: null

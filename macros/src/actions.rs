@@ -8,14 +8,6 @@ use crate::{
   wasm,
 };
 
-// Define the body for a state.
-pub fn state(input: TokenStream) -> TokenStream {
-  let definition = parse_macro_input!(input as Ident);
-  let state = format_ident!("STATE_{}", definition.to_string().to_uppercase());
-
-  TokenStream::from(quote! { #state })
-}
-
 /// Invokes one of the user defined callbacks, eventually attaching some view of
 /// the data (via pointer and length).
 pub fn callback(input: TokenStream) -> TokenStream {
@@ -57,9 +49,6 @@ pub fn move_to(input: TokenStream) -> TokenStream {
 
 /// Go to the next iteration of the parser
 pub fn next() -> TokenStream { TokenStream::from(quote! { break 'state; }) }
-
-/// Go to the next iteration of the parser
-pub fn stop() -> TokenStream { TokenStream::from(quote! { break 'parser; }) }
 
 /// Marks the parser as suspended, waiting for more data.
 pub fn suspend() -> TokenStream {

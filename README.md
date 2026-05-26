@@ -2,6 +2,22 @@
 
 Milo is a fast and embeddable HTTP/1.1 parser written in [Rust][rust].
 
+## Support Matrix
+
+Milo supports strict HTTP/1.1 message parsing for Rust, C++, and JavaScript via WebAssembly.
+
+| Target     | Status    | Artifact                                      |
+| ---------- | --------- | --------------------------------------------- |
+| Rust       | Supported | `milo` crate                                  |
+| C++        | Supported | `milo.h` and `libmilo.a`                      |
+| JavaScript | Supported | `@perseveranza-pets/milo` WebAssembly package |
+
+Milo intentionally rejects HTTP/0.9, HTTP/1.0, RTSP, obs-fold, bare LF, and bare CR. It does not parse HTTP/2 messages, except for strict `PRI * HTTP/2.0` switch-over detection.
+
+For security and ambiguity reduction, Milo rejects request bodies on `GET` and `HEAD`. Responses to `HEAD` are application context: callers must use `skip_body` when they know a response has no body because it belongs to a `HEAD` request.
+
+For full parser scope, strictness, and protocol behavior, see [Milo Design](./docs/design.md).
+
 ## How to use it (JavaScript via WebAssembly)
 
 Install it from npm:
@@ -114,7 +130,7 @@ fn main() {
     let message =
       unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(p.context.add(from) as *const u8, size)) };
 
-    // Do somethin cvdg with the informations.
+    // Use the callback data.
     println!("Pos={} Body: {}", from, message);
   };
 
@@ -145,8 +161,9 @@ Create a sample source file:
 
 ```cpp
 #include "milo.h"
-#include "stdio.h"
-#include "string.h"
+#include <cinttypes>
+#include <cstdio>
+#include <cstring>
 
 int main() {
   // Create the parser.
@@ -163,19 +180,17 @@ int main() {
     All callbacks have the same signature, which characterizes the payload:
 
       * p: The current parser.
-      * at: The payload offset.
-      * len: The payload length.
+      * from: The payload offset.
+      * size: The payload length.
 
     The payload parameters above are relative to the last data sent to the milo_parse method.
 
     If the current callback has no payload, both values are set to 0.
   */
   parser->callbacks.on_data = [](milo::Parser* p, uintptr_t from, uintptr_t size) {
-    char* payload = reinterpret_cast<char*>(malloc(sizeof(char) * size));
-    strncpy(payload, reinterpret_cast<const char*>(p->context) + from, size);
+    const char* payload = reinterpret_cast<const char*>(p->context) + from;
 
-    printf("Pos=%lu Body: %s\n", p->position, payload);
-    free(payload);
+    printf("Pos=%" PRIuPTR " Body: %.*s\n", from, static_cast<int>(size), payload);
   };
 
   // Toggle on the callbacks you want to receive
@@ -192,7 +207,7 @@ int main() {
 And then you can compile using your preferred build system. For instance, let's try with [Clang]:
 
 ```bash
-clang++ -std=c++11 -o example libmilo.a main.cc
+clang++ -std=c++11 -o example main.cc libmilo.a
 ./example
 # Pos=38 Body: abc
 ```
@@ -232,7 +247,7 @@ makers
 
 The command above will produce debug and release builds for each language in the `dist` folder.
 
-The debug build will also enables the `on_state_change` callback and it's more verbose in case of WebAssembly errors.
+The debug build also enables the `on_state_change` callback and is more verbose in case of WebAssembly errors.
 
 ## API
 
@@ -242,15 +257,29 @@ See the following files, according to the language you are using:
 - [Rust API](./docs/rust.md)
 - [C++ API](./docs/cpp.md)
 
+## Strictness Differences From llhttp
+
+Milo does not aim for byte-for-byte llhttp compatibility when lenient behavior would conflict with Milo's strict parser policy.
+
+- Milo rejects HTTP/0.9, HTTP/1.0, RTSP, obs-fold, bare LF, and bare CR.
+- Milo rejects normal HTTP/2 request and response messages.
+- Milo rejects request bodies on `GET` and `HEAD`.
+- Milo requires `skip_body` for application-known no-body response contexts such as responses to `HEAD`.
+- Milo validates protocol framing and syntax, but leaves application semantics to callers.
+
+## Security Boundaries
+
+Milo validates HTTP/1.1 syntax, message framing, protocol switching, connection management, and data-after-close behavior. Milo does not validate routing, authorization, representation semantics, URI normalization, `Host` policy, method-specific request-target forms, CONNECT authority-form, or full header field semantics unless they affect safe framing.
+
 ## How it works?
 
 Milo leverages Rust's [procedural macro], [syn] and [quote] crates to allow an easy definition of actions and matchers for the parser.
 
 See the [macros](./macros/README.md) internal crate for more information.
 
-The resulting parser is as simple state machine which copies the data in only one (optional) specific case: to automatically handle unconsumed portion of the input data.
+The resulting parser is a simple state machine which copies data in only one optional case: automatically handling the unconsumed portion of the input data.
 
-In all other all cases, no data is copied and the memory footprint is very small as only few tens of `bool`, `uintprt_t` or `uint64_t` fields can represent the entire parser state.
+In all other cases, no data is copied and the memory footprint is very small as only a few dozen `bool`, `uintptr_t`, or `uint64_t` fields can represent the entire parser state.
 
 ## Why?
 
@@ -258,7 +287,7 @@ The scope of Milo is to replace [llhttp] as [Node.js] main HTTP parser.
 
 This project aims to:
 
-- Make it maintainable and verificable using easy to read Rust code.
+- Make it maintainable and verifiable using easy to read Rust code.
 - Be performant by avoiding any unnecessary data copy.
 - Be self-contained and dependency-free.
 
@@ -301,5 +330,5 @@ Licensed under the ISC license, which can be found at https://choosealicense.com
 [match]: https://doc.rust-lang.org/rust-by-example/flow_control/match.html
 [match-slice]: https://doc.rust-lang.org/rust-by-example/flow_control/match/destructuring/destructure_slice.html
 [cargo-make]: https://github.com/sagiegurari/cargo-make
-[rust-up]: https://rustup.rs/
+[rustup]: https://rustup.rs/
 [Clang]: https://clang.llvm.org/

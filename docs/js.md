@@ -4,7 +4,7 @@
 
 ### Callbacks handling
 
-All callback in Milo have the following signature (TypeScript syntax):
+All callbacks in Milo have the following signature (TypeScript syntax):
 
 ```typescript
 (parser: number, offset: number, length: number) => void
@@ -26,14 +26,16 @@ Callbacks are disabled by default.
 
 The module exports several constants (`*` is used to denote a family prefix):
 
-- `DEBUG`: If debug informations are enabled or not.
+- `DEBUG`: If debug information is enabled or not.
 - `ERROR_*`: An error code.
-- `METHOD_*`: An HTTP/RTSP request method.
+- `METHOD_*`: An HTTP request method.
 - `CALLBACK_*`: A parser callback.
 - `CALLBACK_ACTIVE_*`: Callback activation flags.
 - `STATE_*`: A parser state.
 
-### Enumeratons
+Internal generated lookup tables used by the parser are not exported from the WebAssembly package.
+
+### Enumerations
 
 #### `Errors`
 
@@ -43,7 +45,7 @@ Access is supported from string constant or numeric value.
 
 #### `Methods`
 
-An enum listing all possible HTTP/RTSP methods.
+An enum listing all possible HTTP methods recognized by Milo.
 
 Access is supported from string constant or numeric value.
 
@@ -273,7 +275,7 @@ Returns the parser missing data length of the next chunk according to to the `ch
 
 #### `hasContentLength(parser)`
 
-Returns `true` if the parser the current message has a `Content-Length` header.
+Returns `true` if the current message has a `Content-Length` header.
 
 #### `hasTransferEncoding(parser)`
 
@@ -285,11 +287,11 @@ Returns `true` if the current message is using chunked encoding.
 
 #### `hasUpgrade(parser)`
 
-Returns `true` if the parser the current message has a `Connection: upgrade` header.
+Returns `true` if the current message has an `Upgrade` header.
 
 #### `hasTrailers(parser)`
 
-Returns `true` if the parser the current message has a `Trailers` header.
+Returns `true` if the current message has a `Trailer` header.
 
 #### `getErrorDescription(parser)`
 

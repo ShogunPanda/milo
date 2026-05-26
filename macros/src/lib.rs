@@ -14,9 +14,6 @@ pub fn generate(_: TokenStream) -> TokenStream { generators::generate() }
 pub fn case_insensitive_string(input: TokenStream) -> TokenStream { matchers::case_insensitive_string(input) }
 
 #[proc_macro]
-pub fn state(input: TokenStream) -> TokenStream { actions::state(input) }
-
-#[proc_macro]
 pub fn callback(input: TokenStream) -> TokenStream { actions::callback(input) }
 
 #[proc_macro]
@@ -27,9 +24,6 @@ pub fn move_to(input: TokenStream) -> TokenStream { actions::move_to(input) }
 
 #[proc_macro]
 pub fn next(_: TokenStream) -> TokenStream { actions::next() }
-
-#[proc_macro]
-pub fn stop(_: TokenStream) -> TokenStream { actions::stop() }
 
 #[proc_macro]
 pub fn suspend(_: TokenStream) -> TokenStream { actions::suspend() }

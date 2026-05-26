@@ -13,7 +13,9 @@ pub fn new_macro(input: TokenStream) -> TokenStream {
 }
 ```
 
-It is important to notice that everything which is is not included **within** the return value will not be present in the execute code. This means that macros performance are not really important as they will only be evaluated at compile time.
+Everything that is not included **within** the return value will not be present in the executed code. Macro performance is not important for runtime because macros are only evaluated at compile time.
+
+The `generate!` macro also emits parser constants and internal byte lookup tables used by syntax validators. These tables are generated at compile time and are not public API.
 
 To return a new code, leverage the `quote!` macro, while for parsing use the `parse_macro_input!` macro. Here's an example:
 

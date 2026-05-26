@@ -1,103 +1,268 @@
+#include "llhttp.h"
 #include "milo.h"
-#include "stdio.h"
-#include "string.h"
+
+#include <algorithm>
 #include <chrono>
-#include <cmath>
-#include <fstream>
 #include <cstdint>
-#include <regex>
+#include <cstdlib>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
 #include <sstream>
+#include <string>
+#include <vector>
 
-#define SAMPLES_NUM 3
+static const uint64_t TARGET_BYTES = 8ULL << 30;
 
-std::string format_number(double num, bool drop_decimals) {
-  char* raw = reinterpret_cast<char*>(malloc(sizeof(char*) * 100));
+struct Fixture {
+  std::string name;
+  bool is_request;
+  std::string payload;
+};
 
-  if (drop_decimals) {
-    snprintf(raw, 1000, "%d", (int) num);
-  } else {
-    snprintf(raw, 1000, "%'.2f", num);
+struct Result {
+  std::string parser;
+  std::string iterations;
+  std::string mb_per_second;
+  std::string ops_per_second;
+  double bytes_per_second;
+};
+
+static std::string read_file(const std::string &path) {
+  std::ifstream stream(path.c_str(), std::ios::in | std::ios::binary);
+  if (!stream) {
+    std::cerr << "Cannot open fixture: " << path << std::endl;
+    std::exit(1);
   }
 
-  std::string grouped = std::string(raw);
-  free(raw);
+  std::ostringstream contents;
+  contents << stream.rdbuf();
+  return contents.str();
+}
 
-  int length = grouped.length();
-  for (int i = length - 1; i >= 0; i--) {
-    int current = length - i;
+static std::string decode_fixture(const std::string &raw) {
+  std::string decoded;
+  decoded.reserve(raw.size());
 
-    if ((drop_decimals || current > 3) && current % 3 == 0) {
-      grouped.insert(i, 1, '_');
+  for (size_t i = 0; i < raw.size();) {
+    if (raw[i] == '\n') {
+      i++;
+    } else if (i + 3 < raw.size() && raw[i] == '\\' && raw[i + 1] == 'r' &&
+               raw[i + 2] == '\\' && raw[i + 3] == 'n') {
+      decoded.push_back('\r');
+      decoded.push_back('\n');
+      i += 4;
+    } else {
+      decoded.push_back(raw[i]);
+      i++;
     }
   }
 
-  if (grouped[0] == '_') {
-    grouped.erase(0, 1);
-  }
-
-  return grouped;
+  return decoded;
 }
 
-std::string load_message(std::string path) {
-  // Build the file path
-  std::stringstream file_path;
-  file_path << "../fixtures/" << path << ".txt";
-  std::ifstream file_stream(file_path.str(), std::ifstream::in);
+static Fixture load_fixture(const std::string &name, bool is_request) {
+  const std::string raw = read_file("../fixtures/" + name + ".txt");
+  return {name, is_request, decode_fixture(raw)};
+}
 
-  // Read the file to a string
-  std::stringstream file_contents;
-  file_contents << file_stream.rdbuf();
-  size_t file_length = file_contents.str().length();
-  std::string payload = file_contents.str();
+static std::string format_number(uint64_t value) {
+  std::string formatted = std::to_string(value);
+  for (int64_t i = static_cast<int64_t>(formatted.size()) - 3; i > 0; i -= 3) {
+    formatted.insert(static_cast<size_t>(i), 1, '_');
+  }
 
-  // Perform replacements
-  //  Trim
-  size_t first_non_space = payload.find_first_not_of(" \t\n");
-  payload.erase(0, first_non_space);
-  size_t last_non_space = payload.find_last_not_of(" \t\n");
-  payload.erase(last_non_space + 1);
+  return formatted;
+}
 
-  //  \r\n manipulation
-  payload = std::regex_replace(payload, std::regex("\\n"), "");
-  return std::regex_replace(payload, std::regex("\\\\r\\\\n"), "\r\n");
+static std::string format_number(double value) {
+  std::ostringstream formatted;
+  formatted << std::fixed << std::setprecision(2) << value;
+
+  std::string result = formatted.str();
+  size_t dot = result.find('.');
+  if (dot == std::string::npos) {
+    dot = result.size();
+  }
+
+  for (int64_t i = static_cast<int64_t>(dot) - 3; i > 0; i -= 3) {
+    result.insert(static_cast<size_t>(i), 1, '_');
+  }
+
+  return result;
+}
+
+static std::string pad_right(const std::string &value, size_t width) {
+  return value + std::string(width - value.size(), ' ');
+}
+
+static std::string pad_left(const std::string &value, size_t width) {
+  return std::string(width - value.size(), ' ') + value;
+}
+
+static void validate_milo(const Fixture &fixture) {
+  milo::Parser *parser = milo::milo_create();
+  parser->autodetect = false;
+  parser->is_request = fixture.is_request;
+
+  const size_t consumed = milo::milo_parse(
+      parser, reinterpret_cast<const unsigned char *>(fixture.payload.data()),
+      fixture.payload.size());
+  if (consumed != fixture.payload.size() ||
+      parser->error_code != milo::ERROR_NONE) {
+    std::cerr << "Milo failed to parse fixture " << fixture.name << std::endl;
+    std::cerr << "Consumed " << consumed << " of " << fixture.payload.size()
+              << " bytes" << std::endl;
+    milo::milo_destroy(parser);
+    std::exit(1);
+  }
+
+  milo::milo_destroy(parser);
+}
+
+static void validate_llhttp(const Fixture &fixture) {
+  llhttp_settings_t settings;
+  llhttp_settings_init(&settings);
+
+  llhttp_t parser;
+  llhttp_init(&parser, fixture.is_request ? HTTP_REQUEST : HTTP_RESPONSE,
+              &settings);
+
+  const llhttp_errno_t error =
+      llhttp_execute(&parser, fixture.payload.data(), fixture.payload.size());
+  if (error != HPE_OK) {
+    std::cerr << "llhttp failed to parse fixture " << fixture.name << ": "
+              << llhttp_errno_name(error) << std::endl;
+    std::exit(1);
+  }
+}
+
+static Result benchmark_milo(const Fixture &fixture) {
+  const uint64_t iterations = TARGET_BYTES / fixture.payload.size();
+  const uint64_t total = iterations * fixture.payload.size();
+  milo::Parser *parser = milo::milo_create();
+  parser->autodetect = false;
+  parser->is_request = fixture.is_request;
+
+  const auto start = std::chrono::steady_clock::now();
+  size_t consumed = 0;
+  for (uint64_t i = 0; i < iterations; i++) {
+    consumed += milo::milo_parse(
+        parser, reinterpret_cast<const unsigned char *>(fixture.payload.data()),
+        fixture.payload.size());
+  }
+  const auto end = std::chrono::steady_clock::now();
+
+  if (consumed != total || parser->error_code != milo::ERROR_NONE) {
+    std::cerr << "Milo failed while benchmarking fixture " << fixture.name
+              << std::endl;
+    milo::milo_destroy(parser);
+    std::exit(1);
+  }
+
+  milo::milo_destroy(parser);
+
+  const std::chrono::duration<double> elapsed = end - start;
+  const double seconds = elapsed.count();
+  const double bytes_per_second = static_cast<double>(total) / seconds;
+  return {"milo-cpp", format_number(iterations),
+          format_number(bytes_per_second / (1024.0 * 1024.0)),
+          format_number(static_cast<double>(iterations) / seconds),
+          bytes_per_second};
+}
+
+static Result benchmark_llhttp(const Fixture &fixture) {
+  const uint64_t iterations = TARGET_BYTES / fixture.payload.size();
+  const uint64_t total = iterations * fixture.payload.size();
+  llhttp_settings_t settings;
+  llhttp_settings_init(&settings);
+
+  llhttp_t parser;
+  llhttp_init(&parser, fixture.is_request ? HTTP_REQUEST : HTTP_RESPONSE,
+              &settings);
+
+  const auto start = std::chrono::steady_clock::now();
+  uint64_t errors = 0;
+  for (uint64_t i = 0; i < iterations; i++) {
+    errors += llhttp_execute(&parser, fixture.payload.data(), fixture.payload.size());
+  }
+  const auto end = std::chrono::steady_clock::now();
+
+  if (errors != HPE_OK) {
+    std::cerr << "llhttp failed while benchmarking fixture " << fixture.name
+              << std::endl;
+    std::exit(1);
+  }
+
+  const std::chrono::duration<double> elapsed = end - start;
+  const double seconds = elapsed.count();
+  const double bytes_per_second = static_cast<double>(total) / seconds;
+  return {"llhttp-cpp", format_number(iterations),
+          format_number(bytes_per_second / (1024.0 * 1024.0)),
+          format_number(static_cast<double>(iterations) / seconds),
+          bytes_per_second};
+}
+
+static void print_separator(size_t parser_width, size_t iterations_width,
+                            size_t mb_width, size_t ops_width) {
+  std::cout << "| " << std::string(parser_width, '-') << " | "
+            << std::string(iterations_width, '-') << " | "
+            << std::string(mb_width, '-') << " | "
+            << std::string(ops_width, '-') << " |" << std::endl;
+}
+
+static void print_results(const Fixture &fixture,
+                          const std::vector<Result> &results) {
+  std::vector<Result> sorted = results;
+  std::sort(sorted.begin(), sorted.end(), [](const Result &a, const Result &b) {
+    return a.bytes_per_second < b.bytes_per_second;
+  });
+
+  size_t parser_width = std::string("Parser").size();
+  size_t iterations_width = std::string("Iterations").size();
+  size_t mb_width = std::string("MB/s").size();
+  size_t ops_width = std::string("Ops/s").size();
+
+  for (const Result &result : sorted) {
+    parser_width = std::max(parser_width, result.parser.size());
+    iterations_width = std::max(iterations_width, result.iterations.size());
+    mb_width = std::max(mb_width, result.mb_per_second.size());
+    ops_width = std::max(ops_width, result.ops_per_second.size());
+  }
+
+  std::cout << "### " << fixture.name << std::endl << std::endl;
+  std::cout << "| " << pad_right("Parser", parser_width) << " | "
+            << pad_left("Iterations", iterations_width) << " | "
+            << pad_left("MB/s", mb_width) << " | "
+            << pad_left("Ops/s", ops_width) << " |" << std::endl;
+  print_separator(parser_width, iterations_width, mb_width, ops_width);
+
+  for (const Result &result : sorted) {
+    std::cout << "| " << pad_right(result.parser, parser_width) << " | "
+              << pad_left(result.iterations, iterations_width) << " | "
+              << pad_left(result.mb_per_second, mb_width) << " | "
+              << pad_left(result.ops_per_second, ops_width) << " |"
+              << std::endl;
+  }
+
+  std::cout << std::endl;
 }
 
 int main() {
-  std::string samples[SAMPLES_NUM] = {"seanmonstar_httparse", "nodejs_http_parser", "undici"};
+  std::vector<Fixture> fixtures;
+  fixtures.push_back(load_fixture("seanmonstar_httparse", true));
+  fixtures.push_back(load_fixture("nodejs_http_parser", true));
+  fixtures.push_back(load_fixture("undici", false));
 
-  printf("\n");
+  for (const Fixture &fixture : fixtures) {
+    validate_milo(fixture);
+    validate_llhttp(fixture);
 
-  for (size_t i = 0; i < SAMPLES_NUM; i++) {
-    milo::Parser* parser = milo::milo_create();
-    std::string payload = load_message(samples[i]);
-    const auto* data = reinterpret_cast<const unsigned char*>(payload.data());
-    size_t len = payload.length();
-    uint64_t iterations = (1ULL << 33) / len;
-    uint64_t total = iterations * len;
-
-    const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-    for (uint64_t j = 0; j < iterations; j++) {
-      milo::milo_parse(parser, data, len);
-    }
-    const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-
-    milo::milo_destroy(parser);
-
-    std::chrono::duration<double> diff = end - start;
-    double time = diff.count();
-    double bw = static_cast<double>(total) / time;
-
-    std::string total_samples = format_number(iterations, true);
-    std::string size = format_number(static_cast<double>(total) / (1024.0 * 1024.0), false);
-    std::string speed = format_number(bw / (1024 * 1024), false);
-    std::string throughtput = format_number((iterations) / time, false);
-    std::string duration = format_number(time, false);
-
-    printf("%21s | %12s samples | %8s MB | %12s MB/s | %13s ops/sec | %6s s\n", samples[i].c_str(),
-           total_samples.c_str(), size.c_str(), speed.c_str(), throughtput.c_str(), duration.c_str());
+    std::vector<Result> results;
+    results.push_back(benchmark_milo(fixture));
+    results.push_back(benchmark_llhttp(fixture));
+    print_results(fixture, results);
   }
-
-  printf("\n");
 
   return 0;
 }

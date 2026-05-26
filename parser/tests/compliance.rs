@@ -495,6 +495,66 @@ fn compliance_chunk_extension_quoted_space_accepted() {
   assert_ok(&parser);
 }
 
+// Quoted chunk extension values may contain quoted-pair escaped quotes.
+#[test]
+fn compliance_chunk_extension_quoted_escaped_quote_accepted() {
+  let mut parser = response_parser();
+  let message = wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1;foo=\"bar\\\"baz\"\r\nx\r\n0\r\n\r\n");
+
+  parse(&mut parser, &message);
+  assert_ok(&parser);
+}
+
+// Quoted chunk extension values may contain quoted-pair escaped backslashes.
+#[test]
+fn compliance_chunk_extension_quoted_escaped_backslash_accepted() {
+  let mut parser = response_parser();
+  let message = wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1;foo=\"bar\\\\baz\"\r\nx\r\n0\r\n\r\n");
+
+  parse(&mut parser, &message);
+  assert_ok(&parser);
+}
+
+// Quoted chunk extension values may contain horizontal tabs.
+#[test]
+fn compliance_chunk_extension_quoted_tab_accepted() {
+  let mut parser = response_parser();
+  let message = wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1;foo=\"bar\tbaz\"\r\nx\r\n0\r\n\r\n");
+
+  parse(&mut parser, &message);
+  assert_ok(&parser);
+}
+
+// Quoted chunk extension values may contain obs-text.
+#[test]
+fn compliance_chunk_extension_quoted_obs_text_accepted() {
+  let mut parser = response_parser();
+  let message = wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1;foo=\"bar\u{80}baz\"\r\nx\r\n0\r\n\r\n");
+
+  parse(&mut parser, &message);
+  assert_ok(&parser);
+}
+
+// Quoted chunk extension values reject bare control characters other than HTAB.
+#[test]
+fn compliance_chunk_extension_quoted_control_rejected() {
+  let mut parser = response_parser();
+  let message = wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1;foo=\"bar\u{1}baz\"\r\nx\r\n0\r\n\r\n");
+
+  parse(&mut parser, &message);
+  assert_error(&parser);
+}
+
+// Quoted-pair in chunk extension values rejects escaped control characters.
+#[test]
+fn compliance_chunk_extension_quoted_pair_control_rejected() {
+  let mut parser = response_parser();
+  let message = wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1;foo=\"bar\\\u{1}baz\"\r\nx\r\n0\r\n\r\n");
+
+  parse(&mut parser, &message);
+  assert_error(&parser);
+}
+
 // Bare LF is rejected in HTTP framing.
 #[test]
 fn compliance_bare_lf_rejected() {

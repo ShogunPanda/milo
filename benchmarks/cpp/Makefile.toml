@@ -1,11 +1,23 @@
 [config]
   skip_core_tasks = true
 
+[env]
+  MILO_INCLUDE_DIR = "../../parser/dist/cpp/release"
+  MILO_LIB = "../../parser/dist/cpp/release/libmilo.a"
+  LLHTTP_RELEASE = "v9.3.1"
+  LLHTTP_DIR = "../vendor/llhttp-release-v9.3.1"
+  LLHTTP_INCLUDE_DIR = "../vendor/llhttp-release-v9.3.1/include"
+  LLHTTP_LIB = "../vendor/llhttp-release-v9.3.1/build/libllhttp.a"
+  MILO_RUSTFLAGS = "-C target-cpu=native"
+
 [tasks.default]
   dependencies = ["build"]
 
+[tasks.prepare]
+  script = ["mkdir -p dist", "rm -rf dist/*"]
+
 [tasks.build]
-  dependencies = ["prepare"]
+  dependencies = ["milo", "prepare"]
   command = "clang++"
   args = [
     "-std=c++11",
@@ -14,15 +26,53 @@
     "-flto",
     "-DNDEBUG",
     "-I",
-    "../../parser/dist/cpp/release",
+    "${MILO_INCLUDE_DIR}",
+    "-I",
+    "${LLHTTP_INCLUDE_DIR}",
     "-o",
-    "./dist/milo-benchmarks",
+    "dist/milo-cpp-benchmarks",
     "src/main.cc",
-    "../../parser/dist/cpp/release/libmilo.a",
+    "${MILO_LIB}",
+    "${LLHTTP_LIB}",
   ]
 
 [tasks.benchmarks]
-  command = "./dist/milo-benchmarks"
+  command = "./dist/milo-cpp-benchmarks"
+
+[tasks.milo]
+  dependencies = ["milo:headers", "milo:release"]
+
+[tasks."milo:headers"]
+  cwd     = "../../parser"
+  command = "makers"
+  args    = ["cpp:headers"]
+
+[tasks."milo:release"]
+  cwd     = "../../parser"
+  env     = { RUSTFLAGS = "${MILO_RUSTFLAGS}" }
+  command = "makers"
+  args    = ["cpp:release"]
+
+[tasks.llhttp]
+  dependencies = ["llhttp:download", "llhttp:build"]
+
+[tasks."llhttp:download"]
+  script = [
+    "mkdir -p ../vendor",
+    "rm -rf ${LLHTTP_DIR}",
+    "curl -L --fail --silent --show-error https://github.com/nodejs/llhttp/archive/refs/tags/release/${LLHTTP_RELEASE}.tar.gz -o ../vendor/llhttp-release-${LLHTTP_RELEASE}.tar.gz",
+    "tar -xzf ../vendor/llhttp-release-${LLHTTP_RELEASE}.tar.gz -C ../vendor",
+    "rm -f ../vendor/llhttp-release-${LLHTTP_RELEASE}.tar.gz",
+  ]
+
+[tasks."llhttp:build"]
+  script = [
+    "mkdir -p ${LLHTTP_DIR}/build",
+    "clang -O3 -DNDEBUG -march=native -flto -fPIC -I ${LLHTTP_DIR}/include -c ${LLHTTP_DIR}/src/llhttp.c -o ${LLHTTP_DIR}/build/llhttp.o",
+    "clang -O3 -DNDEBUG -march=native -flto -fPIC -I ${LLHTTP_DIR}/include -c ${LLHTTP_DIR}/src/api.c -o ${LLHTTP_DIR}/build/api.o",
+    "clang -O3 -DNDEBUG -march=native -flto -fPIC -I ${LLHTTP_DIR}/include -c ${LLHTTP_DIR}/src/http.c -o ${LLHTTP_DIR}/build/http.o",
+    "ar rcs ${LLHTTP_LIB} ${LLHTTP_DIR}/build/llhttp.o ${LLHTTP_DIR}/build/api.o ${LLHTTP_DIR}/build/http.o",
+  ]
 
 [tasks.format]
   command = "clang-format"
@@ -34,6 +84,3 @@
 
 [tasks.verify]
   dependencies = ["format", "clean", "build", "benchmarks"]
-
-[tasks.prepare]
-  script = ["mkdir -p dist", "rm -rf dist/*"]

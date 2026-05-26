@@ -2,7 +2,7 @@
 
 ## `Callback`
 
-All callback in Milo have the following signature (`Callback`):
+All callbacks in Milo have the following signature (`Callback`):
 
 ```rust
 type Callback = fn (&mut Parser, usize, usize)
@@ -24,12 +24,14 @@ Callbacks are disabled by default.
 
 The crate exports several constants (`*` is used to denote a family prefix):
 
-- `DEBUG`: If the debug informations are enabled or not.
+- `DEBUG`: If debug information is enabled or not.
 - `ERROR_*`: An error code.
-- `METHOD_*`: An HTTP/RTSP request method.
+- `METHOD_*`: An HTTP request method.
 - `CALLBACK_*`: A parser callback.
 - `CALLBACK_ACTIVE_*`: A callback activation flag.
 - `STATE_*`: A parser state.
+
+Internal generated lookup tables used by the parser are not public API.
 
 ## Enums
 
@@ -41,15 +43,15 @@ An enum listing all possible parser errors.
 
 ### `Methods`
 
-An enum listing all possible HTTP/RTSP methods.
+An enum listing all possible HTTP methods recognized by Milo.
+
+### `Callbacks`
+
+An enum listing all possible parser callbacks.
 
 ### `States`
 
 An enum listing all possible parser states.
-
-### `States`
-
-An enum listing all possible parser callbacks.
 
 ## Types
 
@@ -59,7 +61,7 @@ A struct representing the callbacks for a parser.
 
 Here's the list of supported callbacks:
 
-- `on_state_change`: Invoked after the parser change its state. _Only invoked in debug mode_.
+- `on_state_change`: Invoked after the parser changes its state. _Only invoked in debug mode_.
 - `on_error`: Invoked after the parsing fails.
 - `on_finish`: Invoked after the parser is marked as finished.
 - `on_message_start`: Invoked after a new message starts.
@@ -77,7 +79,7 @@ Here's the list of supported callbacks:
 - `on_header_value`: Invoked after a new header value has been parsed.
 - `on_headers`: Invoked after headers are completed.
 - `on_connect`: Invoked in `CONNECT` requests after headers have been completed.
-- `on_upgrade`: Invoked after a connection is upgraded via a `Connection: upgrade` request header.
+- `on_upgrade`: Invoked after a request or response enters tunnel mode via `Upgrade` and `Connection: upgrade`.
 - `on_chunk_length`: Invoked after a new chunk length has been parsed.
 - `on_chunk_extension_name`: Invoked after a new chunk extension name has been parsed.
 - `on_chunk_extension_value`: Invoked after a new chunk extension value has been parsed.
@@ -121,8 +123,8 @@ A struct representing a parser. It has the following fields:
 - `has_chunked_transfer_encoding` (`bool`): If the current message is using chunked encoding.
 - `has_connection_close` (`bool`): If the current message has a `Connection: close` token.
 - `has_connection_upgrade` (`bool`): If the current message has a `Connection: upgrade` token.
-- `has_upgrade` (`bool`): If the current message has a `Connection: upgrade` header.
-- `has_trailers` (`bool`): If the current message has a `Trailers` header.
+- `has_upgrade` (`bool`): If the current message has an `Upgrade` header.
+- `has_trailers` (`bool`): If the current message has a `Trailer` header.
 - `active_callbacks` (`u64`): Active callback bitmask. Set to one or more `CALLBACK_ACTIVE_*` flags.
 - `callbacks` (`ParserCallbacks`): The callbacks for the current parser.
 - `error_description` (`*const c_uchar`): The parser error description.
@@ -208,7 +210,7 @@ Returns the current parser's error state as string.
 
 #### `Parser::error_description_str(&self) -> &str`
 
-Returns the current parser's error descrition.
+Returns the current parser's error description.
 
 ## Methods
 
@@ -302,6 +304,6 @@ Returns the current parser's error state as string.
 
 ### `milo_error_description_string(parser: *mut Parser) -> *const c_uchar`
 
-Returns the current parser's error descrition.
+Returns the current parser's error description.
 
 **The returned value MUST be freed using `milo_free_string`.**

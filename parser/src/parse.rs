@@ -71,6 +71,11 @@ impl Parser {
     self.position = 0;
     let mut advanced: usize;
     let mut parsing = true;
+    let has_active_callbacks = self.active_callbacks != 0;
+    let has_header_name_callback = self.active_callbacks & CALLBACK_ACTIVE_ON_HEADER_NAME != 0;
+    let has_header_value_callback = self.active_callbacks & CALLBACK_ACTIVE_ON_HEADER_VALUE != 0;
+    let has_trailer_name_callback = self.active_callbacks & CALLBACK_ACTIVE_ON_TRAILER_NAME != 0;
+    let has_trailer_value_callback = self.active_callbacks & CALLBACK_ACTIVE_ON_TRAILER_VALUE != 0;
 
     #[cfg(any(debug_assertions, feature = "debug"))]
     if self.debug {
@@ -107,17 +112,23 @@ impl Parser {
           // Choose the initial state depending on the configured message type.
           STATE_START => {
             if !self.autodetect && self.is_request {
-              callback!(on_request);
-              callback!(on_message_start);
+              if has_active_callbacks {
+                callback!(on_request);
+                callback!(on_message_start);
+              }
               move_to!(request_line);
             } else if !self.autodetect {
-              callback!(on_response);
-              callback!(on_message_start);
+              if has_active_callbacks {
+                callback!(on_response);
+                callback!(on_message_start);
+              }
               move_to!(status_line);
             } else if data.len() >= 5 && data[4] == b'/' && data.starts_with(b"HTTP") {
               self.is_request = false;
-              callback!(on_response);
-              callback!(on_message_start);
+              if has_active_callbacks {
+                callback!(on_response);
+                callback!(on_message_start);
+              }
               move_to!(status_line);
             } else if data.len() >= 2 && data.starts_with(b"\r\n") {
               // RFC 9112 section 2.2
@@ -126,8 +137,10 @@ impl Parser {
               // For performance reason, we assume it's a request so we don't lookup the
               // method twice
               self.is_request = true;
-              callback!(on_request);
-              callback!(on_message_start);
+              if has_active_callbacks {
+                callback!(on_request);
+                callback!(on_message_start);
+              }
               move_to!(request_line);
             }
           }
@@ -260,10 +273,12 @@ impl Parser {
                   fail!(UNEXPECTED_CHARACTER, "Invalid protocol");
                 }
 
-                callback!(on_method, method_start, method_end - method_start);
-                callback!(on_url, url_start, url_end - url_start);
-                callback!(on_protocol, protocol_start, protocol_end - protocol_start);
-                callback!(on_version, version_start, 3);
+                if has_active_callbacks {
+                  callback!(on_method, method_start, method_end - method_start);
+                  callback!(on_url, url_start, url_end - url_start);
+                  callback!(on_protocol, protocol_start, protocol_end - protocol_start);
+                  callback!(on_version, version_start, 3);
+                }
 
                 advance!(cr + 2);
 
@@ -363,11 +378,13 @@ impl Parser {
                   + ((data[status_start + 1] - b'0') as u32) * 10
                   + (data[status_start + 2] - b'0') as u32;
 
-                callback!(on_protocol, protocol_start, 4);
-                callback!(on_version, version_start, 3);
-                callback!(on_status, status_start, 3);
-                if reason_end > reason_start {
-                  callback!(on_reason, reason_start, reason_end - reason_start);
+                if has_active_callbacks {
+                  callback!(on_protocol, protocol_start, 4);
+                  callback!(on_version, version_start, 3);
+                  callback!(on_status, status_start, 3);
+                  if reason_end > reason_start {
+                    callback!(on_reason, reason_start, reason_end - reason_start);
+                  }
                 }
 
                 advance!(cr + 2);
@@ -428,13 +445,15 @@ impl Parser {
                 let mut header_value_end = cr;
 
                 let status = self.status;
-                let first_header_byte = data[header_name_start].to_ascii_lowercase();
-                if !matches!(first_header_byte, b'c' | b't' | b'u') {
+                let first_header_byte = data[header_name_start];
+                if !matches!(first_header_byte, b'c' | b'C' | b't' | b'T' | b'u' | b'U') {
                   if !validate_token(data, header_name_start, header_name_end) {
                     fail!(UNEXPECTED_CHARACTER, "Invalid header field name character");
                   }
 
-                  strip_ows_fast(data, &mut header_value_start, &mut header_value_end, true);
+                  if has_header_value_callback {
+                    strip_ows_fast(data, &mut header_value_start, &mut header_value_end, true);
+                  }
                 } else {
                   let header_name_len = header_name_end - header_name_start;
                   match (header_name_len, &data[header_name_start..header_name_end]) {
@@ -705,17 +724,24 @@ impl Parser {
                         fail!(UNEXPECTED_CHARACTER, "Invalid header field name character");
                       }
 
-                      strip_ows_fast(data, &mut header_value_start, &mut header_value_end, true);
+                      if has_header_value_callback {
+                        strip_ows_fast(data, &mut header_value_start, &mut header_value_end, true);
+                      }
                     }
                   }
                 }
 
-                callback!(on_header_name, header_name_start, header_name_end - header_name_start);
-                callback!(
-                  on_header_value,
-                  header_value_start,
-                  header_value_end - header_value_start
-                );
+                if has_header_name_callback {
+                  callback!(on_header_name, header_name_start, header_name_end - header_name_start);
+                }
+
+                if has_header_value_callback {
+                  callback!(
+                    on_header_value,
+                    header_value_start,
+                    header_value_end - header_value_start
+                  );
+                }
 
                 advance!(cr + 2);
               }
@@ -742,7 +768,9 @@ impl Parser {
           // RFC 9110 section 9.3.6 and 7.8 - Headers have finished, check if the
           // connection must be upgraded or a body is expected.
           STATE_BODY_DECISION => {
-            callback!(on_headers);
+            if has_active_callbacks {
+              callback!(on_headers);
+            }
 
             let method = self.method;
             let status = self.status;
@@ -1024,9 +1052,7 @@ impl Parser {
                       };
                     }
 
-                    // TODO@PI: Replace me with a similar validation to token_value but allowing
-                    // quoted string characters
-                    if !validate_quoted_token_value(data, value_start, value_end) {
+                    if !validate_quoted_string(data, value_start, value_end) {
                       fail!(UNEXPECTED_CHARACTER, "Invalid chunk extension quoted value character");
                     }
 
@@ -1152,23 +1178,30 @@ impl Parser {
 
                 let mut trailer_value_start = trailer_name_end + 1;
                 let mut trailer_value_end = cr;
-                strip_ows_fast(data, &mut trailer_value_start, &mut trailer_value_end, true);
+                if has_trailer_value_callback {
+                  strip_ows_fast(data, &mut trailer_value_start, &mut trailer_value_end, true);
+                }
 
                 // Validate
                 if !validate_token(data, trailer_name_start, trailer_name_end) {
                   fail!(UNEXPECTED_CHARACTER, "Invalid trailer field name character");
                 }
 
-                callback!(
-                  on_trailer_name,
-                  trailer_name_start,
-                  trailer_name_end - trailer_name_start
-                );
-                callback!(
-                  on_trailer_value,
-                  trailer_value_start,
-                  trailer_value_end - trailer_value_start
-                );
+                if has_trailer_name_callback {
+                  callback!(
+                    on_trailer_name,
+                    trailer_name_start,
+                    trailer_name_end - trailer_name_start
+                  );
+                }
+
+                if has_trailer_value_callback {
+                  callback!(
+                    on_trailer_value,
+                    trailer_value_start,
+                    trailer_value_end - trailer_value_start
+                  );
+                }
                 advance!(cr + 2);
               }
               HeaderLineScanResult::Invalid(invalid) => {
@@ -1293,8 +1326,10 @@ impl Parser {
   // RFC 9110 section 6.4.1 - Message completed
   #[inline(always)]
   fn complete(&mut self, offset: usize) {
-    callback!(on_message_complete, offset, 0);
-    callback!(on_reset, offset, 0);
+    if self.active_callbacks != 0 {
+      callback!(on_message_complete, offset, 0);
+      callback!(on_reset, offset, 0);
+    }
 
     self.continue_without_data = false;
     self.skip_body = false;
@@ -1302,7 +1337,9 @@ impl Parser {
     if self.has_upgrade && self.is_request {
       move_to!(tunnel);
     } else if self.has_connection_close {
-      callback!(on_finish);
+      if self.active_callbacks != 0 {
+        callback!(on_finish);
+      }
       move_to!(finish);
     } else {
       move_to!(start);

@@ -1,3 +1,5 @@
+use crate::{QUOTED_PAIR_TABLE, QUOTED_STRING_TABLE, TOKEN_TABLE, URL_TABLE};
+
 pub enum MatchResult {
   Continue,
   Suspend,
@@ -62,15 +64,7 @@ pub fn validate_token(data: &[u8], start: usize, end: usize) -> bool {
 
   let mut i = start;
   while i < end {
-    let byte = data[i];
-    if !(byte.wrapping_sub(b'0') <= 9
-      || byte.wrapping_sub(b'A') <= 25
-      || byte.wrapping_sub(b'a') <= 25
-      || matches!(
-        byte,
-        b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~'
-      ))
-    {
+    if !TOKEN_TABLE[data[i] as usize] {
       return false;
     }
 
@@ -81,15 +75,16 @@ pub fn validate_token(data: &[u8], start: usize, end: usize) -> bool {
 }
 
 #[inline(always)]
-pub fn validate_quoted_token_value(data: &[u8], start: usize, end: usize) -> bool {
-  if start == end {
-    return false;
-  }
-
+pub fn validate_quoted_string(data: &[u8], start: usize, end: usize) -> bool {
   let mut i = start;
   while i < end {
     let byte = data[i];
-    if !(byte == b'\t' || byte == b' ' || (0x22..=0x7e).contains(&byte)) {
+    if byte == b'\\' {
+      i += 1;
+      if i == end || !QUOTED_PAIR_TABLE[data[i] as usize] {
+        return false;
+      }
+    } else if !QUOTED_STRING_TABLE[byte as usize] {
       return false;
     }
 
@@ -107,36 +102,7 @@ pub fn validate_url(data: &[u8], start: usize, end: usize) -> bool {
 
   let mut i = start;
   while i < end {
-    let byte = data[i];
-    if !(byte.wrapping_sub(b'0') <= 9
-      || byte.wrapping_sub(b'A') <= 25
-      || byte.wrapping_sub(b'a') <= 25
-      || matches!(
-        byte,
-        b'-'
-          | b'.'
-          | b'_'
-          | b'~'
-          | b':'
-          | b'/'
-          | b'?'
-          | b'['
-          | b']'
-          | b'@'
-          | b'!'
-          | b'$'
-          | b'&'
-          | b'\''
-          | b'('
-          | b')'
-          | b'*'
-          | b'+'
-          | b','
-          | b';'
-          | b'='
-          | b'%'
-      ))
-    {
+    if !URL_TABLE[data[i] as usize] {
       return false;
     }
 

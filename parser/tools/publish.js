@@ -75,10 +75,11 @@ async function main() {
   info(`Publishing version ${newVersion} (from ${latestVersion})`)
 
   // Publish on Cargo
+  // DIsabled for now
 
   // Publish on NPM
   process.chdir(fileURLToPath(new URL('../dist/wasm/release/@perseveranza-pets/milo/', import.meta.url)))
-  await execute('Publishing on NPM', 'npm', 'publish', '--access', 'public1')
+  await execute('Publishing on NPM', 'npm', 'publish', '--access', 'public')
 
   // Save tags
   process.chdir(fileURLToPath(new URL('..', import.meta.url)))

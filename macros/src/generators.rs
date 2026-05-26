@@ -89,8 +89,15 @@ fn generate_bitmask(items: &Vec<String>, prefix: &str) -> Vec<ItemConst> {
   consts
 }
 
+fn generate_table<F>(validator: F) -> Vec<bool>
+where
+  F: Fn(u16) -> bool,
+{
+  (0..=255).map(validator).collect()
+}
+
 /// Generates all parser constants.
-pub fn generate_constants(
+fn generate_constants(
   methods: &Vec<String>,
   errors: &Vec<String>,
   callbacks: &Vec<String>,
@@ -101,6 +108,49 @@ pub fn generate_constants(
   let errors_consts = generate_constants_internal(&errors, "ERROR");
   let callbacks_consts = generate_constants_internal(&callbacks, "CALLBACK");
   let callbacks_bitmask = generate_bitmask(&callbacks, "CALLBACK_ACTIVE");
+  let token_table = generate_table(|byte| {
+    (0x30..=0x39).contains(&byte)
+      || (0x41..=0x5a).contains(&byte)
+      || (0x61..=0x7a).contains(&byte)
+      || matches!(
+        byte as u8,
+        b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~'
+      )
+  });
+  let url_table = generate_table(|byte| {
+    (0x30..=0x39).contains(&byte)
+      || (0x41..=0x5a).contains(&byte)
+      || (0x61..=0x7a).contains(&byte)
+      || matches!(
+        byte as u8,
+        b'-'
+          | b'.'
+          | b'_'
+          | b'~'
+          | b':'
+          | b'/'
+          | b'?'
+          | b'['
+          | b']'
+          | b'@'
+          | b'!'
+          | b'$'
+          | b'&'
+          | b'\''
+          | b'('
+          | b')'
+          | b'*'
+          | b'+'
+          | b','
+          | b';'
+          | b'='
+          | b'%'
+      )
+  });
+  let quoted_string_table = generate_table(|byte| {
+    byte == 0x09 || byte == 0x20 || byte == 0x21 || (0x23..=0x5b).contains(&byte) || (0x5d..=0x7e).contains(&byte) || byte >= 0x80
+  });
+  let quoted_pair_table = generate_table(|byte| byte == 0x09 || byte == 0x20 || (0x21..=0x7e).contains(&byte) || byte >= 0x80);
 
   TokenStream::from(quote! {
     pub type StateHandler = fn (parser: &mut Parser, data: &[c_uchar], available: usize);
@@ -115,11 +165,23 @@ pub fn generate_constants(
     #(#callbacks_consts)*
     #(#callbacks_bitmask)*
     #(#states_consts)*
+
+    /// cbindgen:ignore
+    static TOKEN_TABLE: [bool; 256] = [#(#token_table),*];
+
+    /// cbindgen:ignore
+    static URL_TABLE: [bool; 256] = [#(#url_table),*];
+
+    /// cbindgen:ignore
+    static QUOTED_STRING_TABLE: [bool; 256] = [#(#quoted_string_table),*];
+
+    /// cbindgen:ignore
+    static QUOTED_PAIR_TABLE: [bool; 256] = [#(#quoted_pair_table),*];
   })
 }
 
 /// Generates all parser enums.
-pub fn generate_enums(
+fn generate_enums(
   methods: &Vec<String>,
   errors: &Vec<String>,
   callbacks: &Vec<String>,
@@ -327,7 +389,7 @@ pub fn generate_enums(
   })
 }
 
-pub fn generate_callbacks(callbacks: &Vec<String>) -> TokenStream {
+fn generate_callbacks(callbacks: &Vec<String>) -> TokenStream {
   let native = native::generate_callbacks(callbacks);
   let wasm = wasm::generate_callbacks(callbacks);
 
@@ -335,7 +397,7 @@ pub fn generate_callbacks(callbacks: &Vec<String>) -> TokenStream {
 }
 
 // Export all build info to a file for the scripts to re-use it
-pub fn save_constants(methods: &Vec<String>, errors: &Vec<String>, callbacks: &Vec<String>, states: &Vec<String>) {
+fn save_constants(methods: &Vec<String>, errors: &Vec<String>, callbacks: &Vec<String>, states: &Vec<String>) {
   let mut milo_cargo_toml_path = Path::new(file!()).parent().unwrap().to_path_buf();
   milo_cargo_toml_path.push("../../parser/Cargo.toml");
 

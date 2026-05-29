@@ -3,34 +3,34 @@
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
-function log(logger, raw) {
+function log (logger, raw) {
   const len = Number(BigInt.asUintN(32, raw))
   const ptr = Number(raw >> 32n)
 
   logger(textDecoder.decode(new Uint8Array(this.memory.buffer, ptr, len)))
 }
 
-function alloc(len) {
+function alloc (len) {
   return this.alloc(len) >>> 0
 }
 
-function dealloc(ptr) {
+function dealloc (ptr) {
   return this.dealloc(ptr)
 }
 
-function create() {
+function create () {
   return this.create() >>> 0
 }
 
-function destroy(parser) {
+function destroy (parser) {
   this.destroy(parser)
 }
 
-function parse(parser, data, limit) {
+function parse (parser, data, limit) {
   return this.parse(parser, data, limit) >>> 0
 }
 
-function fail(parser, code, description) {
+function fail (parser, code, description) {
   const len = description.length
   const ptr = this.alloc(len)
   const buffer = new Uint8Array(this.memory.buffer, ptr, len)
@@ -46,21 +46,21 @@ function fail(parser, code, description) {
 
 /* REPLACE: setters */
 
-function simpleCreate(spans, create) {
+function simpleCreate (spans, create) {
   const parser = create()
   spans[parser] = []
   this.setActiveCallbacks(parser, this.CALLBACK_ACTIVE_ALL)
   return parser
 }
 
-function simpleDestroy(spans, destroy, parser) {
+function simpleDestroy (spans, destroy, parser) {
   spans[parser] = undefined
   destroy(parser)
 }
 
-export function noop() {}
+export function noop () {}
 
-export function setup(env = {}) {
+export function setup (env = {}) {
   let { logger: logOption, ...instanceEnvironment } = env
   let logger = noop
   const context = {}
@@ -74,6 +74,7 @@ export function setup(env = {}) {
   }
 
   // Create the WASM instance
+  /* eslint-disable-next-line no-undef */
   const instance = new WebAssembly.Instance(wasmModule, {
     env: {
       logger,
@@ -109,7 +110,7 @@ export function setup(env = {}) {
   return milo
 }
 
-export function simple() {
+export function simple () {
   const spans = {}
 
   const milo = setup({

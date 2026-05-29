@@ -1,23 +1,22 @@
 #!/usr/bin/env node
 
-import { setup } from '@perseveranza-pets/milo'
 import { isMainThread } from 'node:worker_threads'
 
 export const info = isMainThread ? console.log : () => {}
 
-function extractPayload(context, from, size) {
+function extractPayload (context, from, size) {
   return context.input.subarray(from, from + size)
 }
 
-function sprintf(format, ...args) {
+function sprintf (format, ...args) {
   return format.replaceAll('{}', () => args.shift())
 }
 
-function formatEvent(name) {
+function formatEvent (name) {
   return `"${name}"`
 }
 
-function appendOutput(message, context, _, from, size) {
+function appendOutput (message, context, _, from, size) {
   const payload =
     typeof from === 'number' && typeof size === 'number' && size > 0
       ? `"${extractPayload(context, from, size).toString('utf-8')}"`
@@ -26,11 +25,11 @@ function appendOutput(message, context, _, from, size) {
   return 0
 }
 
-function event(name, context, parser, from, size) {
+function event (name, context, parser, from, size) {
   return appendOutput(sprintf('"pos": {}, "event": "{}"', from, name), context, parser, from, size)
 }
 
-function showSpan(name, context, parser, from, size) {
+function showSpan (name, context, parser, from, size) {
   if (name === 'method' || name === 'url' || name === 'protocol' || name === 'version') {
     context[name] = extractPayload(context, from, size).toString('utf-8')
   }
@@ -38,7 +37,7 @@ function showSpan(name, context, parser, from, size) {
   return event(name, context, parser, from, size)
 }
 
-function onStateChange(context, parser, from, size) {
+function onStateChange (context, parser, from, size) {
   return appendOutput(
     sprintf('"pos": {}, "event": "state", "state": "{}"', from, context.milo.States[context.milo.getState(parser)]),
     context,
@@ -48,7 +47,7 @@ function onStateChange(context, parser, from, size) {
   )
 }
 
-function onMessageStart(context, parser, from, size) {
+function onMessageStart (context, parser, from, size) {
   return appendOutput(
     sprintf('"pos": {}, "event": "begin", "configuration": { "debug": {} }', from, context.milo.DEBUG),
     context,
@@ -58,17 +57,17 @@ function onMessageStart(context, parser, from, size) {
   )
 }
 
-function onMessageComplete(context, parser, from, size) {
+function onMessageComplete (context, parser, from, size) {
   return event('complete', context, parser, from, size)
 }
 
-function onError(context, parser, from, size) {
+function onError (context, parser, from, size) {
   const errorDescription = context.milo.getErrorDescription(parser)
 
-  const errorCode = parser.errorCode
+  const errorCode = context.milo.getErrorCode(parser)
   return appendOutput(
     sprintf(
-      '"pos": {}, "event": {}, "error_code": {}, "error_code_string": "{}", reason: "{}"',
+      '"pos": {}, "event": "{}", "error_code": {}, "error_code_string": "{}", "reason": "{}"',
       from,
       'error',
       errorCode,
@@ -82,51 +81,51 @@ function onError(context, parser, from, size) {
   )
 }
 
-function onFinish(context, parser, from, size) {
+function onFinish (context, parser, from, size) {
   return event('finish', context, parser, from, size)
 }
 
-function onRequest(context, parser, from, size) {
+function onRequest (context, parser, from, size) {
   return event('request', context, parser, from, size)
 }
 
-function onResponse(context, parser, from, size) {
+function onResponse (context, parser, from, size) {
   return event('response', context, parser, from, size)
 }
 
-function onMethod(context, parser, from, size) {
+function onMethod (context, parser, from, size) {
   return showSpan('method', context, parser, from, size)
 }
 
-function onUrl(context, parser, from, size) {
+function onUrl (context, parser, from, size) {
   return showSpan('url', context, parser, from, size)
 }
 
-function onProtocol(context, parser, from, size) {
+function onProtocol (context, parser, from, size) {
   return showSpan('protocol', context, parser, from, size)
 }
 
-function onVersion(context, parser, from, size) {
+function onVersion (context, parser, from, size) {
   return showSpan('version', context, parser, from, size)
 }
 
-function onStatus(context, parser, from, size) {
+function onStatus (context, parser, from, size) {
   return showSpan('status', context, parser, from, size)
 }
 
-function onReason(context, parser, from, size) {
+function onReason (context, parser, from, size) {
   return showSpan('reason', context, parser, from, size)
 }
 
-function onHeaderName(context, parser, from, size) {
+function onHeaderName (context, parser, from, size) {
   return showSpan('header_name', context, parser, from, size)
 }
 
-function onHeaderValue(context, parser, from, size) {
+function onHeaderValue (context, parser, from, size) {
   return showSpan('header_value', context, parser, from, size)
 }
 
-function onHeaders(context, parser, from, size) {
+function onHeaders (context, parser, from, size) {
   const position = from
   const chunked = context.milo.hasChunkedTransferEncoding(parser)
   const contentLength = context.milo.getContentLength(parser)
@@ -230,48 +229,50 @@ function onHeaders(context, parser, from, size) {
   }
 }
 
-function onUpgrade(context, parser, from, size) {
+function onUpgrade (context, parser, from, size) {
   return event('upgrade', context, parser, from, size)
 }
 
-function onChunkLength(context, parser, from, size) {
+function onChunkLength (context, parser, from, size) {
   return showSpan('chunk_length', context, parser, from, size)
 }
 
-function onChunkExtensionName(context, parser, from, size) {
+function onChunkExtensionName (context, parser, from, size) {
   return showSpan('chunk_extensions_name', context, parser, from, size)
 }
 
-function onChunkExtensionValue(context, parser, from, size) {
+function onChunkExtensionValue (context, parser, from, size) {
   return showSpan('chunk_extension_value', context, parser, from, size)
 }
 
-function onChunk(context, parser, from, size) {
+function onChunk (context, parser, from, size) {
   return event('chunk', context, parser, from, size)
 }
 
-function onBody(context, parser, from, size) {
+function onBody (context, parser, from, size) {
   return event('body', context, parser, from, size)
 }
 
-function onData(context, parser, from, size) {
+function onData (context, parser, from, size) {
   return showSpan('data', context, parser, from, size)
 }
 
-function onTrailerName(context, parser, from, size) {
+function onTrailerName (context, parser, from, size) {
   return showSpan('trailer_name', context, parser, from, size)
 }
 
-function onTrailerValue(context, parser, from, size) {
+function onTrailerValue (context, parser, from, size) {
   return showSpan('trailer_value', context, parser, from, size)
 }
 
-function onTrailers(context, parser, from, size) {
+function onTrailers (context, parser, from, size) {
   return event('trailers', context, parser, from, size)
 }
 
-async function main() {
+async function main () {
   const context = {}
+
+  const { setup } = await import(`../../../dist/wasm/${process.env.WASM_PROFILE}/package/src/simd/index.js`)
 
   const milo = setup({
     on_state_change: onStateChange.bind(null, context),

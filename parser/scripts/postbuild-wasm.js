@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { format } from 'prettier'
-import prettierConfig from './prettier.config.js'
+import prettierConfig from '../../prettier.config.js'
 
 const enums = {
   ERROR: 'Errors',
@@ -56,11 +56,11 @@ const setters = {
   setActiveCallbacks: 'set_active_callbacks'
 }
 
-function getCallbacks(constants) {
+function getCallbacks (constants) {
   return Object.entries(constants).filter(c => c[0].startsWith('CALLBACK_') && !c[0].startsWith('CALLBACK_ACTIVE'))
 }
 
-function generateEnums(constants) {
+function generateEnums (constants) {
   let replacement = ''
   for (let [selector, name] of Object.entries(enums)) {
     selector += '_'
@@ -84,11 +84,11 @@ ${matching.map(k => `${constants[k]}${suffix}: '${k.replace(selector, '')}'`).jo
   return replacement
 }
 
-function generateEnumsLists() {
+function generateEnumsLists () {
   return Object.values(enums).join(',') + ','
 }
 
-function generateConstants(constants, flags) {
+function generateConstants (constants, flags) {
   return Object.entries(constants)
     .map(([k, v]) => {
       let value = v.toString()
@@ -104,7 +104,7 @@ function generateConstants(constants, flags) {
     .join('\n')
 }
 
-function generateGetters() {
+function generateGetters () {
   let replacement = ''
 
   for (const [getter, [type, rawGetter]] of Object.entries(getters)) {
@@ -139,7 +139,7 @@ function ${getter}(parser) {
   return replacement
 }
 
-function generateSetters() {
+function generateSetters () {
   let replacement = ''
 
   for (const [setter, rawSetter] of Object.entries(setters)) {
@@ -153,7 +153,7 @@ function ${setter}(parser, value) {
   return replacement
 }
 
-function generateGettersList() {
+function generateGettersList () {
   return (
     Object.keys(getters)
       .map(g => `${g}: ${g}.bind(wasm)`)
@@ -161,7 +161,7 @@ function generateGettersList() {
   )
 }
 
-function generateSettersList() {
+function generateSettersList () {
   return (
     Object.keys(setters)
       .map(g => `${g}: ${g}.bind(wasm)`)
@@ -169,13 +169,13 @@ function generateSettersList() {
   )
 }
 
-function generateNoopCallbacks(constants) {
+function generateNoopCallbacks (constants) {
   return getCallbacks(constants)
     .map(c => `${c[0].replace('CALLBACK_', '').toLowerCase()}: noop,`)
     .join('\n')
 }
 
-function generateSimpleCallbacks(constants) {
+function generateSimpleCallbacks (constants) {
   return getCallbacks(constants)
     .map(
       c => `${c[0].replace('CALLBACK_', '').toLowerCase()}(parser, at, len) { spans[parser].push([${c[1]}, at, len]) },`
@@ -183,7 +183,7 @@ function generateSimpleCallbacks(constants) {
     .join('\n')
 }
 
-async function generateModule(profile, version, flags, constants, loader) {
+async function generateModule (profile, version, flags, constants, loader) {
   const template = await readFile(new URL('../src/wasm/template.js', import.meta.url), 'utf-8')
 
   const replaced = template.replaceAll(/\/\* REPLACE: (\S+) \*\//g, (marker, id) => {
@@ -221,23 +221,16 @@ async function generateModule(profile, version, flags, constants, loader) {
   return format(replaced, { ...prettierConfig, parser: 'babel' })
 }
 
-// TODO@PI: TypeScript
-async function main() {
-  const { version, constants } = JSON.parse(
-    await readFile(new URL('../target/buildinfo.json', import.meta.url), 'utf-8')
-  )
-
-  const profile = process.argv[2]
-  const flags = Object.fromEntries(process.argv[3].split(',').map(p => p.split(':').map(s => s.toLowerCase())))
-
-  // Generate the required files
-  const wasm = await readFile(new URL(`../dist/wasm/${profile}/milo.wasm`, import.meta.url), 'base64')
+async function generateVariant (profile, version, flags, constants, rootFolder, variant) {
+  const wasmFile = `${variant}.wasm`
+  const sourceFolder = resolve(rootFolder, 'src', variant)
+  const wasm = await readFile(new URL(`../../dist/wasm/${profile}/binary/${wasmFile}`, import.meta.url), 'base64')
   const unbundled = await generateModule(
     profile,
     version,
     flags,
     constants,
-    `import { readFileSync } from 'node:fs'\n\nexport const wasmModule = new WebAssembly.Module(readFileSync(new URL('./milo.wasm', import.meta.url)))
+    `import { readFileSync } from 'node:fs'\n\nexport const wasmModule = new WebAssembly.Module(readFileSync(new URL('../../binary/${wasmFile}', import.meta.url)))
     `
   )
   const bundled = await generateModule(
@@ -249,18 +242,33 @@ async function main() {
     `
   )
 
+  await mkdir(sourceFolder, { recursive: true })
+  await writeFile(resolve(sourceFolder, 'unbundled.js'), unbundled, 'utf-8')
+  await writeFile(resolve(sourceFolder, 'index.js'), bundled, 'utf-8')
+}
+
+// TODO@PI: TypeScript
+async function main () {
+  const { version, constants } = JSON.parse(
+    await readFile(new URL('../target/buildinfo.json', import.meta.url), 'utf-8')
+  )
+
+  const profile = process.argv[2]
+  const flags = Object.fromEntries(process.argv[3].split(',').map(p => p.split(':').map(s => s.toLowerCase())))
+
   // Open the package.json and update the version
   const packageJson = JSON.parse(await readFile(new URL('../src/wasm/package.json', import.meta.url), 'utf-8'))
-  const rootFolder = fileURLToPath(new URL(`../dist/wasm/${profile}/${packageJson.name}`, import.meta.url))
+  const rootFolder = fileURLToPath(new URL(`../../dist/wasm/${profile}/package`, import.meta.url))
   packageJson.version = Object.values(version).join('.')
 
   // Write files
   await mkdir(rootFolder, { recursive: true })
+  await cp(new URL(`../../dist/wasm/${profile}/binary`, import.meta.url), resolve(rootFolder, 'binary'), {
+    recursive: true
+  })
+  await generateVariant(profile, version, flags, constants, rootFolder, 'simd')
+  await generateVariant(profile, version, flags, constants, rootFolder, 'no-simd')
   await writeFile(resolve(rootFolder, 'package.json'), JSON.stringify(packageJson, null, 2), 'utf-8')
-  await writeFile(resolve(rootFolder, 'unbundled.js'), unbundled, 'utf-8')
-  await writeFile(resolve(rootFolder, 'index.js'), bundled, 'utf-8')
-  await cp(new URL(`../dist/wasm/${profile}/milo.wasm`, import.meta.url), resolve(rootFolder, 'milo.wasm'))
-  await cp(new URL(`../dist/wasm/${profile}/milo.wasm`, import.meta.url), resolve(rootFolder, 'milo.wasm'))
 
   // Copy other Markdown files from root
   for (const file of ['CODE_OF_CONDUCT', 'LICENSE', 'README']) {

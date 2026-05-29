@@ -11,57 +11,15 @@
   dependencies = ["cpp", "wasm"]
 
 [tasks.test]
-  command = "cargo"
-  args    = ["test"]
-
-[tasks.lint]
-  command = "cargo"
-  args    = ["clippy"]
-
-[tasks."lint:tools"]
-  cwd     = "./tools"
-  command = "eslint"
-  args    = ["--cache", "--ext", ".js", "."]
-
-[tasks."lint:tools:fix"]
-  cwd     = "./tools"
-  command = "eslint"
-  args    = ["--cache", "--fix", "--ext", ".js", "src"]
-
-[tasks."lint:fix"]
-  command = "cargo"
-  args    = ["clippy", "--fix", "--allow-dirty"]
-
-[tasks.format]
-  command = "cargo"
-  args    = ["fmt"]
-
-[tasks."format:tools"]
-  cwd     = "./tools"
-  command = "prettier"
-  args    = ["-w", "../src/wasm", "."]
-
-[tasks.clean]
-  run_task = { name = ["cargo-clean", "dist-clean"] }
-
-[tasks.verify]
-  dependencies = [
-    "format",
-    "format:tools",
-    "lint",
-    "lint:tools",
-    "clean",
-    "build",
-    "test",
-  ]
-
-[tasks.publish]
-  dependencies = ["wasm-release"]
-  command      = "node"
-  args         = ["./tools/publish.js"]
+  dependencies = ["build"]
+  command      = "cargo"
+  args         = ["test"]
 
 [tasks.cpp]
   dependencies = ["cpp:headers", "cpp:libs"]
+
+[tasks.wasm]
+  dependencies = ["wasm:release", "wasm:debug"]
 
 [tasks."cpp:libs"]
   dependencies = ["cpp:release", "cpp:debug"]
@@ -76,51 +34,35 @@
 
 [tasks."cpp:lib"]
   script = [
-    "mkdir -p dist/cpp/${CONFIGURATION}",
-    "rm -rf dist/cpp/${CONFIGURATION}/*",
+    "mkdir -p ../dist/cpp/${CONFIGURATION}",
+    "rm -rf ../dist/cpp/${CONFIGURATION}/*",
     "cargo build -Z unstable-options --target ${TARGET} ${CARGO_OPTIONS} --artifact-dir target/cpp/${CONFIGURATION}",
-    "cp target/cpp/${CONFIGURATION}/libmilo.a target/headers/milo.h dist/cpp/${CONFIGURATION}",
-    "node ./tools/postbuild-cpp.js	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
+    "cp target/cpp/${CONFIGURATION}/libmilo.a target/headers/milo.h ../dist/cpp/${CONFIGURATION}",
+    "node ./scripts/postbuild-cpp.js	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
   ]
 
 [tasks."cpp:headers"]
   command = "cbindgen"
   args    = ["--quiet", "--output", "target/headers/milo.h"]
 
-[tasks.wasm]
-  dependencies = ["wasm:release", "wasm:debug"]
-
 [tasks."wasm:release"]
-  env      = { CONFIGURATION = "release", "CARGO_OPTIONS" = "--release", "WASMPACK_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false" }
+  env      = { CONFIGURATION = "release", CARGO_BUILD_OPTIONS = "-Z unstable-options -Z build-std=std,panic_abort", CARGO_OPTIONS = "--release", POSTBUILD_OPTIONS = "DEBUG:false", RUSTFLAGS_BASE = "-Z unstable-options -C panic=immediate-abort", WASMPACK_OPTIONS = "--release" }
   run_task = "wasm:module"
 
 [tasks."wasm:debug"]
-  env      = { CONFIGURATION = "debug", "CARGO_OPTIONS" = "--release --features debug", "WASMPACK_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:true" }
+  env      = { CONFIGURATION = "debug", CARGO_BUILD_OPTIONS = "-Z unstable-options", CARGO_OPTIONS = "--release --features debug", POSTBUILD_OPTIONS = "DEBUG:true", RUSTFLAGS_BASE = "", WASMPACK_OPTIONS = "--release" }
   run_task = "wasm:module"
 
 [tasks."wasm:module"]
   script = [
-    "mkdir -p dist/wasm",
-    "rm -rf dist/wasm/${CONFIGURATION}",
-    "mkdir -p dist/wasm/${CONFIGURATION}",
-    "RUSTFLAGS=\"-C target-feature=+simd128\" cargo build -Z unstable-options --target wasm32-unknown-unknown ${CARGO_OPTIONS}",
-    "cp -a target/wasm32-unknown-unknown/release/milo.wasm dist/wasm/${CONFIGURATION}",
-    "wasm-opt -O3 --enable-bulk-memory-opt --enable-simd -o dist/wasm/${CONFIGURATION}/milo.wasm dist/wasm/${CONFIGURATION}/milo.wasm",
-    "node ./tools/postbuild-wasm.js	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
+    "mkdir -p ../dist/wasm",
+    "rm -rf ../dist/wasm/${CONFIGURATION}",
+    "mkdir -p ../dist/wasm/${CONFIGURATION}/binary",
+    "RUSTFLAGS=\"${RUSTFLAGS_BASE} -C target-feature=+simd128\" cargo build ${CARGO_BUILD_OPTIONS} --target wasm32-unknown-unknown ${CARGO_OPTIONS}",
+    "cp -a target/wasm32-unknown-unknown/release/milo.wasm ../dist/wasm/${CONFIGURATION}/binary/simd.wasm",
+    "wasm-opt -O3 --enable-bulk-memory-opt --enable-simd -o ../dist/wasm/${CONFIGURATION}/binary/simd.wasm ../dist/wasm/${CONFIGURATION}/binary/simd.wasm",
+    "RUSTFLAGS=\"${RUSTFLAGS_BASE}\" cargo build ${CARGO_BUILD_OPTIONS} --target wasm32-unknown-unknown ${CARGO_OPTIONS}",
+    "cp -a target/wasm32-unknown-unknown/release/milo.wasm ../dist/wasm/${CONFIGURATION}/binary/no-simd.wasm",
+    "wasm-opt -O3 --enable-bulk-memory-opt -o ../dist/wasm/${CONFIGURATION}/binary/no-simd.wasm ../dist/wasm/${CONFIGURATION}/binary/no-simd.wasm",
+    "node ./scripts/postbuild-wasm.js	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
   ]
-
-[tasks.distclean]
-  command = "rm"
-  args    = ["-r", "-f", "dist"]
-
-[tasks."llhttp:import"]
-  script = ["node tools/import-llhttp-tests.js ${1} ."]
-
-[tasks."llhttp:review"]
-  script = ["cargo run --example llhttp -- --review ${1}"]
-
-[tasks."llhttp:show"]
-  script = ["cargo run --example llhttp -- --show ${1}"]
-
-[tasks."llhttp:update"]
-  script = ["cargo run --example llhttp -- --update ${1}"]

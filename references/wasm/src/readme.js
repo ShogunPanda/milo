@@ -1,4 +1,6 @@
-import { setup } from '@perseveranza-pets/milo'
+#!/usr/bin/env node
+
+const { setup } = await import('../../../dist/wasm/release/package/src/simd/index.js')
 
 /*
   Milo works using callbacks.
@@ -16,7 +18,7 @@ import { setup } from '@perseveranza-pets/milo'
   The callbacks must be provided using setup and are named in snake case.
 */
 const milo = setup({
-  on_data(_, from, size) {
+  on_data (_, from, size) {
     console.log(`Pos=${from} Body: ${message.slice(from, from + size).toString()}`)
   }
 })

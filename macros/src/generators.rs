@@ -148,9 +148,15 @@ fn generate_constants(
       )
   });
   let quoted_string_table = generate_table(|byte| {
-    byte == 0x09 || byte == 0x20 || byte == 0x21 || (0x23..=0x5b).contains(&byte) || (0x5d..=0x7e).contains(&byte) || byte >= 0x80
+    byte == 0x09
+      || byte == 0x20
+      || byte == 0x21
+      || (0x23..=0x5b).contains(&byte)
+      || (0x5d..=0x7e).contains(&byte)
+      || byte >= 0x80
   });
-  let quoted_pair_table = generate_table(|byte| byte == 0x09 || byte == 0x20 || (0x21..=0x7e).contains(&byte) || byte >= 0x80);
+  let quoted_pair_table =
+    generate_table(|byte| byte == 0x09 || byte == 0x20 || (0x21..=0x7e).contains(&byte) || byte >= 0x80);
 
   TokenStream::from(quote! {
     pub type StateHandler = fn (parser: &mut Parser, data: &[c_uchar], available: usize);

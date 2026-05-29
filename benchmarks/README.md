@@ -28,19 +28,20 @@ makers milo
 The default llhttp source is `nodejs/llhttp` tag `release/v9.3.1`:
 
 ```text
-LLHTTP_INCLUDE_DIR=../vendor/llhttp-release-v9.3.1/include
-LLHTTP_LIB=../vendor/llhttp-release-v9.3.1/build/libllhttp.a
+LLHTTP_INCLUDE_DIR=../../tmp/external/llhttp-release-v9.3.1/include
+LLHTTP_LIB=../../tmp/external/llhttp-release-v9.3.1/build/libllhttp.a
 ```
 
 Build the default llhttp release archive and run the benchmark:
 
 ```bash
 cd benchmarks/cpp
-makers llhttp
-makers verify
+makers benchmarks
 ```
 
 If llhttp is already available elsewhere, set `LLHTTP_INCLUDE_DIR` and `LLHTTP_LIB`.
+
+The benchmark binary is written to `tmp/benchmarks/milo-cpp-benchmarks` at the repository root.
 
 Native SIMD is enabled where the compiler and CPU support it. Milo is built with `RUSTFLAGS="-C target-cpu=native"`; llhttp is built with `clang -O3 -DNDEBUG -march=native -flto`.
 
@@ -52,17 +53,17 @@ Build Milo's WASM release package, download llhttp's WASM artifact, and run the 
 
 ```bash
 cd benchmarks/wasm
-makers verify
+makers benchmarks
 ```
 
 The default llhttp WASM source is pinned to Undici commit `185e6a1513f8f00a9ef9d2cde028e8cce412b11f`:
 
 ```text
-LLHTTP_WASM=../vendor/llhttp_simd.wasm
+LLHTTP_WASM=../../tmp/external/llhttp_simd.wasm
 LLHTTP_WASM_COMMIT=185e6a1513f8f00a9ef9d2cde028e8cce412b11f
 ```
 
-Milo WASM is built with `RUSTFLAGS="-C target-feature=+simd128"` and optimized with `wasm-opt -O3 --enable-bulk-memory-opt --enable-simd`. The llhttp artifact is Undici's SIMD build.
+Milo WASM release builds include both `binary/simd.wasm` and `binary/no-simd.wasm`. The benchmark uses the default SIMD entry point, which is built with immediate-abort panics and optimized with `wasm-opt -O3 --enable-bulk-memory-opt --enable-simd`. The llhttp artifact is Undici's SIMD build.
 
 ## Reporting Results
 

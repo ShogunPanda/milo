@@ -47,7 +47,7 @@ import { setup } from '@perseveranza-pets/milo'
   The callbacks must be provided using setup and are named in snake case.
 */
 const milo = setup({
-  on_data(p, from, size) {
+  on_data (p, from, size) {
     console.log(`Pos=${from} Body: ${message.slice(from, from + size).toString()}`)
   }
 })
@@ -75,6 +75,8 @@ milo.parse(parser, ptr, message.length)
 milo.destroy(parser)
 milo.dealloc(ptr, message.length)
 ```
+
+The default JavaScript entry point uses the SIMD WebAssembly build. Use `@perseveranza-pets/milo/no-simd` when SIMD is not available, and add `/unbundled` to either entry point to load the external `.wasm` file instead of the bundled JavaScript module.
 
 Finally build and execute it using `node`:
 
@@ -232,20 +234,21 @@ Make sure you have the `wasm32-unknown-unknown` target:
 rustup target add wasm32-unknown-unknown
 ```
 
-Install npm deps inside parser/tools:
+Install npm dependencies
 
 ```bash
-(cd parser/tools && npm i)
+pnpm install
 ```
 
 After all the requirements are met, you can then run:
 
 ```bash
-cd parser
 makers
 ```
 
-The command above will produce debug and release builds for each language in the `dist` folder.
+The command above will produce debug and release builds for each language in the top-level `dist` folder.
+
+The WebAssembly release build uses immediate-abort panics to keep the artifact smaller. Panics trap without unwinding or rich panic messages.
 
 The debug build also enables the `on_state_change` callback and is more verbose in case of WebAssembly errors.
 

@@ -9,16 +9,16 @@ import YAML from 'yaml'
 const fixturePrefix = 'tests/fixtures/llhttp'
 const execFileAsync = promisify(execFile)
 
-function fail(message) {
+function fail (message) {
   console.error(message)
   process.exit(1)
 }
 
-function cleanHeading(title) {
+function cleanHeading (title) {
   return title.replace(/`/g, '').trim()
 }
 
-function decodeHtmlEntities(value) {
+function decodeHtmlEntities (value) {
   return value.replace(/&(?:quot|apos|amp|lt|gt|#(\d+)|#x([0-9a-fA-F]+));/g, (match, dec, hex) => {
     switch (match) {
       case '&quot;':
@@ -45,7 +45,7 @@ function decodeHtmlEntities(value) {
   })
 }
 
-function parseHtmlMeta(value) {
+function parseHtmlMeta (value) {
   const match = value.match(/<!--\s*meta=(.*?)\s*-->/s) || value.match(/^\s*meta=(.*?)\s*$/s)
   if (!match) {
     return null
@@ -59,11 +59,11 @@ function parseHtmlMeta(value) {
   return meta
 }
 
-function hasMeta(value) {
+function hasMeta (value) {
   return value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0
 }
 
-function stringifyFixture(fixture) {
+function stringifyFixture (fixture) {
   const yamlBody = YAML.stringify(fixture, {
     lineWidth: 0,
     defaultStringType: 'QUOTE_SINGLE',
@@ -73,7 +73,7 @@ function stringifyFixture(fixture) {
   return `---\n${yamlBody}`
 }
 
-function normalizeFixtureForComparison(value) {
+function normalizeFixtureForComparison (value) {
   if (Array.isArray(value)) {
     return value.map(normalizeFixtureForComparison)
   }
@@ -95,7 +95,7 @@ function normalizeFixtureForComparison(value) {
   return value
 }
 
-async function processSection(llhttpRoot, outputRoot, fixtureRoot, section, seenFiles) {
+async function processSection (llhttpRoot, outputRoot, fixtureRoot, section, seenFiles) {
   const source = join(llhttpRoot, 'test', section)
   const cases = []
   const usedNames = new Set()
@@ -229,8 +229,7 @@ async function processSection(llhttpRoot, outputRoot, fixtureRoot, section, seen
             .trim()
             .replace(/[\s_]+/g, '-')
             .replace(/-+/g, '-')
-            .replace(/^-+|-+$/g, '')
-        )
+            .replace(/^-+|-+$/g, ''))
         .filter(Boolean)
         .join('-')
       let fileName = `${name || 'test'}.yml`
@@ -353,12 +352,12 @@ async function processSection(llhttpRoot, outputRoot, fixtureRoot, section, seen
   await rm(tempFixturePath, { force: true })
 }
 
-async function main() {
+async function main () {
   const [, , llhttpRoot, outputRoot] = process.argv
   const fixtureRoot = join(outputRoot, fixturePrefix)
 
   if (!llhttpRoot || !outputRoot) {
-    console.log('Usage: node parser/tools/import-llhttp-tests.js <llhttp-root> <output-root>')
+    console.log('Usage: node parser/scripts/import-llhttp-tests.js <llhttp-root> <output-root>')
     process.exit(0)
   }
 

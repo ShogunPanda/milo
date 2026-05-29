@@ -19,27 +19,29 @@
   "private": false,
   "type": "module",
   "files": [
-    "index.js",
-    "index.d.ts",
-    "unbundled.js",
-    "unbundled.d.ts",
-    "milo.wasm",
+    "binary",
+    "src",
     "CODE_OF_CONDUCT.md",
     "LICENSE.md",
     "README.md"
   ],
-  "main": "index.js",
-  "types": "index.d.ts",
+  "main": "src/simd/index.js",
   "exports": {
     ".": {
-      "import": "./index.js",
-      "require": "./index.js",
-      "types": "./index.d.ts"
+      "import": "./src/simd/index.js",
+      "require": "./src/simd/index.js"
     },
     "./unbundled": {
-      "import": "./unbundled.js",
-      "require": "./unbundled.js",
-      "types": "./unbundled.d.ts"
+      "import": "./src/simd/unbundled.js",
+      "require": "./src/simd/unbundled.js"
+    },
+    "./no-simd": {
+      "import": "./src/no-simd/index.js",
+      "require": "./src/no-simd/index.js"
+    },
+    "./no-simd/unbundled": {
+      "import": "./src/no-simd/unbundled.js",
+      "require": "./src/no-simd/unbundled.js"
     }
   },
   "engines": {

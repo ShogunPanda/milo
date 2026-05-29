@@ -5,45 +5,16 @@
   TARGET = { script = ["rustc -vV | sed -n 's|host: ||p'"] }
 
 [tasks.default]
-  dependencies = ["build"]
+  dependencies = ["test"]
 
 [tasks.build]
-  dependencies = ["prepare", "release", "debug"]
+  dependencies = ["release", "debug"]
 
 [tasks.test]
-  command = "node"
-  args    = ["--test", "../reference.test.js"]
-
-[tasks.lint]
-  command = "cargo"
-  args    = ["clippy"]
-
-[tasks."lint:fix"]
-  command = "cargo"
-  args    = ["clippy", "--fix", "--allow-dirty"]
-
-[tasks.format]
-  command = "cargo"
-  args    = ["fmt"]
-
-[tasks.clean]
-  command = "cargo"
-  args    = ["clean"]
-
-[tasks.verify]
-  dependencies = ["format", "lint", "clean", "build", "test", "readme"]
-
-[tasks.readme]
-  command = "cargo"
-  args    = ["run", "--bin", "readme"]
-
-[tasks.prepare]
-  script = [
-    "mkdir -p dist",
-    "rm -rf dist/*",
-    "ln -s ../target/release/reference dist/reference-release",
-    "ln -s ../target/debug/reference dist/reference-debug",
-  ]
+  env          = { VARIANT = "rust" }
+  dependencies = ["build"]
+  command      = "node"
+  args         = ["--test", "../reference.js"]
 
 [tasks.release]
   command = "cargo"
@@ -53,9 +24,11 @@
     "unstable-options",
     "--target",
     "${TARGET}",
+    "--target-dir",
+    "../../tmp/references/rust/targets/release",
     "--release",
     "--artifact-dir",
-    "target/release",
+    "../../tmp/references/rust/release",
   ]
 
 [tasks.debug]
@@ -66,6 +39,8 @@
     "unstable-options",
     "--target",
     "${TARGET}",
+    "--target-dir",
+    "../../tmp/references/rust/targets/debug",
     "--artifact-dir",
-    "target/debug",
+    "../../tmp/references/rust/debug",
   ]

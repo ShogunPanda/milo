@@ -2,22 +2,25 @@
   skip_core_tasks = true
 
 [env]
-  MILO_INCLUDE_DIR = "../../parser/dist/cpp/release"
-  MILO_LIB = "../../parser/dist/cpp/release/libmilo.a"
-  LLHTTP_RELEASE = "v9.3.1"
-  LLHTTP_DIR = "../vendor/llhttp-release-v9.3.1"
-  LLHTTP_INCLUDE_DIR = "../vendor/llhttp-release-v9.3.1/include"
-  LLHTTP_LIB = "../vendor/llhttp-release-v9.3.1/build/libllhttp.a"
-  MILO_RUSTFLAGS = "-C target-cpu=native"
+  MILO_INCLUDE_DIR   = "../../dist/cpp/release"
+  MILO_LIB           = "../../dist/cpp/release/libmilo.a"
+  LLHTTP_RELEASE     = "v9.3.1"
+  LLHTTP_DIR         = "../../tmp/external/llhttp-release-v9.3.1"
+  LLHTTP_INCLUDE_DIR = "../../tmp/external/llhttp-release-v9.3.1/include"
+  LLHTTP_LIB         = "../../tmp/external/llhttp-release-v9.3.1/build/libllhttp.a"
+  OUTPUT_DIR         = "../../tmp/benchmarks/"
+  OUTPUT_BIN         = "../../tmp/benchmarks/milo-cpp-benchmarks"
+  MILO_RUSTFLAGS     = "-C target-cpu=native"
 
 [tasks.default]
-  dependencies = ["build"]
+  dependencies = ["benchmarks"]
 
-[tasks.prepare]
-  script = ["mkdir -p dist", "rm -rf dist/*"]
+[tasks.benchmarks]
+  dependencies = ["build"]
+  command      = "${OUTPUT_BIN}"
 
 [tasks.build]
-  dependencies = ["milo", "prepare"]
+  dependencies = ["llhttp", "milo", "prepare"]
   command = "clang++"
   args = [
     "-std=c++11",
@@ -30,14 +33,14 @@
     "-I",
     "${LLHTTP_INCLUDE_DIR}",
     "-o",
-    "dist/milo-cpp-benchmarks",
+    "${OUTPUT_BIN}",
     "src/main.cc",
     "${MILO_LIB}",
     "${LLHTTP_LIB}",
   ]
 
-[tasks.benchmarks]
-  command = "./dist/milo-cpp-benchmarks"
+[tasks.prepare]
+  script = ["mkdir -p ${OUTPUT_DIR}", "rm -rf ${OUTPUT_BIN}"]
 
 [tasks.milo]
   dependencies = ["milo:headers", "milo:release"]
@@ -54,33 +57,15 @@
   args    = ["cpp:release"]
 
 [tasks.llhttp]
-  dependencies = ["llhttp:download", "llhttp:build"]
-
-[tasks."llhttp:download"]
   script = [
-    "mkdir -p ../vendor",
+    "mkdir -p ../../tmp/external",
     "rm -rf ${LLHTTP_DIR}",
-    "curl -L --fail --silent --show-error https://github.com/nodejs/llhttp/archive/refs/tags/release/${LLHTTP_RELEASE}.tar.gz -o ../vendor/llhttp-release-${LLHTTP_RELEASE}.tar.gz",
-    "tar -xzf ../vendor/llhttp-release-${LLHTTP_RELEASE}.tar.gz -C ../vendor",
-    "rm -f ../vendor/llhttp-release-${LLHTTP_RELEASE}.tar.gz",
-  ]
-
-[tasks."llhttp:build"]
-  script = [
+    "curl -L --fail --silent --show-error https://github.com/nodejs/llhttp/archive/refs/tags/release/${LLHTTP_RELEASE}.tar.gz -o ../../tmp/external/llhttp-release-${LLHTTP_RELEASE}.tar.gz",
+    "tar -xzf ../../tmp/external/llhttp-release-${LLHTTP_RELEASE}.tar.gz -C ../../tmp/external",
+    "rm -f ../../tmp/external/llhttp-release-${LLHTTP_RELEASE}.tar.gz",
     "mkdir -p ${LLHTTP_DIR}/build",
     "clang -O3 -DNDEBUG -march=native -flto -fPIC -I ${LLHTTP_DIR}/include -c ${LLHTTP_DIR}/src/llhttp.c -o ${LLHTTP_DIR}/build/llhttp.o",
     "clang -O3 -DNDEBUG -march=native -flto -fPIC -I ${LLHTTP_DIR}/include -c ${LLHTTP_DIR}/src/api.c -o ${LLHTTP_DIR}/build/api.o",
     "clang -O3 -DNDEBUG -march=native -flto -fPIC -I ${LLHTTP_DIR}/include -c ${LLHTTP_DIR}/src/http.c -o ${LLHTTP_DIR}/build/http.o",
     "ar rcs ${LLHTTP_LIB} ${LLHTTP_DIR}/build/llhttp.o ${LLHTTP_DIR}/build/api.o ${LLHTTP_DIR}/build/http.o",
   ]
-
-[tasks.format]
-  command = "clang-format"
-  args    = ["-i", "src/main.cc"]
-
-[tasks.clean]
-  command = "rm"
-  args    = ["-r", "-f", "dist"]
-
-[tasks.verify]
-  dependencies = ["format", "clean", "build", "benchmarks"]

@@ -1,27 +1,29 @@
+#!/usr/bin/env node
+
+const { setup } = await import('../../../dist/wasm/release/package/src/simd/index.js')
+
 /* eslint-disable no-unused-vars */
 
-import { setup } from '@perseveranza-pets/milo'
-
-function onMethod() {
+function onMethod () {
   console.log('CALLBACK: onMethod')
 }
 
-function onUrlValid() {
+function onUrlValid () {
   console.log('CALLBACK: onUrlValid')
 }
 
-function onUrlThrow() {
+function onUrlThrow () {
   console.log('CALLBACK: onUrlThrow')
   throw new Error('WTF')
 }
 
-function onUrlJSError(parser, from, size) {
+function onUrlJSError (parser, from, size) {
   console.log('CALLBACK: onUrlJSError')
   // eslint-disable-next-line no-undef
   a = b
 }
 
-export async function main() {
+export async function main () {
   const milo = setup({ on_method: onMethod, on_url: onUrlJSError })
   const parser = milo.create()
   milo.setActiveCallbacks(parser, milo.CALLBACK_ACTIVE_ALL)
@@ -55,7 +57,7 @@ export async function main() {
   }
 
   milo.reset(parser, true)
-  milo.clear()
+  milo.clear(parser)
 
   try {
     const consumed = milo.parse(parser, ptr, message.length)

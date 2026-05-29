@@ -138,7 +138,7 @@ void on_headers(milo::Parser* parser, usize_t from, usize_t size) {
 
   auto message = create_string();
 
-  if (parser->message_type == milo::MESSAGE_TYPE_RESPONSE) {
+  if (!parser->is_request) {
     if (chunked) {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %u, \"protocol\": \"%s\", "

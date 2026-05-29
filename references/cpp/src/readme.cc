@@ -1,6 +1,7 @@
 #include "milo.h"
 #include "stdio.h"
 #include "string.h"
+#include <cinttypes>
 
 int main() {
   // Create the parser.
@@ -28,7 +29,7 @@ int main() {
     char* payload = reinterpret_cast<char*>(malloc(sizeof(char) * size));
     strncpy(payload, reinterpret_cast<const char*>(p->context) + from, size);
 
-    printf("Pos=%lu Body: %s\n", from, payload);
+    printf("Pos=%" PRIuPTR " Body: %.*s\n", from, static_cast<int>(size), payload);
     free(payload);
   };
   parser->active_callbacks |= milo::CALLBACK_ACTIVE_ON_DATA;

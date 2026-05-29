@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { wasmModule } from '../../../parser/dist/wasm/release/@perseveranza-pets/milo/unbundled.js'
+import { wasmModule } from '../../../dist/wasm/release/package/src/simd/unbundled.js'
 
 const TARGET_BYTES = 8n << 30n
 const ERROR_NONE = 0
@@ -30,10 +30,17 @@ async function loadFixture (name, isRequest) {
 function decodeFixture (raw) {
   const decoded = []
 
-  for (let i = 0; i < raw.length;) {
+  let i = 0
+  while (i < raw.length) {
     if (raw[i] === 0x0a) {
       i++
-    } else if (i + 3 < raw.length && raw[i] === 0x5c && raw[i + 1] === 0x72 && raw[i + 2] === 0x5c && raw[i + 3] === 0x6e) {
+    } else if (
+      i + 3 < raw.length &&
+      raw[i] === 0x5c &&
+      raw[i + 1] === 0x72 &&
+      raw[i + 2] === 0x5c &&
+      raw[i + 3] === 0x6e
+    ) {
       decoded.push(0x0d, 0x0a)
       i += 4
     } else {
@@ -64,7 +71,9 @@ function padRight (value, width) {
 }
 
 function printSeparator (parserWidth, iterationsWidth, mbWidth, opsWidth) {
-  console.log(`| ${'-'.repeat(parserWidth)} | ${'-'.repeat(iterationsWidth)} | ${'-'.repeat(mbWidth)} | ${'-'.repeat(opsWidth)} |`)
+  console.log(
+    `| ${'-'.repeat(parserWidth)} | ${'-'.repeat(iterationsWidth)} | ${'-'.repeat(mbWidth)} | ${'-'.repeat(opsWidth)} |`
+  )
 }
 
 function printResults (fixture, results) {
@@ -76,7 +85,9 @@ function printResults (fixture, results) {
   const opsWidth = Math.max('Ops/s'.length, ...results.map(result => result.opsPerSecond.length))
 
   console.log(`### ${fixture.name}\n`)
-  console.log(`| ${padRight('Parser', parserWidth)} | ${padLeft('Iterations', iterationsWidth)} | ${padLeft('MB/s', mbWidth)} | ${padLeft('Ops/s', opsWidth)} |`)
+  console.log(
+    `| ${padRight('Parser', parserWidth)} | ${padLeft('Iterations', iterationsWidth)} | ${padLeft('MB/s', mbWidth)} | ${padLeft('Ops/s', opsWidth)} |`
+  )
   printSeparator(parserWidth, iterationsWidth, mbWidth, opsWidth)
 
   for (const result of results) {
@@ -163,7 +174,9 @@ function validateMilo (milo, fixture) {
   milo.dealloc(ptr, fixture.payload.length)
 
   if (consumed !== fixture.payload.length || error !== ERROR_NONE) {
-    throw new Error(`Milo failed to parse fixture ${fixture.name}: consumed ${consumed} of ${fixture.payload.length} bytes, error ${error}`)
+    throw new Error(
+      `Milo failed to parse fixture ${fixture.name}: consumed ${consumed} of ${fixture.payload.length} bytes, error ${error}`
+    )
   }
 }
 
@@ -206,7 +219,9 @@ function benchmarkMilo (milo, fixture) {
   milo.dealloc(ptr, fixture.payload.length)
 
   if (consumed !== total || error !== ERROR_NONE) {
-    throw new Error(`Milo failed while benchmarking fixture ${fixture.name}: consumed ${consumed} of ${total} bytes, error ${error}`)
+    throw new Error(
+      `Milo failed while benchmarking fixture ${fixture.name}: consumed ${consumed} of ${total} bytes, error ${error}`
+    )
   }
 
   const bytesPerSecond = total / seconds
@@ -256,7 +271,7 @@ const fixtures = [
   await loadFixture('undici', false)
 ]
 const milo = createMilo()
-const llhttp = createLlhttp(await readFile(new URL('../../vendor/llhttp_simd.wasm', import.meta.url)))
+const llhttp = createLlhttp(await readFile(new URL('../../../tmp/external/llhttp_simd.wasm', import.meta.url)))
 
 for (const fixture of fixtures) {
   validateMilo(milo, fixture)

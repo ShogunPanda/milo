@@ -2,16 +2,16 @@ import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
-function info(message) {
+function info (message) {
   console.log(`\x1b[33m--- [INFO] ${message}\x1b[0m`)
 }
 
-function fatal(message) {
+function fatal (message) {
   console.error(`\x1b[31m\x1b[1m--- [ERROR] ${message}\x1b[0m`)
   process.exit(1)
 }
 
-function execute(title, command, ...args) {
+function execute (title, command, ...args) {
   const verbose = process.env.VERBOSE === 'true'
 
   info(`${title} (${command} ${args.join(' ')}) ...`)
@@ -53,7 +53,7 @@ function execute(title, command, ...args) {
   })
 }
 
-async function main() {
+async function main () {
   // Check if the tree is not clean and eventually abort
   const status = await execute('Verifying GIT status', 'git', 'status', '-s')
 
@@ -70,7 +70,7 @@ async function main() {
 
   // Get the new version
   const newVersion = JSON.parse(
-    await readFile(new URL('../dist/wasm/release/@perseveranza-pets/milo/package.json', import.meta.url), 'utf-8')
+    await readFile(new URL('../../dist/wasm/release/package/package.json', import.meta.url), 'utf-8')
   ).version
   info(`Publishing version ${newVersion} (from ${latestVersion})`)
 
@@ -78,11 +78,11 @@ async function main() {
   // DIsabled for now
 
   // Publish on NPM
-  process.chdir(fileURLToPath(new URL('../dist/wasm/release/@perseveranza-pets/milo/', import.meta.url)))
+  process.chdir(fileURLToPath(new URL('../../dist/wasm/release/package/', import.meta.url)))
   await execute('Publishing on NPM', 'npm', 'publish', '--access', 'public')
 
   // Save tags
-  process.chdir(fileURLToPath(new URL('..', import.meta.url)))
+  process.chdir(fileURLToPath(new URL('../..', import.meta.url)))
   await execute('Saving GIT tag', 'git', 'tag', `v${newVersion}`)
   await execute('Saving GIT tag', 'git', 'push', 'origin', '--tags')
 

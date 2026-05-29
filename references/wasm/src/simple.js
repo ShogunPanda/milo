@@ -1,4 +1,4 @@
-import { simple } from '@perseveranza-pets/milo'
+const { simple } = await import('../../../dist/wasm/release/package/src/simd/index.js')
 
 const milo = simple()
 const message = Buffer.from('HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc')

@@ -1,4 +1,3 @@
-{ "pos": 0, "event": "state", "state": "AUTODETECT", "data": null }
 { "pos": 0, "event": "request", "data": null }
 { "pos": 0, "event": "begin", "configuration": { "debug": true }, "data": null }
 { "pos": 0, "event": "state", "state": "REQUEST_LINE", "data": null }
@@ -15,7 +14,6 @@
 
 ------------------------------------------------------------------------------------------
 
-{ "pos": 0, "event": "state", "state": "AUTODETECT", "data": null }
 { "pos": 0, "event": "response", "data": null }
 { "pos": 0, "event": "begin", "configuration": { "debug": true }, "data": null }
 { "pos": 0, "event": "state", "state": "STATUS_LINE", "data": null }

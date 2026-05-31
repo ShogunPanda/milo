@@ -55,11 +55,22 @@ jobs:
             ~/.cargo/bin/cbindgen
             target
           key: cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Restore cached dependencies (PNPM)
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: release-node-${{ hashFiles('package.json') }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install cargo executables
         shell: bash
         run: |
           [ ! -x "$HOME/.cargo/bin/makers" ] && cargo install cargo-make
           [ ! -x "$HOME/.cargo/bin/cbindgen" ] && cargo install cbindgen
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
       - name: Download latest cambi
         shell: bash
         run: |

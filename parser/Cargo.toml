@@ -1,7 +1,13 @@
 [package]
-  name    = "milo-parser"
-  version = "0.3.0"
-  edition = "2024"
+  name        = "milo-parser"
+  version     = "0.3.0"
+  edition     = "2024"
+  description = "A fast and embeddable HTTP/1.1 parser."
+  homepage    = "https://sw.cowtech.it/milo"
+  repository  = "https://github.com/ShogunPanda/milo"
+  license     = "ISC"
+  keywords    = ["http", "parser", "http-parser"]
+  categories  = ["network-programming", "parser-implementations"]
 
 [lib]
   crate-type = ["cdylib", "staticlib", "lib"]

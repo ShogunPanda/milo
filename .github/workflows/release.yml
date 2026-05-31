@@ -73,7 +73,7 @@ jobs:
       - name: Build C++ artifacts
         shell: bash
         run: |
-          node scripts/sync-versions.js "${{ inputs.version }}"
+          node scripts/sync-versions.js $(cambi update "${{ inputs.version }}" -s)
           cd parser
           makers cpp:release
       - name: Package C++ artifacts
@@ -81,7 +81,7 @@ jobs:
         run: |
           mkdir -p /tmp/${{ matrix.artifact }}
           cp dist/cpp/release/milo.h /tmp/${{ matrix.artifact }}/milo.h
-          cp dist/cpp/release/libmilo.a /tmp/${{ matrix.artifact }}/libmilo.a
+          cp dist/cpp/release/libmilo_parser.a /tmp/${{ matrix.artifact }}/libmilo.a
           tar -C /tmp -czf /tmp/${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
       - name: Upload C++ artifacts
         uses: actions/upload-artifact@v4

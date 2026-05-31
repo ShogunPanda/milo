@@ -1,0 +1,48 @@
+path: tests/fixtures/llhttp/request/connect-request.yml
+name: CONNECT Request
+checked: true
+source:
+  path: test/request/method.md
+  line: 27
+meta:
+  type: request
+input:
+- CONNECT 0-home0.netscape.com:443 HTTP/1.0
+- 'User-agent: Mozilla/1.1N'
+- 'Proxy-authorization: basic aGVsbG86d29ybGQ='
+- ''
+- some data
+- and yet even more data
+llhttp:
+- off=0 message begin
+- off=0 len=7 span[method]="CONNECT"
+- off=7 method complete
+- off=8 len=24 span[url]="0-home0.netscape.com:443"
+- off=33 url complete
+- off=33 len=4 span[protocol]="HTTP"
+- off=37 protocol complete
+- off=38 len=3 span[version]="1.0"
+- off=41 version complete
+- off=43 len=10 span[header_field]="User-agent"
+- off=54 header_field complete
+- off=55 len=12 span[header_value]="Mozilla/1.1N"
+- off=69 header_value complete
+- off=69 len=19 span[header_field]="Proxy-authorization"
+- off=89 header_field complete
+- off=90 len=22 span[header_value]="basic aGVsbG86d29ybGQ="
+- off=114 header_value complete
+- off=116 headers complete method=5 v=1/0 flags=0 content_length=0
+- off=116 message complete
+- off=116 error code=22 reason="Pause on CONNECT/Upgrade"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid protocol

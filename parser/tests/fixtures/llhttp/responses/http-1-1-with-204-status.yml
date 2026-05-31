@@ -1,0 +1,66 @@
+path: tests/fixtures/llhttp/response/http-1-1-with-204-status.yml
+name: HTTP/1.1 With 204 Status
+checked: true
+source:
+  path: test/response/connection.md
+  line: 134
+meta:
+  type: response
+input:
+- HTTP/1.1 204 No content
+- ''
+- HTTP/1.1 200 OK
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=10 span[status]="No content"
+- off=25 status complete
+- off=27 headers complete status=204 v=1/1 flags=0 content_length=0
+- off=27 message complete
+- off=27 reset
+- off=27 message begin
+- off=27 len=4 span[protocol]="HTTP"
+- off=31 protocol complete
+- off=32 len=3 span[version]="1.1"
+- off=35 version complete
+- off=40 len=2 span[status]="OK"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '204'
+- offset: 13
+  type: reason
+  payload: No content
+- offset: 27
+  type: headers
+  payload:
+    method: null
+    status: 204
+    url: null
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 27
+  type: complete
+  payload: null
+- offset: 27
+  type: response
+  payload: null
+- offset: 27
+  type: begin
+  payload: null

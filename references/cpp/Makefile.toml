@@ -2,66 +2,38 @@
   skip_core_tasks = true
 
 [tasks.default]
-  dependencies = ["build"]
+  dependencies = ["test"]
 
 [tasks.build]
-  dependencies = ["prepare", "release", "debug"]
+  dependencies = ["prepare", "milo", "release", "debug", "readme"]
 
 [tasks.test]
-  command = "node"
-  args    = ["--test", "../reference.test.mjs"]
-
-[tasks.format]
-  command = "clang-format"
-  args = [
-    "-i",
-    "src/output.h",
-    "src/output.cc",
-    "src/utils.h",
-    "src/utils.cc",
-    "src/reference.cc",
-    "src/readme.cc",
-  ]
-
-[tasks.clean]
-  command = "rm"
-  args    = ["-r", "-f", "dist"]
-
-[tasks.verify]
-  dependencies = ["format", "clean", "build", "test", "readme", "readme:run"]
-
-[tasks.readme]
-  command = "clang++"
-  args = [
-    "-std=c++11",
-    "-I",
-    "../../parser/dist/cpp/release",
-    "-o",
-    "dist/readme",
-    "../../parser/dist/cpp/release/libmilo.a",
-    "src/output.cc",
-    "src/utils.cc",
-    "src/readme.cc",
-  ]
-
-[tasks."readme:run"]
-  command = "./dist/readme"
+  env          = { VARIANT = "cpp" }
+  dependencies = ["build"]
+  command      = "node"
+  args         = ["--test", "../reference.js"]
 
 [tasks.prepare]
-  script = ["mkdir -p dist", "rm -rf dist/*"]
+  script = [
+    "mkdir -p ../../tmp/references/cpp",
+    "rm -rf ../../tmp/references/cpp/*",
+  ]
+
+[tasks.milo]
+  dependencies = ["milo:headers", "milo:release", "milo:debug"]
 
 [tasks.release]
   command = "clang++"
   args = [
     "-std=c++11",
     "-I",
-    "../../parser/dist/cpp/release",
+    "../../dist/cpp/release",
     "-o",
-    "dist/reference-release",
-    "../../parser/dist/cpp/release/libmilo.a",
+    "../../tmp/references/cpp/release",
     "src/output.cc",
     "src/utils.cc",
     "src/reference.cc",
+    "../../dist/cpp/release/libmilo.a",
   ]
 
 [tasks.debug]
@@ -69,11 +41,40 @@
   args = [
     "-std=c++11",
     "-I",
-    "../../parser/dist/cpp/debug",
+    "../../dist/cpp/debug",
     "-o",
-    "dist/reference-debug",
-    "../../parser/dist/cpp/debug/libmilo.a",
+    "../../tmp/references/cpp/debug",
     "src/output.cc",
     "src/utils.cc",
     "src/reference.cc",
+    "../../dist/cpp/debug/libmilo.a",
   ]
+
+[tasks.readme]
+  command = "clang++"
+  args = [
+    "-std=c++11",
+    "-I",
+    "../../dist/cpp/release",
+    "-o",
+    "../../tmp/references/cpp/readme",
+    "src/output.cc",
+    "src/utils.cc",
+    "src/readme.cc",
+    "../../dist/cpp/release/libmilo.a",
+  ]
+
+[tasks."milo:headers"]
+  cwd     = "../../parser"
+  command = "makers"
+  args    = ["cpp:headers"]
+
+[tasks."milo:release"]
+  cwd     = "../../parser"
+  command = "makers"
+  args    = ["cpp:release"]
+
+[tasks."milo:debug"]
+  cwd     = "../../parser"
+  command = "makers"
+  args    = ["cpp:debug"]

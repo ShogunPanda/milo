@@ -1,0 +1,41 @@
+path: tests/fixtures/llhttp/response/invalid-space-after-start-line-only-lfs-present-lenient.yml
+name: Invalid space after start line / Only LFs Present (lenient)
+checked: true
+source:
+  path: test/response/invalid.md
+  line: 285
+meta:
+  type: response-lenient-all
+input:
+- HTTP/1.1 200 OK\n\
+- 'Foo: abc\n\'
+- 'Bar: def\n\'
+- \n\
+- BODY\n\
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=2 span[status]="OK"
+- off=16 status complete
+- off=16 len=3 span[header_field]="Foo"
+- off=20 header_field complete
+- off=21 len=3 span[header_value]="abc"
+- off=25 header_value complete
+- off=25 len=3 span[header_field]="Bar"
+- off=29 header_field complete
+- off=30 len=3 span[header_value]="def"
+- off=34 header_value complete
+- off=35 headers complete status=200 v=1/1 flags=0 content_length=0
+- off=35 len=4 span[body]="BODY"
+- off=39 len=1 span[body]=lf
+- off=40 len=1 span[body]="\"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null

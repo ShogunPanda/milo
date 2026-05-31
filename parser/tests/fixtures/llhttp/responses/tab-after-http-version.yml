@@ -1,0 +1,31 @@
+path: tests/fixtures/llhttp/response/tab-after-http-version.yml
+name: Tab After HTTP Version
+checked: true
+source:
+  path: test/response/invalid.md
+  line: 72
+meta:
+  type: response
+input:
+- HTTP/1.1\t200 OK
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=8 error code=9 reason="Expected space after version"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Expected space after protocol

@@ -1,0 +1,29 @@
+path: tests/fixtures/llhttp/response/error-on-invalid-response-start.yml
+name: Error On Invalid Response Start
+checked: true
+source:
+  path: test/response/sample.md
+  line: 80
+meta:
+  type: response
+input:
+- HTTPER/1.1 200 OK
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=4 error code=8 reason="Expected HTTP/, RTSP/ or ICE/"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Expected space after protocol

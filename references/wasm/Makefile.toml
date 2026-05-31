@@ -4,38 +4,28 @@
 [tasks.default]
   dependencies = ["test"]
 
+[tasks.build]
+  dependencies = ["milo"]
+
 [tasks.test]
-  command = "node"
-  args    = ["--test", "../reference.test.mjs"]
+  env          = { VARIANT = "wasm" }
+  dependencies = ["build"]
+  command      = "node"
+  args         = ["--test", "../reference.js"]
 
-[tasks.lint]
-  command = "eslint"
-  args    = ["--cache", "--ext", ".mjs", "src"]
+# This is purposely not included in test, it is meant for manual run
+[tasks.simple]
+  dependencies = ["build"]
+  command      = "node"
+  args         = ["./src/simple.js"]
 
-[tasks."lint:fix"]
-  command = "eslint"
-  args    = ["--cache", "--fix", "--ext", ".mjs", "src"]
+# This is purposely not included in test, it is meant for manual run
+[tasks.callbacks]
+  dependencies = ["build"]
+  command      = "node"
+  args         = ["./src/callbacks.js"]
 
-[tasks.format]
-  command = "prettier"
-  args    = ["-w", "src"]
-
-[tasks.clean]
-  command = "rm"
-  args    = ["-r", "-f", "dist"]
-
-[tasks.verify]
-  dependencies = ["format", "lint", "clean", "prepare", "test", "readme"]
-
-[tasks.readme]
-  command = "./dist/readme"
-
-[tasks.prepare]
-  script = [
-    "mkdir -p dist",
-    "rm -rf dist/*",
-    "cat ./templates/reference.sh | sed -e 's#CONFIGURATION#release#' > dist/reference-release",
-    "cat ./templates/reference.sh | sed -e 's#CONFIGURATION#debug#' > dist/reference-debug",
-    "cat ./templates/readme.sh | sed -e 's#CONFIGURATION#release#' > dist/readme",
-    "chmod a+x dist/*",
-  ]
+[tasks."milo"]
+  cwd     = "../../parser"
+  command = "makers"
+  args    = ["wasm"]

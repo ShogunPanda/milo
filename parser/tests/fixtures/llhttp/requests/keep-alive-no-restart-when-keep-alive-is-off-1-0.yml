@@ -1,0 +1,39 @@
+path: tests/fixtures/llhttp/request/keep-alive-no-restart-when-keep-alive-is-off-1-0.yml
+name: keep-alive / No Restart When Keep-alive Is Off (1.0)
+checked: true
+source:
+  path: test/request/connection.md
+  line: 81
+meta:
+  type: request
+input:
+- PUT /url HTTP/1.0
+- ''
+- PUT /url HTTP/1.1
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="PUT"
+- off=3 method complete
+- off=4 len=4 span[url]="/url"
+- off=9 url complete
+- off=9 len=4 span[protocol]="HTTP"
+- off=13 protocol complete
+- off=14 len=3 span[version]="1.0"
+- off=17 version complete
+- off=21 headers complete method=4 v=1/0 flags=0 content_length=0
+- off=21 message complete
+- 'off=22 error code=5 reason="Data after `Connection: close`"'
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid protocol

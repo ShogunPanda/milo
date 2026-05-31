@@ -1,0 +1,66 @@
+path: tests/fixtures/llhttp/request/search-request.yml
+name: SEARCH Request
+checked: true
+source:
+  path: test/request/method.md
+  line: 245
+meta:
+  type: request
+input:
+- SEARCH / HTTP/1.1
+- 'Host: www.example.com'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=6 span[method]="SEARCH"
+- off=6 method complete
+- off=7 len=1 span[url]="/"
+- off=9 url complete
+- off=9 len=4 span[protocol]="HTTP"
+- off=13 protocol complete
+- off=14 len=3 span[version]="1.1"
+- off=17 version complete
+- off=19 len=4 span[header_field]="Host"
+- off=24 header_field complete
+- off=25 len=15 span[header_value]="www.example.com"
+- off=42 header_value complete
+- off=44 headers complete method=14 v=1/1 flags=0 content_length=0
+- off=44 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: SEARCH
+- offset: 7
+  type: url
+  payload: /
+- offset: 9
+  type: protocol
+  payload: HTTP
+- offset: 14
+  type: version
+  payload: '1.1'
+- offset: 19
+  type: header_name
+  payload: Host
+- offset: 25
+  type: header_value
+  payload: www.example.com
+- offset: 44
+  type: headers
+  payload:
+    method: SEARCH
+    status: null
+    url: /
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 44
+  type: complete
+  payload: null

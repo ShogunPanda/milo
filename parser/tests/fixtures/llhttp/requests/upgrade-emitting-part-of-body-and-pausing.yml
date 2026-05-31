@@ -1,0 +1,99 @@
+path: tests/fixtures/llhttp/request/upgrade-emitting-part-of-body-and-pausing.yml
+name: upgrade / Emitting Part Of Body And Pausing
+checked: true
+source:
+  path: test/request/connection.md
+  line: 635
+meta:
+  type: request
+input:
+- PUT /url HTTP/1.1
+- 'Connection: upgrade'
+- 'Content-Length: 4'
+- 'Upgrade: ws'
+- ''
+- abcdefgh
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="PUT"
+- off=3 method complete
+- off=4 len=4 span[url]="/url"
+- off=9 url complete
+- off=9 len=4 span[protocol]="HTTP"
+- off=13 protocol complete
+- off=14 len=3 span[version]="1.1"
+- off=17 version complete
+- off=19 len=10 span[header_field]="Connection"
+- off=30 header_field complete
+- off=31 len=7 span[header_value]="upgrade"
+- off=40 header_value complete
+- off=40 len=14 span[header_field]="Content-Length"
+- off=55 header_field complete
+- off=56 len=1 span[header_value]="4"
+- off=59 header_value complete
+- off=59 len=7 span[header_field]="Upgrade"
+- off=67 header_field complete
+- off=68 len=2 span[header_value]="ws"
+- off=72 header_value complete
+- off=74 headers complete method=4 v=1/1 flags=34 content_length=4
+- off=74 len=4 span[body]="abcd"
+- off=78 message complete
+- off=78 error code=22 reason="Pause on CONNECT/Upgrade"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: PUT
+- offset: 4
+  type: url
+  payload: /url
+- offset: 9
+  type: protocol
+  payload: HTTP
+- offset: 14
+  type: version
+  payload: '1.1'
+- offset: 19
+  type: header_name
+  payload: Connection
+- offset: 31
+  type: header_value
+  payload: upgrade
+- offset: 40
+  type: header_name
+  payload: Content-Length
+- offset: 56
+  type: header_value
+  payload: '4'
+- offset: 59
+  type: header_name
+  payload: Upgrade
+- offset: 68
+  type: header_value
+  payload: ws
+- offset: 74
+  type: headers
+  payload:
+    method: PUT
+    status: null
+    url: /url
+    protocol: HTTP
+    version: '1.1'
+    body: 4
+- offset: 74
+  type: data
+  payload: abcd
+- offset: 78
+  type: body
+  payload: null
+- offset: 78
+  type: complete
+  payload: null
+- offset: 78
+  type: tunnel
+  payload: null

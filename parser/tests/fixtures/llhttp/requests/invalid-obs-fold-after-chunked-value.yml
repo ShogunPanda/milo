@@ -1,0 +1,65 @@
+path: tests/fixtures/llhttp/request/invalid-obs-fold-after-chunked-value.yml
+name: Invalid OBS Fold After Chunked Value
+checked: true
+source:
+  path: test/request/transfer-encoding.md
+  line: 942
+meta:
+  type: request-lenient-headers
+input:
+- PUT /url HTTP/1.1
+- 'Transfer-Encoding: chunked'
+- '  abc'
+- ''
+- '5'
+- World
+- '0'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="PUT"
+- off=3 method complete
+- off=4 len=4 span[url]="/url"
+- off=9 url complete
+- off=9 len=4 span[protocol]="HTTP"
+- off=13 protocol complete
+- off=14 len=3 span[version]="1.1"
+- off=17 version complete
+- off=19 len=17 span[header_field]="Transfer-Encoding"
+- off=37 header_field complete
+- off=38 len=7 span[header_value]="chunked"
+- off=47 len=5 span[header_value]="  abc"
+- off=54 header_value complete
+- off=56 headers complete method=4 v=1/1 flags=200 content_length=0
+- off=56 error code=15 reason="Request has invalid `Transfer-Encoding`"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: PUT
+- offset: 4
+  type: url
+  payload: /url
+- offset: 9
+  type: protocol
+  payload: HTTP
+- offset: 14
+  type: version
+  payload: '1.1'
+- offset: 19
+  type: header_name
+  payload: Transfer-Encoding
+- offset: 38
+  type: header_value
+  payload: chunked
+- offset: 47
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid header field name character

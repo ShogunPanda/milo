@@ -1,0 +1,79 @@
+path: tests/fixtures/llhttp/response/http-1-1-with-keep-alive-disabled-and-204-status-lenient.yml
+name: HTTP/1.1 With Keep-alive Disabled And 204 Status (lenient)
+checked: true
+source:
+  path: test/response/connection.md
+  line: 260
+meta:
+  type: response-lenient-keep-alive
+input:
+- HTTP/1.1 204 No content
+- 'Connection: close'
+- ''
+- HTTP/1.1 200 OK
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=10 span[status]="No content"
+- off=25 status complete
+- off=25 len=10 span[header_field]="Connection"
+- off=36 header_field complete
+- off=37 len=5 span[header_value]="close"
+- off=44 header_value complete
+- off=46 headers complete status=204 v=1/1 flags=2 content_length=0
+- off=46 message complete
+- off=46 reset
+- off=46 message begin
+- off=46 len=4 span[protocol]="HTTP"
+- off=50 protocol complete
+- off=51 len=3 span[version]="1.1"
+- off=54 version complete
+- off=59 len=2 span[status]="OK"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '204'
+- offset: 13
+  type: reason
+  payload: No content
+- offset: 25
+  type: header_name
+  payload: Connection
+- offset: 37
+  type: header_value
+  payload: close
+- offset: 46
+  type: headers
+  payload:
+    method: null
+    status: 204
+    url: null
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 46
+  type: complete
+  payload: null
+- offset: 46
+  type: finish
+  payload: null
+- offset: 46
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Unexpected data

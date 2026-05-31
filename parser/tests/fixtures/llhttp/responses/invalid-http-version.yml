@@ -1,0 +1,30 @@
+path: tests/fixtures/llhttp/response/invalid-http-version.yml
+name: Invalid HTTP Version
+checked: true
+source:
+  path: test/response/invalid.md
+  line: 132
+meta:
+  type: response
+input:
+- HTTP/5.6 200 OK
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="5.6"
+- off=8 error code=9 reason="Invalid HTTP version"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNSUPPORTED_HTTP_VERSION
+    description: Unsupported HTTP version

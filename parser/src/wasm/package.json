@@ -1,6 +1,6 @@
 {
   "name": "@perseveranza-pets/milo",
-  "version": "x.y.z",
+  "version": "0.0.0",
   "description": "A fast and embeddable HTTP/1.1 parser.",
   "homepage": "https://sw.cowtech.it/milo",
   "repository": {
@@ -17,31 +17,34 @@
   "author": "Shogun <shogun@cowtech.it>",
   "license": "ISC",
   "private": false,
+  "type": "module",
   "files": [
-    "index.js",
-    "index.d.ts",
-    "index-unbundled.js",
-    "index-unbundled.d.ts",
-    "milo.wasm",
+    "binary",
+    "src",
     "CODE_OF_CONDUCT.md",
     "LICENSE.md",
     "README.md"
   ],
-  "main": "index.js",
-  "types": "index.d.ts",
+  "main": "src/simd/index.js",
   "exports": {
     ".": {
-      "import": "./index.js",
-      "require": "./index.js",
-      "types": "./index.d.ts"
+      "import": "./src/simd/index.js",
+      "require": "./src/simd/index.js"
     },
     "./unbundled": {
-      "import": "./index-unbundled.js",
-      "require": "./index-unbundled.js",
-      "types": "./index-unbundled.d.ts"
+      "import": "./src/simd/unbundled.js",
+      "require": "./src/simd/unbundled.js"
+    },
+    "./no-simd": {
+      "import": "./src/no-simd/index.js",
+      "require": "./src/no-simd/index.js"
+    },
+    "./no-simd/unbundled": {
+      "import": "./src/no-simd/unbundled.js",
+      "require": "./src/no-simd/unbundled.js"
     }
   },
   "engines": {
-    "node": ">= 20.18.0"
+    "node": ">= 22.21.0"
   }
 }

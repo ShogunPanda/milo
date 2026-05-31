@@ -1,0 +1,51 @@
+path: tests/fixtures/llhttp/request/post-with-transfer-encoding-and-content-length-lenient.yml
+name: POST With Transfer-Encoding And Content-Length (lenient)
+checked: true
+source:
+  path: test/request/transfer-encoding.md
+  line: 530
+meta:
+  type: request-lenient-chunked-length
+input:
+- POST /post_identity_body_world?q=search#hey HTTP/1.1
+- 'Accept: */*'
+- 'Transfer-Encoding: identity'
+- 'Content-Length: 1'
+- ''
+- World
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[method]="POST"
+- off=4 method complete
+- off=5 len=38 span[url]="/post_identity_body_world?q=search#hey"
+- off=44 url complete
+- off=44 len=4 span[protocol]="HTTP"
+- off=48 protocol complete
+- off=49 len=3 span[version]="1.1"
+- off=52 version complete
+- off=54 len=6 span[header_field]="Accept"
+- off=61 header_field complete
+- off=62 len=3 span[header_value]="*/*"
+- off=67 header_value complete
+- off=67 len=17 span[header_field]="Transfer-Encoding"
+- off=85 header_field complete
+- off=86 len=8 span[header_value]="identity"
+- off=96 header_value complete
+- off=96 len=14 span[header_field]="Content-Length"
+- off=111 header_field complete
+- off=112 len=1 span[header_value]="1"
+- off=115 header_value complete
+- off=117 headers complete method=3 v=1/1 flags=220 content_length=1
+- off=117 len=5 span[body]="World"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid URL character

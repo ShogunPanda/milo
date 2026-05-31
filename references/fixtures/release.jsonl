@@ -24,7 +24,7 @@
 { "pos": 67, "event": "chunk_length", "data": "c" }
 { "pos": 69, "event": "chunk_extensions_name", "data": "need" }
 { "pos": 74, "event": "chunk_extension_value", "data": "love" }
-{ "pos": 80, "event": "chunk", "data": null }
+{ "pos": 80, "event": "chunk", "data": "hello world!" }
 { "pos": 80, "event": "data", "data": "hello world!" }
 { "pos": 94, "event": "chunk_length", "data": "0" }
 { "pos": 97, "event": "chunk", "data": null }

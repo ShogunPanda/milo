@@ -1,0 +1,66 @@
+path: tests/fixtures/llhttp/request/one-header-and-no-body.yml
+name: One Header And No Body
+checked: true
+source:
+  path: test/request/sample.md
+  line: 219
+meta:
+  type: request
+input:
+- GET /get_one_header_no_body HTTP/1.1
+- 'Accept: */*'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=23 span[url]="/get_one_header_no_body"
+- off=28 url complete
+- off=28 len=4 span[protocol]="HTTP"
+- off=32 protocol complete
+- off=33 len=3 span[version]="1.1"
+- off=36 version complete
+- off=38 len=6 span[header_field]="Accept"
+- off=45 header_field complete
+- off=46 len=3 span[header_value]="*/*"
+- off=51 header_value complete
+- off=53 headers complete method=1 v=1/1 flags=0 content_length=0
+- off=53 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: GET
+- offset: 4
+  type: url
+  payload: /get_one_header_no_body
+- offset: 28
+  type: protocol
+  payload: HTTP
+- offset: 33
+  type: version
+  payload: '1.1'
+- offset: 38
+  type: header_name
+  payload: Accept
+- offset: 46
+  type: header_value
+  payload: '*/*'
+- offset: 53
+  type: headers
+  payload:
+    method: GET
+    status: null
+    url: /get_one_header_no_body
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 53
+  type: complete
+  payload: null

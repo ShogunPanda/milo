@@ -1,0 +1,33 @@
+path: tests/fixtures/llhttp/request/space-in-uri.yml
+name: Space In URI
+checked: true
+source:
+  path: test/request/uri.md
+  line: 245
+meta:
+  noScan: true
+  type: request
+input:
+- GET /foo bar/ HTTP/1.1
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=4 span[url]="/foo"
+- off=9 url complete
+- off=9 len=0 span[protocol]=""
+- off=9 error code=8 reason="Expected HTTP/, RTSP/ or ICE/"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid protocol name

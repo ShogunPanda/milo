@@ -1,24 +1,29 @@
 [config]
   skip_core_tasks = true
 
+[env]
+  LLHTTP_WASM        = "../../tmp/external/llhttp_simd.wasm"
+  LLHTTP_WASM_COMMIT = "185e6a1513f8f00a9ef9d2cde028e8cce412b11f"
+  LLHTTP_WASM_URL    = "https://raw.githubusercontent.com/nodejs/undici/${LLHTTP_WASM_COMMIT}/lib/llhttp/llhttp_simd.wasm"
+
 [tasks.default]
   dependencies = ["benchmarks"]
 
 [tasks.benchmarks]
-  command = "node"
-  args    = ["src/index.mjs"]
+  dependencies = ["build"]
+  command      = "node"
+  args         = ["src/index.js"]
 
-[tasks.lint]
-  command = "eslint"
-  args    = ["--cache", "--ext", ".mjs", "src"]
+[tasks.build]
+  dependencies = ["llhttp", "milo"]
 
-[tasks."lint:fix"]
-  command = "eslint"
-  args    = ["--cache", "--fix", "--ext", ".mjs", "src"]
+[tasks.milo]
+  cwd     = "../../parser"
+  command = "makers"
+  args    = ["wasm:release"]
 
-[tasks.format]
-  command = "prettier"
-  args    = ["-w", "src"]
-
-[tasks.verify]
-  dependencies = ["format", "lint", "benchmarks"]
+[tasks.llhttp]
+  script = [
+    "mkdir -p ../../tmp/external",
+    "curl -L --fail --silent --show-error ${LLHTTP_WASM_URL} -o ${LLHTTP_WASM}",
+  ]

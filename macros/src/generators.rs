@@ -1,165 +1,194 @@
+use std::fs::{File, OpenOptions, read_to_string};
+use std::io::BufWriter;
+use std::path::Path;
+
+use indexmap::IndexMap;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use regex::{Captures, Regex};
-use syn::{parse_str, Arm, ItemConst};
+use semver::Version;
+use serde::Serialize;
+use serde_json::Value;
+use syn::{Arm, ItemConst, parse_str};
+use toml::Table;
 
-use crate::definitions::{
-  save_constants, CALLBACKS, CONNECTION_CLOSE, CONNECTION_KEEPALIVE, CONNECTION_UPGRADE, ERRORS,
-  MESSAGE_TYPE_AUTODETECT, MESSAGE_TYPE_REQUEST, MESSAGE_TYPE_RESPONSE, METHODS, STATES,
-};
+use crate::{native, wasm};
+
+#[derive(Serialize)]
+struct BuildInfo {
+  version: IndexMap<String, u8>,
+  constants: IndexMap<String, Value>,
+}
+
+fn init_constants() -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
+  // Load from YAML files
+  let mut absolute_path = Path::new(file!())
+    .canonicalize()
+    .unwrap()
+    .parent()
+    .unwrap()
+    .to_path_buf();
+  absolute_path.push("../../parser/constants");
+  absolute_path = absolute_path.canonicalize().unwrap();
+
+  absolute_path.push("methods.yml");
+  let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+  absolute_path.pop();
+  let methods: Vec<String> = serde_yaml::from_reader(f).unwrap();
+
+  absolute_path.push("errors.yml");
+  let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+  absolute_path.pop();
+  let errors: Vec<String> = serde_yaml::from_reader(f).unwrap();
+
+  absolute_path.push("callbacks.yml");
+  let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+  absolute_path.pop();
+  let callbacks: Vec<String> = serde_yaml::from_reader(f).unwrap();
+
+  absolute_path.push("states.yml");
+  let f = File::open(absolute_path.to_str().unwrap()).unwrap();
+  absolute_path.pop();
+  let states: Vec<String> = serde_yaml::from_reader(f).unwrap();
+
+  (methods, errors, callbacks, states)
+}
+
+fn generate_constants_internal(items: &[String], prefix: &str) -> Vec<ItemConst> {
+  let mut consts: Vec<ItemConst> = Vec::new();
+  let mut bytes: Vec<&[u8]> = vec![];
+
+  for (i, x) in items.iter().enumerate() {
+    let uppercased = x.to_uppercase();
+    let name = uppercased.replace('-', "_");
+    bytes.push(x.as_bytes());
+
+    consts.push(parse_str::<ItemConst>(&format!("pub const {}_{}: u8 = {};", prefix, name, i)).unwrap());
+  }
+
+  consts
+}
+
+fn generate_bitmask(items: &[String], prefix: &str) -> Vec<ItemConst> {
+  let mut consts: Vec<ItemConst> = Vec::new();
+  let mut all = 0u64;
+
+  consts.push(parse_str::<ItemConst>(&format!("pub const {}_NONE: u64 = 0;", prefix)).unwrap());
+
+  for (i, x) in items.iter().enumerate() {
+    let uppercased = x.to_uppercase();
+    let name = uppercased.replace('-', "_");
+    let bit = 1 << i;
+    all |= bit;
+
+    consts.push(parse_str::<ItemConst>(&format!("pub const {}_{}: u64 = {};", prefix, name, bit)).unwrap());
+  }
+
+  consts.push(parse_str::<ItemConst>(&format!("pub const {}_ALL: u64 = {};", prefix, all)).unwrap());
+
+  consts
+}
+
+fn generate_table<F>(validator: F) -> Vec<bool>
+where
+  F: Fn(u16) -> bool,
+{
+  (0..=255).map(validator).collect()
+}
 
 /// Generates all parser constants.
-pub fn generate_constants() -> TokenStream {
-  save_constants();
-
-  let methods_consts: Vec<_> = METHODS
-    .get()
-    .unwrap()
-    .iter()
-    .enumerate()
-    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const METHOD_{}: u8 = {};", x.replace('-', "_"), i)).unwrap())
-    .collect();
-
-  let errors_consts: Vec<_> = ERRORS
-    .get()
-    .unwrap()
-    .iter()
-    .enumerate()
-    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const ERROR_{}: u8 = {};", x, i)).unwrap())
-    .collect();
-
-  let callbacks_consts: Vec<_> = CALLBACKS
-    .get()
-    .unwrap()
-    .iter()
-    .enumerate()
-    .map(|(i, x)| {
-      parse_str::<ItemConst>(&format!(
-        "pub const CALLBACK_{}: u8 = {};",
-        x.replace('-', "_").to_uppercase(),
-        i
-      ))
-      .unwrap()
-    })
-    .collect();
-
-  let states_ref = unsafe { STATES.get().unwrap() };
-
-  let states_consts: Vec<_> = states_ref
-    .iter()
-    .enumerate()
-    .map(|(i, x)| parse_str::<ItemConst>(&format!("pub const STATE_{}: u8 = {};", x.0, i)).unwrap())
-    .collect();
-
-  let digit_table: Vec<_> = (0..=255).map(|i| (0x30..=0x39).contains(&i)).collect();
-
-  let hex_digit_table: Vec<_> = (0..=255)
-    .map(|i| (0x30..=0x39).contains(&i) || (0x41..=0x46).contains(&i) || (0x61..=0x66).contains(&i))
-    .collect();
-
-  let token_other_characters = [
-    b'!', b'#', b'$', b'%', b'&', b'\'', b'*', b'+', b'-', b'.', b'^', b'_', b'`', b',', b'~',
-  ];
-
-  let token_table: Vec<_> = (0..=255)
-    .map(|i| {
-      (0x30..=0x39).contains(&i)
-        || (0x41..=0x5A).contains(&i)
-        || (0x61..=0x7A).contains(&i)
-        || token_other_characters.contains(&i)
-    })
-    .collect();
-
-  let mut token_value_table: Vec<_> = (0..=255).map(|_| false).collect();
-  token_value_table[9] = true;
-  token_value_table[32] = true;
-
-  for i in 0x21..=0xff {
-    if i != 0x7f {
-      token_value_table[i] = true;
-    }
-  }
-
-  let mut token_value_quoted_table: Vec<_> = (0..=255).map(|_| false).collect();
-  token_value_quoted_table[9] = true;
-  token_value_quoted_table[32] = true;
-
-  for i in 0x21..=0x7e {
-    token_value_quoted_table[i] = true;
-  }
-
-  let url_other_characters = [
-    b'-', b'.', b'_', b'~', b':', b'/', b'?', b'#', b'[', b']', b'@', b'!', b'$', b'&', b'\'', b'(', b')', b'*', b'+',
-    b',', b';', b'=', b'%',
-  ];
-  let url_table: Vec<_> = (0..=255)
-    .map(|i| {
-      (0x30..=0x39).contains(&i)
-        || (0x41..=0x5A).contains(&i)
-        || (0x61..=0x7A).contains(&i)
-        || url_other_characters.contains(&i)
-    })
-    .collect();
-
-  let mut ws_table: Vec<_> = (0..=255).map(|_| false).collect();
-  ws_table[9] = true;
-  ws_table[32] = true;
+fn generate_constants(methods: &[String], errors: &[String], callbacks: &[String], states: &[String]) -> TokenStream {
+  let methods_consts = generate_constants_internal(methods, "METHOD");
+  let states_consts = generate_constants_internal(states, "STATE");
+  let errors_consts = generate_constants_internal(errors, "ERROR");
+  let callbacks_consts = generate_constants_internal(callbacks, "CALLBACK");
+  let callbacks_bitmask = generate_bitmask(callbacks, "CALLBACK_ACTIVE");
+  let token_table = generate_table(|byte| {
+    (0x30..=0x39).contains(&byte)
+      || (0x41..=0x5a).contains(&byte)
+      || (0x61..=0x7a).contains(&byte)
+      || matches!(
+        byte as u8,
+        b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~'
+      )
+  });
+  let url_table = generate_table(|byte| {
+    (0x30..=0x39).contains(&byte)
+      || (0x41..=0x5a).contains(&byte)
+      || (0x61..=0x7a).contains(&byte)
+      || matches!(
+        byte as u8,
+        b'-'
+          | b'.'
+          | b'_'
+          | b'~'
+          | b':'
+          | b'/'
+          | b'?'
+          | b'['
+          | b']'
+          | b'@'
+          | b'!'
+          | b'$'
+          | b'&'
+          | b'\''
+          | b'('
+          | b')'
+          | b'*'
+          | b'+'
+          | b','
+          | b';'
+          | b'='
+          | b'%'
+      )
+  });
+  let quoted_string_table = generate_table(|byte| {
+    byte == 0x09
+      || byte == 0x20
+      || byte == 0x21
+      || (0x23..=0x5b).contains(&byte)
+      || (0x5d..=0x7e).contains(&byte)
+      || byte >= 0x80
+  });
+  let quoted_pair_table =
+    generate_table(|byte| byte == 0x09 || byte == 0x20 || (0x21..=0x7e).contains(&byte) || byte >= 0x80);
 
   TokenStream::from(quote! {
-    type StateHandler = fn (parser: &mut Parser, data: &[c_uchar], available: usize);
+    pub type StateHandler = fn (parser: &mut Parser, data: &[c_uchar], available: usize);
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub type Callback = fn (&mut Parser, usize, usize);
 
     pub const DEBUG: bool = cfg!(debug_assertions);
 
-    pub const MESSAGE_TYPE_AUTODETECT: u8 = #MESSAGE_TYPE_AUTODETECT;
-    pub const MESSAGE_TYPE_REQUEST: u8 = #MESSAGE_TYPE_REQUEST;
-    pub const MESSAGE_TYPE_RESPONSE: u8 = #MESSAGE_TYPE_RESPONSE;
-
-    pub const CONNECTION_KEEPALIVE: u8 = #CONNECTION_KEEPALIVE;
-    pub const CONNECTION_CLOSE: u8 = #CONNECTION_CLOSE;
-    pub const CONNECTION_UPGRADE: u8 = #CONNECTION_UPGRADE;
-
     #(#methods_consts)*
-
     #(#errors_consts)*
-
     #(#callbacks_consts)*
-
+    #(#callbacks_bitmask)*
     #(#states_consts)*
-
-    /// cbindgen:ignore
-    static DIGIT_TABLE: [bool; 256] = [#(#digit_table),*];
-
-    /// cbindgen:ignore
-    static HEX_DIGIT_TABLE: [bool; 256] = [#(#hex_digit_table),*];
 
     /// cbindgen:ignore
     static TOKEN_TABLE: [bool; 256] = [#(#token_table),*];
 
     /// cbindgen:ignore
-    static TOKEN_VALUE_TABLE: [bool; 256] = [#(#token_value_table),*];
-
-    /// cbindgen:ignore
-    static TOKEN_VALUE_QUOTED_TABLE: [bool; 256] = [#(#token_value_quoted_table),*];
-
-    /// cbindgen:ignore
     static URL_TABLE: [bool; 256] = [#(#url_table),*];
 
     /// cbindgen:ignore
-    static WS_TABLE: [bool; 256] = [#(#ws_table),*];
+    static QUOTED_STRING_TABLE: [bool; 256] = [#(#quoted_string_table),*];
+
+    /// cbindgen:ignore
+    static QUOTED_PAIR_TABLE: [bool; 256] = [#(#quoted_pair_table),*];
   })
 }
 
 /// Generates all parser enums.
-pub fn generate_enums() -> TokenStream {
+fn generate_enums(methods: &[String], errors: &[String], callbacks: &[String], states: &[String]) -> TokenStream {
   let snake_matcher = Regex::new(r"_([a-z])").unwrap();
 
-  let methods_ref = METHODS.get().unwrap();
-  let errors_ref = ERRORS.get().unwrap();
-  let callbacks_ref = CALLBACKS.get().unwrap();
-  let states_ref = unsafe { STATES.get().unwrap() };
+  let methods_ref = methods;
+  let errors_ref = errors;
+  let callbacks_ref = callbacks;
+  let states_ref = states;
 
   let methods: Vec<_> = methods_ref
     .iter()
@@ -180,7 +209,10 @@ pub fn generate_enums() -> TokenStream {
     })
     .collect();
 
-  let states: Vec<_> = states_ref.iter().map(|x| format_ident!("{}", x.0)).collect();
+  let states: Vec<_> = states_ref
+    .iter()
+    .map(|x| format_ident!("{}", x.to_uppercase()))
+    .collect();
 
   let methods_from: Vec<_> = methods_ref
     .iter()
@@ -227,24 +259,6 @@ pub fn generate_enums() -> TokenStream {
     .collect();
 
   TokenStream::from(quote! {
-    // MessageType and Connection reflects the constants in generate_constants
-    // to allow easier interoperability, especially in WASM.
-    #[repr(u8)]
-    #[derive(Copy, Clone, Debug)]
-    pub enum MessageTypes {
-      AUTODETECT,
-      REQUEST,
-      RESPONSE,
-    }
-
-    #[repr(u8)]
-    #[derive(Copy, Clone, Debug)]
-    pub enum Connections {
-      KEEPALIVE,
-      CLOSE,
-      UPGRADE,
-    }
-
     #[repr(u8)]
     #[derive(Copy, Clone, Debug)]
     pub enum Methods {
@@ -267,32 +281,6 @@ pub fn generate_enums() -> TokenStream {
     #[derive(Copy, Clone, Debug)]
     pub enum States {
       #(#states),*
-    }
-
-    impl TryFrom<u8> for MessageTypes {
-      type Error = ();
-
-      fn try_from(value: u8) -> Result<Self, ()> {
-        match value {
-          0 => Ok(MessageTypes::AUTODETECT),
-          1 => Ok(MessageTypes::REQUEST),
-          2 => Ok(MessageTypes::RESPONSE),
-          _ => Err(())
-        }
-      }
-    }
-
-    impl TryFrom<u8> for Connections {
-      type Error = ();
-
-      fn try_from(value: u8) -> Result<Self, ()> {
-        match value {
-          0 => Ok(Connections::KEEPALIVE),
-          1 => Ok(Connections::CLOSE),
-          2 => Ok(Connections::UPGRADE),
-          _ => Err(())
-        }
-      }
     }
 
     impl TryFrom<u8> for Methods {
@@ -339,26 +327,6 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl From<MessageTypes> for &str {
-      fn from(value: MessageTypes) -> Self {
-        match value {
-          MessageTypes::AUTODETECT => "AUTODETECT",
-          MessageTypes::REQUEST => "REQUEST",
-          MessageTypes::RESPONSE => "RESPONSE"
-        }
-      }
-    }
-
-    impl From<Connections> for &str {
-      fn from(value: Connections) -> Self {
-        match value {
-          Connections::KEEPALIVE => "KEEPALIVE",
-          Connections::CLOSE => "CLOSE",
-          Connections::UPGRADE => "UPGRADE"
-        }
-      }
-    }
-
     impl From<Methods> for &str {
       fn from(value: Methods) -> Self {
         match value {
@@ -391,18 +359,6 @@ pub fn generate_enums() -> TokenStream {
       }
     }
 
-    impl MessageTypes {
-      pub fn as_str(self) -> &'static str {
-        self.into()
-      }
-    }
-
-    impl Connections {
-      pub fn as_str(self) -> &'static str {
-        self.into()
-      }
-    }
-
     impl Methods {
       pub fn as_str(self) -> &'static str {
         self.into()
@@ -427,4 +383,96 @@ pub fn generate_enums() -> TokenStream {
       }
     }
   })
+}
+
+fn generate_callbacks(callbacks: &[String]) -> TokenStream {
+  let native = native::generate_callbacks(callbacks);
+  let wasm = wasm::generate_callbacks(callbacks);
+
+  TokenStream::from_iter([native, wasm])
+}
+
+// Export all build info to a file for the scripts to re-use it
+fn save_constants(methods: &[String], errors: &[String], callbacks: &[String], states: &[String]) {
+  let mut milo_cargo_toml_path = Path::new(file!()).parent().unwrap().to_path_buf();
+  milo_cargo_toml_path.push("../../parser/Cargo.toml");
+
+  // Get milo version
+  let milo_cargo_toml = read_to_string(milo_cargo_toml_path).unwrap().parse::<Table>().unwrap();
+  let milo_version = Version::parse(
+    milo_cargo_toml["package"].as_table().unwrap()["version"]
+      .as_str()
+      .unwrap(),
+  )
+  .unwrap();
+  let mut version: IndexMap<String, u8> = IndexMap::new();
+  version.insert("major".into(), milo_version.major as u8);
+  version.insert("minor".into(), milo_version.minor as u8);
+  version.insert("patch".into(), milo_version.patch as u8);
+
+  // Serialize constants
+  let mut consts: IndexMap<String, Value> = IndexMap::new();
+  consts.insert(
+    "DEBUG".into(),
+    if cfg!(debug_assertions) {
+      Value::Bool(true)
+    } else {
+      Value::Bool(false)
+    },
+  );
+  for (i, x) in methods.iter().enumerate() {
+    consts.insert(format!("METHOD_{}", x.replace('-', "_")), i.into());
+  }
+
+  for (i, x) in callbacks.iter().enumerate() {
+    consts.insert(format!("CALLBACK_{}", x.to_uppercase()), i.into());
+  }
+
+  let mut all = 0u64;
+  consts.insert("CALLBACK_ACTIVE_NONE".into(), 0.into());
+  for (i, x) in callbacks.iter().enumerate() {
+    let bit = 1 << i;
+    consts.insert(format!("CALLBACK_ACTIVE_{}", x.to_uppercase()), bit.into());
+    all |= bit;
+  }
+  consts.insert("CALLBACK_ACTIVE_ALL".into(), all.into());
+
+  for (i, x) in errors.iter().enumerate() {
+    consts.insert(format!("ERROR_{}", x), i.into());
+  }
+
+  for (i, x) in states.iter().enumerate() {
+    consts.insert(format!("STATE_{}", x.to_uppercase()), i.into());
+  }
+
+  // Prepare the data to save
+  let data = BuildInfo {
+    version,
+    constants: consts,
+  };
+
+  // Write information in the file
+  let mut json_path = Path::new(file!()).parent().unwrap().to_path_buf();
+  json_path.push("../../parser/target/buildinfo.json");
+
+  let file = OpenOptions::new()
+    .write(true)
+    .create(true)
+    .truncate(true)
+    .open(json_path.as_path());
+
+  let writer = BufWriter::new(file.unwrap());
+  serde_json::to_writer_pretty(writer, &data).unwrap();
+}
+
+/// Generates the complete parser.
+pub fn generate() -> TokenStream {
+  let (methods, errors, callbacks, states) = init_constants();
+
+  let constants_code = generate_constants(&methods, &errors, &callbacks, &states);
+  let enums_code = generate_enums(&methods, &errors, &callbacks, &states);
+  let callbacks_code = generate_callbacks(&callbacks);
+  save_constants(&methods, &errors, &callbacks, &states);
+
+  TokenStream::from_iter([constants_code, enums_code, callbacks_code])
 }

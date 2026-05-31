@@ -1,0 +1,85 @@
+path: tests/fixtures/llhttp/response/trailing-space-on-chunked-body.yml
+name: Trailing Space On Chunked Body
+checked: true
+source:
+  path: test/response/transfer-encoding.md
+  line: 4
+meta:
+  type: response
+input:
+- HTTP/1.1 200 OK
+- 'Content-Type: text/plain'
+- 'Transfer-Encoding: chunked'
+- ''
+- 25  \r\n\
+- This is the data in the first chunk
+- ''
+- 1C
+- and this is the second one
+- ''
+- 0  \r\n\
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=2 span[status]="OK"
+- off=17 status complete
+- off=17 len=12 span[header_field]="Content-Type"
+- off=30 header_field complete
+- off=31 len=10 span[header_value]="text/plain"
+- off=43 header_value complete
+- off=43 len=17 span[header_field]="Transfer-Encoding"
+- off=61 header_field complete
+- off=62 len=7 span[header_value]="chunked"
+- off=71 header_value complete
+- off=73 headers complete status=200 v=1/1 flags=208 content_length=0
+- off=76 error code=12 reason="Invalid character in chunk size"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '200'
+- offset: 13
+  type: reason
+  payload: OK
+- offset: 17
+  type: header_name
+  payload: Content-Type
+- offset: 31
+  type: header_value
+  payload: text/plain
+- offset: 43
+  type: header_name
+  payload: Transfer-Encoding
+- offset: 62
+  type: header_value
+  payload: chunked
+- offset: 73
+  type: headers
+  payload:
+    method: null
+    status: 200
+    url: null
+    protocol: HTTP
+    version: '1.1'
+    body: chunked
+- offset: 73
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid chunk length character

@@ -1,0 +1,136 @@
+path: tests/fixtures/llhttp/request/upgrade-upgrade-get-request.yml
+name: upgrade / Upgrade GET Request
+checked: true
+source:
+  path: test/request/connection.md
+  line: 675
+meta:
+  type: request
+input:
+- GET /demo HTTP/1.1
+- 'Host: example.com'
+- 'Connection: Upgrade'
+- 'Sec-WebSocket-Key2: 12998 5 Y3 1  .P00'
+- 'Sec-WebSocket-Protocol: sample'
+- 'Upgrade: WebSocket'
+- 'Sec-WebSocket-Key1: 4 @1  46546xW%0l 1 5'
+- 'Origin: http://example.com'
+- ''
+- Hot diggity dogg
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=5 span[url]="/demo"
+- off=10 url complete
+- off=10 len=4 span[protocol]="HTTP"
+- off=14 protocol complete
+- off=15 len=3 span[version]="1.1"
+- off=18 version complete
+- off=20 len=4 span[header_field]="Host"
+- off=25 header_field complete
+- off=26 len=11 span[header_value]="example.com"
+- off=39 header_value complete
+- off=39 len=10 span[header_field]="Connection"
+- off=50 header_field complete
+- off=51 len=7 span[header_value]="Upgrade"
+- off=60 header_value complete
+- off=60 len=18 span[header_field]="Sec-WebSocket-Key2"
+- off=79 header_field complete
+- off=80 len=18 span[header_value]="12998 5 Y3 1  .P00"
+- off=100 header_value complete
+- off=100 len=22 span[header_field]="Sec-WebSocket-Protocol"
+- off=123 header_field complete
+- off=124 len=6 span[header_value]="sample"
+- off=132 header_value complete
+- off=132 len=7 span[header_field]="Upgrade"
+- off=140 header_field complete
+- off=141 len=9 span[header_value]="WebSocket"
+- off=152 header_value complete
+- off=152 len=18 span[header_field]="Sec-WebSocket-Key1"
+- off=171 header_field complete
+- off=172 len=20 span[header_value]="4 @1  46546xW%0l 1 5"
+- off=194 header_value complete
+- off=194 len=6 span[header_field]="Origin"
+- off=201 header_field complete
+- off=202 len=18 span[header_value]="http://example.com"
+- off=222 header_value complete
+- off=224 headers complete method=1 v=1/1 flags=14 content_length=0
+- off=224 message complete
+- off=224 error code=22 reason="Pause on CONNECT/Upgrade"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: GET
+- offset: 4
+  type: url
+  payload: /demo
+- offset: 10
+  type: protocol
+  payload: HTTP
+- offset: 15
+  type: version
+  payload: '1.1'
+- offset: 20
+  type: header_name
+  payload: Host
+- offset: 26
+  type: header_value
+  payload: example.com
+- offset: 39
+  type: header_name
+  payload: Connection
+- offset: 51
+  type: header_value
+  payload: Upgrade
+- offset: 60
+  type: header_name
+  payload: Sec-WebSocket-Key2
+- offset: 80
+  type: header_value
+  payload: 12998 5 Y3 1  .P00
+- offset: 100
+  type: header_name
+  payload: Sec-WebSocket-Protocol
+- offset: 124
+  type: header_value
+  payload: sample
+- offset: 132
+  type: header_name
+  payload: Upgrade
+- offset: 141
+  type: header_value
+  payload: WebSocket
+- offset: 152
+  type: header_name
+  payload: Sec-WebSocket-Key1
+- offset: 172
+  type: header_value
+  payload: 4 @1  46546xW%0l 1 5
+- offset: 194
+  type: header_name
+  payload: Origin
+- offset: 202
+  type: header_value
+  payload: http://example.com
+- offset: 224
+  type: headers
+  payload:
+    method: GET
+    status: null
+    url: /demo
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 224
+  type: complete
+  payload: null
+- offset: 224
+  type: tunnel
+  payload: null

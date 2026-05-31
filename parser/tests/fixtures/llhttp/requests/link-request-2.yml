@@ -1,0 +1,77 @@
+path: tests/fixtures/llhttp/request/link-request-2.yml
+name: LINK Request
+checked: true
+source:
+  path: test/request/method.md
+  line: 311
+meta:
+  type: request
+input:
+- UNLINK /images/my_dog.jpg HTTP/1.1
+- 'Host: example.com'
+- 'Link: <http://example.com/profiles/sally>; rel="tag"'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=6 span[method]="UNLINK"
+- off=6 method complete
+- off=7 len=18 span[url]="/images/my_dog.jpg"
+- off=26 url complete
+- off=26 len=4 span[protocol]="HTTP"
+- off=30 protocol complete
+- off=31 len=3 span[version]="1.1"
+- off=34 version complete
+- off=36 len=4 span[header_field]="Host"
+- off=41 header_field complete
+- off=42 len=11 span[header_value]="example.com"
+- off=55 header_value complete
+- off=55 len=4 span[header_field]="Link"
+- off=60 header_field complete
+- off=61 len=46 span[header_value]="<http://example.com/profiles/sally>; rel="tag""
+- off=109 header_value complete
+- off=111 headers complete method=32 v=1/1 flags=0 content_length=0
+- off=111 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: UNLINK
+- offset: 7
+  type: url
+  payload: /images/my_dog.jpg
+- offset: 26
+  type: protocol
+  payload: HTTP
+- offset: 31
+  type: version
+  payload: '1.1'
+- offset: 36
+  type: header_name
+  payload: Host
+- offset: 42
+  type: header_value
+  payload: example.com
+- offset: 55
+  type: header_name
+  payload: Link
+- offset: 61
+  type: header_value
+  payload: <http://example.com/profiles/sally>; rel="tag"
+- offset: 111
+  type: headers
+  payload:
+    method: UNLINK
+    status: null
+    url: /images/my_dog.jpg
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 111
+  type: complete
+  payload: null

@@ -1,0 +1,88 @@
+path: tests/fixtures/llhttp/request/link-request.yml
+name: LINK Request
+checked: true
+source:
+  path: test/request/method.md
+  line: 273
+meta:
+  type: request
+input:
+- LINK /images/my_dog.jpg HTTP/1.1
+- 'Host: example.com'
+- 'Link: <http://example.com/profiles/joe>; rel="tag"'
+- 'Link: <http://example.com/profiles/sally>; rel="tag"'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[method]="LINK"
+- off=4 method complete
+- off=5 len=18 span[url]="/images/my_dog.jpg"
+- off=24 url complete
+- off=24 len=4 span[protocol]="HTTP"
+- off=28 protocol complete
+- off=29 len=3 span[version]="1.1"
+- off=32 version complete
+- off=34 len=4 span[header_field]="Host"
+- off=39 header_field complete
+- off=40 len=11 span[header_value]="example.com"
+- off=53 header_value complete
+- off=53 len=4 span[header_field]="Link"
+- off=58 header_field complete
+- off=59 len=44 span[header_value]="<http://example.com/profiles/joe>; rel="tag""
+- off=105 header_value complete
+- off=105 len=4 span[header_field]="Link"
+- off=110 header_field complete
+- off=111 len=46 span[header_value]="<http://example.com/profiles/sally>; rel="tag""
+- off=159 header_value complete
+- off=161 headers complete method=31 v=1/1 flags=0 content_length=0
+- off=161 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: LINK
+- offset: 5
+  type: url
+  payload: /images/my_dog.jpg
+- offset: 24
+  type: protocol
+  payload: HTTP
+- offset: 29
+  type: version
+  payload: '1.1'
+- offset: 34
+  type: header_name
+  payload: Host
+- offset: 40
+  type: header_value
+  payload: example.com
+- offset: 53
+  type: header_name
+  payload: Link
+- offset: 59
+  type: header_value
+  payload: <http://example.com/profiles/joe>; rel="tag"
+- offset: 105
+  type: header_name
+  payload: Link
+- offset: 111
+  type: header_value
+  payload: <http://example.com/profiles/sally>; rel="tag"
+- offset: 161
+  type: headers
+  payload:
+    method: LINK
+    status: null
+    url: /images/my_dog.jpg
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 161
+  type: complete
+  payload: null

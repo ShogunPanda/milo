@@ -1,0 +1,32 @@
+path: tests/fixtures/llhttp/request/no-http-version.yml
+name: No HTTP Version
+checked: true
+source:
+  path: test/request/sample.md
+  line: 314
+meta:
+  type: request
+input:
+- GET /
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=1 span[url]="/"
+- off=7 url complete
+- off=9 headers complete method=1 v=0/9 flags=0 content_length=0
+- off=9 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Request line too short

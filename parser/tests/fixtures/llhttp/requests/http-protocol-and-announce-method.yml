@@ -1,0 +1,34 @@
+path: tests/fixtures/llhttp/request/http-protocol-and-announce-method.yml
+name: HTTP Protocol And ANNOUNCE Method
+checked: true
+source:
+  path: test/request/invalid.md
+  line: 66
+meta:
+  type: request
+input:
+- ANNOUNCE /music/sweet/music HTTP/1.0
+- 'Host: example.com'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=8 span[method]="ANNOUNCE"
+- off=8 method complete
+- off=9 len=18 span[url]="/music/sweet/music"
+- off=28 url complete
+- off=28 len=4 span[protocol]="HTTP"
+- off=32 protocol complete
+- off=32 error code=8 reason="Invalid method for HTTP/x.x request"
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid protocol

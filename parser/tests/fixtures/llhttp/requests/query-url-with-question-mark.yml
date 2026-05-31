@@ -1,0 +1,55 @@
+path: tests/fixtures/llhttp/request/query-url-with-question-mark.yml
+name: Query URL With Question Mark
+checked: true
+source:
+  path: test/request/uri.md
+  line: 27
+meta:
+  type: request
+input:
+- GET /test.cgi?foo=bar?baz HTTP/1.1
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=21 span[url]="/test.cgi?foo=bar?baz"
+- off=26 url complete
+- off=26 len=4 span[protocol]="HTTP"
+- off=30 protocol complete
+- off=31 len=3 span[version]="1.1"
+- off=34 version complete
+- off=38 headers complete method=1 v=1/1 flags=0 content_length=0
+- off=38 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: GET
+- offset: 4
+  type: url
+  payload: /test.cgi?foo=bar?baz
+- offset: 26
+  type: protocol
+  payload: HTTP
+- offset: 31
+  type: version
+  payload: '1.1'
+- offset: 38
+  type: headers
+  payload:
+    method: GET
+    status: null
+    url: /test.cgi?foo=bar?baz
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 38
+  type: complete
+  payload: null

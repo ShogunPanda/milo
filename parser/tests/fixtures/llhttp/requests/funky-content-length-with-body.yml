@@ -1,0 +1,42 @@
+path: tests/fixtures/llhttp/request/funky-content-length-with-body.yml
+name: Funky Content-Length With Body
+checked: true
+source:
+  path: test/request/content-length.md
+  line: 261
+meta:
+  type: request
+input:
+- GET /get_funky_content_length_body_hello HTTP/1.0
+- 'conTENT-Length: 5'
+- ''
+- HELLO
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=36 span[url]="/get_funky_content_length_body_hello"
+- off=41 url complete
+- off=41 len=4 span[protocol]="HTTP"
+- off=45 protocol complete
+- off=46 len=3 span[version]="1.0"
+- off=49 version complete
+- off=51 len=14 span[header_field]="conTENT-Length"
+- off=66 header_field complete
+- off=67 len=1 span[header_value]="5"
+- off=70 header_value complete
+- off=72 headers complete method=1 v=1/0 flags=20 content_length=5
+- off=72 len=5 span[body]="HELLO"
+- off=77 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Invalid protocol

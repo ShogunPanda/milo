@@ -1,0 +1,126 @@
+path: tests/fixtures/llhttp/request/close-crlf-between-requests-explicit-close-lenient.yml
+name: close / CRLF Between Requests, Explicit Close (lenient)
+checked: true
+source:
+  path: test/request/connection.md
+  line: 314
+meta:
+  type: request-lenient-keep-alive
+input:
+- POST / HTTP/1.1
+- 'Host: www.example.com'
+- 'Content-Type: application/x-www-form-urlencoded'
+- 'Content-Length: 4'
+- 'Connection: close'
+- ''
+- q=42
+- ''
+- GET / HTTP/1.1
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[method]="POST"
+- off=4 method complete
+- off=5 len=1 span[url]="/"
+- off=7 url complete
+- off=7 len=4 span[protocol]="HTTP"
+- off=11 protocol complete
+- off=12 len=3 span[version]="1.1"
+- off=15 version complete
+- off=17 len=4 span[header_field]="Host"
+- off=22 header_field complete
+- off=23 len=15 span[header_value]="www.example.com"
+- off=40 header_value complete
+- off=40 len=12 span[header_field]="Content-Type"
+- off=53 header_field complete
+- off=54 len=33 span[header_value]="application/x-www-form-urlencoded"
+- off=89 header_value complete
+- off=89 len=14 span[header_field]="Content-Length"
+- off=104 header_field complete
+- off=105 len=1 span[header_value]="4"
+- off=108 header_value complete
+- off=108 len=10 span[header_field]="Connection"
+- off=119 header_field complete
+- off=120 len=5 span[header_value]="close"
+- off=127 header_value complete
+- off=129 headers complete method=3 v=1/1 flags=22 content_length=4
+- off=129 len=4 span[body]="q=42"
+- off=133 message complete
+- off=137 reset
+- off=137 message begin
+- off=137 len=3 span[method]="GET"
+- off=140 method complete
+- off=141 len=1 span[url]="/"
+- off=143 url complete
+- off=143 len=4 span[protocol]="HTTP"
+- off=147 protocol complete
+- off=148 len=3 span[version]="1.1"
+- off=151 version complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: POST
+- offset: 5
+  type: url
+  payload: /
+- offset: 7
+  type: protocol
+  payload: HTTP
+- offset: 12
+  type: version
+  payload: '1.1'
+- offset: 17
+  type: header_name
+  payload: Host
+- offset: 23
+  type: header_value
+  payload: www.example.com
+- offset: 40
+  type: header_name
+  payload: Content-Type
+- offset: 54
+  type: header_value
+  payload: application/x-www-form-urlencoded
+- offset: 89
+  type: header_name
+  payload: Content-Length
+- offset: 105
+  type: header_value
+  payload: '4'
+- offset: 108
+  type: header_name
+  payload: Connection
+- offset: 120
+  type: header_value
+  payload: close
+- offset: 129
+  type: headers
+  payload:
+    method: POST
+    status: null
+    url: /
+    protocol: HTTP
+    version: '1.1'
+    body: 4
+- offset: 129
+  type: data
+  payload: q=42
+- offset: 133
+  type: body
+  payload: null
+- offset: 133
+  type: complete
+  payload: null
+- offset: 129
+  type: finish
+  payload: null
+- offset: 133
+  type: error
+  payload:
+    code: UNEXPECTED_CHARACTER
+    description: Unexpected data

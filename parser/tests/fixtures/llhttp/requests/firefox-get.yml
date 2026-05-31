@@ -1,0 +1,143 @@
+path: tests/fixtures/llhttp/request/firefox-get.yml
+name: Firefox GET
+checked: true
+source:
+  path: test/request/sample.md
+  line: 105
+meta:
+  type: request
+input:
+- GET /favicon.ico HTTP/1.1
+- 'Host: 0.0.0.0=5000'
+- 'User-Agent: Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9) Gecko/2008061015 Firefox/3.0'
+- 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+- 'Accept-Language: en-us,en;q=0.5'
+- 'Accept-Encoding: gzip,deflate'
+- 'Accept-Charset: ISO-8859-1,utf-8;q=0.7,*;q=0.7'
+- 'Keep-Alive: 300'
+- 'Connection: keep-alive'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=12 span[url]="/favicon.ico"
+- off=17 url complete
+- off=17 len=4 span[protocol]="HTTP"
+- off=21 protocol complete
+- off=22 len=3 span[version]="1.1"
+- off=25 version complete
+- off=27 len=4 span[header_field]="Host"
+- off=32 header_field complete
+- off=33 len=12 span[header_value]="0.0.0.0=5000"
+- off=47 header_value complete
+- off=47 len=10 span[header_field]="User-Agent"
+- off=58 header_field complete
+- off=59 len=76 span[header_value]="Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9) Gecko/2008061015 Firefox/3.0"
+- off=137 header_value complete
+- off=137 len=6 span[header_field]="Accept"
+- off=144 header_field complete
+- off=145 len=63 span[header_value]="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+- off=210 header_value complete
+- off=210 len=15 span[header_field]="Accept-Language"
+- off=226 header_field complete
+- off=227 len=14 span[header_value]="en-us,en;q=0.5"
+- off=243 header_value complete
+- off=243 len=15 span[header_field]="Accept-Encoding"
+- off=259 header_field complete
+- off=260 len=12 span[header_value]="gzip,deflate"
+- off=274 header_value complete
+- off=274 len=14 span[header_field]="Accept-Charset"
+- off=289 header_field complete
+- off=290 len=30 span[header_value]="ISO-8859-1,utf-8;q=0.7,*;q=0.7"
+- off=322 header_value complete
+- off=322 len=10 span[header_field]="Keep-Alive"
+- off=333 header_field complete
+- off=334 len=3 span[header_value]="300"
+- off=339 header_value complete
+- off=339 len=10 span[header_field]="Connection"
+- off=350 header_field complete
+- off=351 len=10 span[header_value]="keep-alive"
+- off=363 header_value complete
+- off=365 headers complete method=1 v=1/1 flags=1 content_length=0
+- off=365 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: GET
+- offset: 4
+  type: url
+  payload: /favicon.ico
+- offset: 17
+  type: protocol
+  payload: HTTP
+- offset: 22
+  type: version
+  payload: '1.1'
+- offset: 27
+  type: header_name
+  payload: Host
+- offset: 33
+  type: header_value
+  payload: 0.0.0.0=5000
+- offset: 47
+  type: header_name
+  payload: User-Agent
+- offset: 59
+  type: header_value
+  payload: Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9) Gecko/2008061015 Firefox/3.0
+- offset: 137
+  type: header_name
+  payload: Accept
+- offset: 145
+  type: header_value
+  payload: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+- offset: 210
+  type: header_name
+  payload: Accept-Language
+- offset: 227
+  type: header_value
+  payload: en-us,en;q=0.5
+- offset: 243
+  type: header_name
+  payload: Accept-Encoding
+- offset: 260
+  type: header_value
+  payload: gzip,deflate
+- offset: 274
+  type: header_name
+  payload: Accept-Charset
+- offset: 290
+  type: header_value
+  payload: ISO-8859-1,utf-8;q=0.7,*;q=0.7
+- offset: 322
+  type: header_name
+  payload: Keep-Alive
+- offset: 334
+  type: header_value
+  payload: '300'
+- offset: 339
+  type: header_name
+  payload: Connection
+- offset: 351
+  type: header_value
+  payload: keep-alive
+- offset: 365
+  type: headers
+  payload:
+    method: GET
+    status: null
+    url: /favicon.ico
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 365
+  type: complete
+  payload: null

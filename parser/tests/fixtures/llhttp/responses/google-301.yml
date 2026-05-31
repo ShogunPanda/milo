@@ -1,0 +1,157 @@
+path: tests/fixtures/llhttp/response/google-301.yml
+name: Google 301
+checked: true
+source:
+  path: test/response/sample.md
+  line: 118
+meta:
+  type: response
+input:
+- HTTP/1.1 301 Moved Permanently
+- 'Location: http://www.google.com/'
+- 'Content-Type: text/html; charset=UTF-8'
+- 'Date: Sun, 26 Apr 2009 11:11:49 GMT'
+- 'Expires: Tue, 26 May 2009 11:11:49 GMT'
+- 'X-$PrototypeBI-Version: 1.6.0.3'
+- 'Cache-Control: public, max-age=2592000'
+- 'Server: gws'
+- 'Content-Length:  219  '
+- ''
+- <HTML><HEAD><meta http-equiv=content-type content=text/html;charset=utf-8>\n\
+- <TITLE>301 Moved</TITLE></HEAD><BODY>\n\
+- <H1>301 Moved</H1>\n\
+- The document has moved\n\
+- <A HREF="http://www.google.com/">here</A>.
+- </BODY></HTML>
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=17 span[status]="Moved Permanently"
+- off=32 status complete
+- off=32 len=8 span[header_field]="Location"
+- off=41 header_field complete
+- off=42 len=22 span[header_value]="http://www.google.com/"
+- off=66 header_value complete
+- off=66 len=12 span[header_field]="Content-Type"
+- off=79 header_field complete
+- off=80 len=24 span[header_value]="text/html; charset=UTF-8"
+- off=106 header_value complete
+- off=106 len=4 span[header_field]="Date"
+- off=111 header_field complete
+- off=112 len=29 span[header_value]="Sun, 26 Apr 2009 11:11:49 GMT"
+- off=143 header_value complete
+- off=143 len=7 span[header_field]="Expires"
+- off=151 header_field complete
+- off=152 len=29 span[header_value]="Tue, 26 May 2009 11:11:49 GMT"
+- off=183 header_value complete
+- off=183 len=22 span[header_field]="X-$PrototypeBI-Version"
+- off=206 header_field complete
+- off=207 len=7 span[header_value]="1.6.0.3"
+- off=216 header_value complete
+- off=216 len=13 span[header_field]="Cache-Control"
+- off=230 header_field complete
+- off=231 len=23 span[header_value]="public, max-age=2592000"
+- off=256 header_value complete
+- off=256 len=6 span[header_field]="Server"
+- off=263 header_field complete
+- off=264 len=3 span[header_value]="gws"
+- off=269 header_value complete
+- off=269 len=14 span[header_field]="Content-Length"
+- off=284 header_field complete
+- off=286 len=5 span[header_value]="219  "
+- off=293 header_value complete
+- off=295 headers complete status=301 v=1/1 flags=20 content_length=219
+- off=295 len=74 span[body]="<HTML><HEAD><meta http-equiv=content-type content=text/html;charset=utf-8>"
+- off=369 len=1 span[body]=lf
+- off=370 len=37 span[body]="<TITLE>301 Moved</TITLE></HEAD><BODY>"
+- off=407 len=1 span[body]=lf
+- off=408 len=18 span[body]="<H1>301 Moved</H1>"
+- off=426 len=1 span[body]=lf
+- off=427 len=22 span[body]="The document has moved"
+- off=449 len=1 span[body]=lf
+- off=450 len=42 span[body]="<A HREF="http://www.google.com/">here</A>."
+- off=492 len=1 span[body]=cr
+- off=493 len=1 span[body]=lf
+- off=494 len=14 span[body]="</BODY></HTML>"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '301'
+- offset: 13
+  type: reason
+  payload: Moved Permanently
+- offset: 32
+  type: header_name
+  payload: Location
+- offset: 42
+  type: header_value
+  payload: http://www.google.com/
+- offset: 66
+  type: header_name
+  payload: Content-Type
+- offset: 80
+  type: header_value
+  payload: text/html; charset=UTF-8
+- offset: 106
+  type: header_name
+  payload: Date
+- offset: 112
+  type: header_value
+  payload: Sun, 26 Apr 2009 11:11:49 GMT
+- offset: 143
+  type: header_name
+  payload: Expires
+- offset: 152
+  type: header_value
+  payload: Tue, 26 May 2009 11:11:49 GMT
+- offset: 183
+  type: header_name
+  payload: X-$PrototypeBI-Version
+- offset: 207
+  type: header_value
+  payload: 1.6.0.3
+- offset: 216
+  type: header_name
+  payload: Cache-Control
+- offset: 231
+  type: header_value
+  payload: public, max-age=2592000
+- offset: 256
+  type: header_name
+  payload: Server
+- offset: 264
+  type: header_value
+  payload: gws
+- offset: 269
+  type: header_name
+  payload: Content-Length
+- offset: 286
+  type: header_value
+  payload: '219'
+- offset: 295
+  type: headers
+  payload:
+    method: null
+    status: 301
+    url: null
+    protocol: HTTP
+    version: '1.1'
+    body: 219
+- offset: 295
+  type: data
+  payload: "<HTML><HEAD><meta http-equiv=content-type content=text/html;charset=utf-8>\n<TITLE>301 Moved</TITLE></HEAD><BODY>\n<H1>301 Moved</H1>\nThe document has moved\n<A HREF=\"http://www.google.com/\">here</A>.\r\n</BODY></HTML>"

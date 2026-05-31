@@ -1,0 +1,37 @@
+{
+  "name": "@perseveranza-pets/milo",
+  "version": "0.3.0",
+  "description": "A fast and embeddable HTTP/1.1 parser.",
+  "homepage": "https://sw.cowtech.it/milo",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ShogunPanda/milo.git"
+  },
+  "keywords": [
+    "http",
+    "parser"
+  ],
+  "bugs": {
+    "url": "https://github.com/ShogunPanda/milo/issues"
+  },
+  "author": "Shogun <shogun@cowtech.it>",
+  "license": "ISC",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "format": "prettier -w \"parser/**/*.js\" \"benchmarks/**/*.js\" \"references/**/*.js\"",
+    "lint": "eslint --cache \"parser/**/*.js\" \"benchmarks/**/*.js\" \"references/**/*.js\""
+  },
+  "dependencies": {
+    "@cowtech/eslint-config": "^11.1.3",
+    "eslint": "^9.39.0",
+    "prettier": "^3.8.3",
+    "prettier-plugin-space-before-function-paren": "^0.1.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "yaml": "^2.9.0"
+  },
+  "engines": {
+    "node": ">= 22.21.0"
+  }
+}

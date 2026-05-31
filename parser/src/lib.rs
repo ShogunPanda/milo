@@ -1,6 +1,3 @@
-#![feature(vec_into_raw_parts)]
-#![feature(cell_update)]
-#![feature(exposed_provenance)]
 #![allow(unused_imports)]
 
 extern crate alloc;
@@ -15,60 +12,24 @@ use core::ptr;
 use core::str;
 use core::{slice, slice::from_raw_parts};
 
-use milo_macros::{
-  callback, generate_callbacks, generate_constants, generate_enums, init_constants, link_callbacks, r#return,
-};
-
-init_constants!();
-
-#[cfg(target_family = "wasm")]
-#[link(wasm_import_module = "env")]
-extern "C" {
-  link_callbacks!();
-
-  #[cfg(debug_assertions)]
-  fn logger(message: u64);
-}
-
-#[cfg(all(debug_assertions, target_family = "wasm"))]
-#[no_mangle]
-pub fn __start() {
-  std::panic::set_hook(Box::new(|panic_info| {
-    debug(format!("WebAssembly panicked: {:#?}", panic_info));
-  }));
-}
-
-#[repr(C)]
-pub struct Flags {
-  pub debug: bool,
-}
-
-#[no_mangle]
-pub fn flags() -> Flags {
-  Flags {
-    debug: cfg!(debug_assertions),
-  }
-}
-
-mod states;
-
-use crate::states::*;
-
-generate_constants!();
-generate_enums!();
-generate_callbacks!();
+use milo_macros::{callback, generate, next};
 
 #[repr(C)]
 #[derive(Clone, Debug)]
 pub struct Parser {
   // User writable
-  pub mode: u8,
+  pub autodetect: bool,
+  pub is_request: bool,
   pub manage_unconsumed: bool,
   pub continue_without_data: bool,
   pub is_connect: bool,
   pub skip_body: bool,
+  pub max_start_line_length: usize,
+  pub max_header_length: usize,
   #[cfg(not(target_family = "wasm"))]
   pub context: *mut c_void,
+  #[cfg(any(debug_assertions, feature = "debug"))]
+  pub debug: bool,
 
   // Generic state
   pub state: u8,
@@ -78,22 +39,24 @@ pub struct Parser {
   pub error_code: u8,
 
   // Current message flags
-  pub message_type: u8,
   pub method: u8,
   pub status: u32,
   pub version_major: u8,
   pub version_minor: u8,
-  pub connection: u8,
   pub content_length: u64,
   pub chunk_size: u64,
   pub remaining_content_length: u64,
   pub remaining_chunk_size: u64,
   pub has_content_length: bool,
+  pub has_transfer_encoding: bool,
   pub has_chunked_transfer_encoding: bool,
+  pub has_connection_close: bool,
+  pub has_connection_upgrade: bool,
   pub has_upgrade: bool,
   pub has_trailers: bool,
 
   // Callback handling
+  pub active_callbacks: u64,
   #[cfg(not(target_family = "wasm"))]
   pub callbacks: ParserCallbacks,
 
@@ -108,20 +71,35 @@ pub struct Parser {
   pub unconsumed_len: usize,
 }
 
-impl Default for Parser {
-  fn default() -> Self { Self::new() }
-}
+#[cfg(not(target_family = "wasm"))]
+mod native;
+
+#[cfg(not(target_family = "wasm"))]
+pub use crate::native::*;
+
+#[cfg(target_family = "wasm")]
+mod wasm;
+
+#[cfg(target_family = "wasm")]
+pub use crate::wasm::*;
+
+generate!();
 
 impl Parser {
   /// Creates a new parser
   pub fn new() -> Parser {
     Parser {
       // User writable
-      mode: MESSAGE_TYPE_AUTODETECT,
+      autodetect: true,
+      is_request: false,
       manage_unconsumed: false,
       continue_without_data: false,
       is_connect: false,
       skip_body: false,
+      max_start_line_length: 8192,
+      max_header_length: 8192,
+      #[cfg(any(debug_assertions, feature = "debug"))]
+      debug: false,
       #[cfg(not(target_family = "wasm"))]
       context: ptr::null_mut(),
       // Generic state
@@ -131,21 +109,23 @@ impl Parser {
       paused: false,
       error_code: ERROR_NONE,
       // Current message flags
-      message_type: 0,
       method: 0,
       status: 0,
       version_major: 0,
       version_minor: 0,
-      connection: 0,
       content_length: 0,
       chunk_size: 0,
       remaining_content_length: 0,
       remaining_chunk_size: 0,
       has_content_length: false,
+      has_transfer_encoding: false,
       has_chunked_transfer_encoding: false,
+      has_connection_close: false,
+      has_connection_upgrade: false,
       has_upgrade: false,
       has_trailers: false,
       // Callbacks handling
+      active_callbacks: 0,
       #[cfg(not(target_family = "wasm"))]
       callbacks: ParserCallbacks::new(),
       // WASM Specific
@@ -165,7 +145,8 @@ impl Parser {
   /// The following fields are not modified:
   ///   * position
   ///   * context
-  ///   * mode
+  ///   * autodetect
+  ///   * is_request
   ///   * manage_unconsumed
   ///   * continue_without_data
   ///   * context
@@ -177,8 +158,6 @@ impl Parser {
       self.parsed = 0;
     }
 
-    self.message_type = 0;
-    self.connection = 0;
     self.error_code = ERROR_NONE;
 
     if self.error_description_len > 0 {
@@ -199,12 +178,11 @@ impl Parser {
       self.unconsumed_len = 0;
     }
 
+    self.clear();
     callback!(on_reset);
   }
 
   /// Clears all values about the message in the parser.
-  ///
-  /// The connection and message type fields are not cleared.  
   pub fn clear(&mut self) {
     self.is_connect = false;
     self.method = 0;
@@ -212,7 +190,10 @@ impl Parser {
     self.version_major = 0;
     self.version_minor = 0;
     self.has_content_length = false;
+    self.has_transfer_encoding = false;
     self.has_chunked_transfer_encoding = false;
+    self.has_connection_close = false;
+    self.has_connection_upgrade = false;
     self.has_upgrade = false;
     self.has_trailers = false;
     self.content_length = 0;
@@ -233,7 +214,7 @@ impl Parser {
   pub fn finish(&mut self) {
     match self.state {
       // If the parser is one of the initial states, simply jump to finish
-      STATE_START | STATE_AUTODETECT | STATE_REQUEST | STATE_RESPONSE | STATE_FINISH => {
+      STATE_START | STATE_REQUEST_LINE | STATE_STATUS_LINE | STATE_FINISH => {
         self.state = STATE_FINISH;
       }
       STATE_BODY_WITH_NO_LENGTH => {
@@ -251,20 +232,10 @@ impl Parser {
     }
   }
 
-  /// Moves the parsers to a new state and marks a certain number of characters
-  /// as used.
-  ///
-  /// The allow annotation is needed when building in release mode.
-  #[allow(dead_code)]
-  pub fn move_to(&mut self, state: u8, advance: usize) {
-    // Change the state
-    self.state = state;
-    self.position += advance;
-  }
-
   /// Marks the parsing a failed, setting a error code and and error message.
   ///
   /// It always returns zero for internal use.
+  #[inline(always)]
   pub fn fail(&mut self, code: u8, description: &str) {
     let description_copy = description.to_string();
     let (ptr, _, len) = description_copy.into_raw_parts();
@@ -273,6 +244,7 @@ impl Parser {
     self.error_code = code;
     self.error_description = ptr;
     self.error_description_len = len as u16;
+    callback!(on_error, 0, 0);
   }
 
   /// Returns the current parser's state as string.
@@ -296,16 +268,9 @@ impl Parser {
   }
 }
 
+impl Default for Parser {
+  fn default() -> Self { Self::new() }
+}
+
+mod matchers;
 mod parse;
-
-#[cfg(not(target_family = "wasm"))]
-mod native;
-
-#[cfg(not(target_family = "wasm"))]
-pub use crate::native::*;
-
-#[cfg(target_family = "wasm")]
-mod wasm;
-
-#[cfg(target_family = "wasm")]
-pub use crate::wasm::*;

@@ -1,0 +1,75 @@
+path: tests/fixtures/llhttp/response/http-101-response-with-upgrade-and-content-length-header.yml
+name: HTTP 101 Response With Upgrade And Content-Length Header
+checked: true
+source:
+  path: test/response/connection.md
+  line: 293
+meta:
+  type: response
+input:
+- HTTP/1.1 101 Switching Protocols
+- 'Connection: upgrade'
+- 'Upgrade: h2c'
+- 'Content-Length: 4'
+- ''
+- body\
+- proto
+llhttp:
+- off=0 message begin
+- off=0 len=4 span[protocol]="HTTP"
+- off=4 protocol complete
+- off=5 len=3 span[version]="1.1"
+- off=8 version complete
+- off=13 len=19 span[status]="Switching Protocols"
+- off=34 status complete
+- off=34 len=10 span[header_field]="Connection"
+- off=45 header_field complete
+- off=46 len=7 span[header_value]="upgrade"
+- off=55 header_value complete
+- off=55 len=7 span[header_field]="Upgrade"
+- off=63 header_field complete
+- off=64 len=3 span[header_value]="h2c"
+- off=69 header_value complete
+- off=69 len=14 span[header_field]="Content-Length"
+- off=84 header_field complete
+- off=85 len=1 span[header_value]="4"
+- off=88 header_value complete
+- off=90 headers complete status=101 v=1/1 flags=34 content_length=4
+- off=90 message complete
+- off=90 error code=22 reason="Pause on CONNECT/Upgrade"
+output:
+- offset: 0
+  type: response
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: protocol
+  payload: HTTP
+- offset: 5
+  type: version
+  payload: '1.1'
+- offset: 9
+  type: status
+  payload: '101'
+- offset: 13
+  type: reason
+  payload: Switching Protocols
+- offset: 34
+  type: header_name
+  payload: Connection
+- offset: 46
+  type: header_value
+  payload: upgrade
+- offset: 55
+  type: header_name
+  payload: Upgrade
+- offset: 64
+  type: header_value
+  payload: h2c
+- offset: 69
+  type: error
+  payload:
+    code: UNEXPECTED_CONTENT_LENGTH
+    description: Unexpected Content-Length header for a response without body

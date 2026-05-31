@@ -1,0 +1,66 @@
+path: tests/fixtures/llhttp/request/request-starting-with-crlf.yml
+name: Request Starting With CRLF
+checked: true
+source:
+  path: test/request/sample.md
+  line: 478
+meta:
+  type: request
+input:
+- \r\nGET /url HTTP/1.1
+- 'Header1: Value1'
+- ''
+- ''
+llhttp:
+- off=2 message begin
+- off=2 len=3 span[method]="GET"
+- off=5 method complete
+- off=6 len=4 span[url]="/url"
+- off=11 url complete
+- off=11 len=4 span[protocol]="HTTP"
+- off=15 protocol complete
+- off=16 len=3 span[version]="1.1"
+- off=19 version complete
+- off=21 len=7 span[header_field]="Header1"
+- off=29 header_field complete
+- off=30 len=6 span[header_value]="Value1"
+- off=38 header_value complete
+- off=40 headers complete method=1 v=1/1 flags=0 content_length=0
+- off=40 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 2
+  type: method
+  payload: GET
+- offset: 6
+  type: url
+  payload: /url
+- offset: 11
+  type: protocol
+  payload: HTTP
+- offset: 16
+  type: version
+  payload: '1.1'
+- offset: 21
+  type: header_name
+  payload: Header1
+- offset: 30
+  type: header_value
+  payload: Value1
+- offset: 40
+  type: headers
+  payload:
+    method: GET
+    status: null
+    url: /url
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 40
+  type: complete
+  payload: null

@@ -1,7 +1,7 @@
 use core::ffi::c_void;
 use core::slice;
 
-use milo::Parser;
+use milo_parser::{Parser, CALLBACK_ACTIVE_ON_DATA};
 
 fn main() {
   // Create the parser.
@@ -27,9 +27,10 @@ fn main() {
     let message =
       unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(p.context.add(from) as *const u8, size)) };
 
-    // Do somethin cvdg with the informations.
-    println!("Pos={} Body: {}", p.position, message);
+    // Do somethin cool with the informations.
+    println!("Pos={} Body: {}", from, message);
   };
+  parser.active_callbacks |= CALLBACK_ACTIVE_ON_DATA;
 
   // Now perform the main parsing using milo.parse. The method returns the number
   // of consumed characters.

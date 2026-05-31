@@ -1,0 +1,67 @@
+path: tests/fixtures/llhttp/request/extended-characters.yml
+name: Extended Characters
+checked: true
+source:
+  path: test/request/sample.md
+  line: 506
+meta:
+  noScan: true
+  type: request
+input:
+- GET / HTTP/1.1
+- 'Test: Düsseldorf'
+- ''
+- ''
+llhttp:
+- off=0 message begin
+- off=0 len=3 span[method]="GET"
+- off=3 method complete
+- off=4 len=1 span[url]="/"
+- off=6 url complete
+- off=6 len=4 span[protocol]="HTTP"
+- off=10 protocol complete
+- off=11 len=3 span[version]="1.1"
+- off=14 version complete
+- off=16 len=4 span[header_field]="Test"
+- off=21 header_field complete
+- off=22 len=11 span[header_value]="Düsseldorf"
+- off=35 header_value complete
+- off=37 headers complete method=1 v=1/1 flags=0 content_length=0
+- off=37 message complete
+output:
+- offset: 0
+  type: request
+  payload: null
+- offset: 0
+  type: begin
+  payload: null
+- offset: 0
+  type: method
+  payload: GET
+- offset: 4
+  type: url
+  payload: /
+- offset: 6
+  type: protocol
+  payload: HTTP
+- offset: 11
+  type: version
+  payload: '1.1'
+- offset: 16
+  type: header_name
+  payload: Test
+- offset: 22
+  type: header_value
+  payload: Düsseldorf
+- offset: 37
+  type: headers
+  payload:
+    method: GET
+    status: null
+    url: /
+    protocol: HTTP
+    version: '1.1'
+    body: null
+- offset: 37
+  type: complete
+  payload: null

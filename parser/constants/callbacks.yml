@@ -1,5 +1,4 @@
 ---
-- on_state_change
 - on_error
 - on_finish
 - on_message_start
@@ -27,3 +26,4 @@
 - on_trailer_name
 - on_trailer_value
 - on_trailers
+- on_state_change

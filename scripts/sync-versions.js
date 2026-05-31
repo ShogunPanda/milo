@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
@@ -10,7 +10,7 @@ const version = process.argv[2]
 for (const folder of folders) {
   const path = resolve(import.meta.dirname, '..', folder)
   process.chdir(path)
-  execSync(`cambi update ${version}`)
+  execFileSync('cambi', ['update', version])
 }
 
 // Dependency of milo-macros

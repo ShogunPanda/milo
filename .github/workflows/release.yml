@@ -1,0 +1,210 @@
+name: Publish release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'The version number to tag and release'
+        required: true
+        type: string
+      prerelease:
+        description: 'Release as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build-cpp:
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-latest
+            cambi: cambi-linux
+            artifact: milo-cpp-linux-x64
+          - name: macOS arm64
+            os: macos-latest
+            cambi: cambi-macos-arm
+            artifact: milo-cpp-macos-arm64
+          - name: macOS x64
+            os: macos-15-intel
+            cambi: cambi-macos-intel
+            artifact: milo-cpp-macos-x64
+    name: Build C++ (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Use supported Rust version
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+      - name: Use supported Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - name: Restore cached dependencies (Cargo)
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/makers
+            ~/.cargo/bin/cbindgen
+            target
+          key: cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install cargo executables
+        shell: bash
+        run: |
+          [ ! -x "$HOME/.cargo/bin/makers" ] && cargo install cargo-make
+          [ ! -x "$HOME/.cargo/bin/cbindgen" ] && cargo install cbindgen
+      - name: Download latest cambi
+        shell: bash
+        run: |
+          mkdir -p /tmp/cambi-bootstrap
+          gh release download --repo ShogunPanda/cambi --pattern "${{ matrix.cambi }}" --dir /tmp/cambi-bootstrap
+          chmod +x "/tmp/cambi-bootstrap/${{ matrix.cambi }}"
+          ln -sf "/tmp/cambi-bootstrap/${{ matrix.cambi }}" /tmp/cambi-bootstrap/cambi
+          echo "/tmp/cambi-bootstrap" >> "$GITHUB_PATH"
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Build C++ artifacts
+        shell: bash
+        run: |
+          node scripts/sync-versions.js "${{ inputs.version }}"
+          cd parser
+          makers cpp:release
+      - name: Package C++ artifacts
+        shell: bash
+        run: |
+          mkdir -p /tmp/${{ matrix.artifact }}
+          cp dist/cpp/release/milo.h /tmp/${{ matrix.artifact }}/milo.h
+          cp dist/cpp/release/libmilo.a /tmp/${{ matrix.artifact }}/libmilo.a
+          tar -C /tmp -czf /tmp/${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
+      - name: Upload C++ artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: /tmp/${{ matrix.artifact }}.tar.gz
+
+  release:
+    name: Release
+    environment: main
+    runs-on: ubuntu-latest
+    needs: build-cpp
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+      - name: Use supported Rust version
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          components: rust-src
+      - name: Add Rust targets
+        run: rustup target add wasm32-unknown-unknown
+      - name: Use supported Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install Binaryen
+        run: |
+          curl -sSL -o binaryen.tar.gz https://github.com/WebAssembly/binaryen/releases/download/version_123/binaryen-version_123-x86_64-linux.tar.gz
+          tar -xzf binaryen.tar.gz
+          echo "$PWD/binaryen-version_123/bin" >> "$GITHUB_PATH"
+          "$PWD/binaryen-version_123/bin/wasm-opt" --version
+      - name: Restore cached dependencies (Cargo)
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/makers
+            ~/.cargo/bin/cbindgen
+            target
+          key: release-cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Restore cached dependencies (PNPM)
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: release-node-${{ hashFiles('package.json') }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install cargo executables
+        run: |
+          [ ! -x "$HOME/.cargo/bin/makers" ] && cargo install cargo-make
+          [ ! -x "$HOME/.cargo/bin/cbindgen" ] && cargo install cbindgen
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Download latest cambi
+        run: |
+          mkdir -p /tmp/cambi-bootstrap
+          gh release download --repo ShogunPanda/cambi --pattern cambi-linux --dir /tmp/cambi-bootstrap
+          chmod +x /tmp/cambi-bootstrap/cambi-linux
+          ln -sf /tmp/cambi-bootstrap/cambi-linux /tmp/cambi-bootstrap/cambi
+          echo "/tmp/cambi-bootstrap" >> "$GITHUB_PATH"
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Setup cargo OIDC
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - name: Configure git
+        run: |
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+      - name: Prepare release
+        run: |
+          node scripts/sync-versions.js $(cambi update "${{ inputs.version }}" -s)
+          cambi update -l "${{ inputs.version }}"
+          (cd macros && cargo generate-lockfile)
+          (cd parser && cargo generate-lockfile)
+          (cd references/rust && cargo generate-lockfile)
+      - name: Build WASM package
+        run: |
+          cd parser
+          makers wasm:release
+      - name: Download C++ artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/artifacts
+      - name: Prepare GitHub release assets
+        run: |
+          mkdir -p /tmp/release
+          mv /tmp/artifacts/milo-cpp-linux-x64/milo-cpp-linux-x64.tar.gz /tmp/release/
+          mv /tmp/artifacts/milo-cpp-macos-arm64/milo-cpp-macos-arm64.tar.gz /tmp/release/
+          mv /tmp/artifacts/milo-cpp-macos-x64/milo-cpp-macos-x64.tar.gz /tmp/release/
+      - name: Push release commit and tag
+        run: |
+          git add -f package.json CHANGELOG.md parser/Cargo.toml parser/Cargo.lock macros/Cargo.toml macros/Cargo.lock references/rust/Cargo.toml references/rust/Cargo.lock parser/src/wasm/package.json
+          git commit -m "chore: Updated version."
+          git tag -f "v${{ inputs.version }}"
+      - name: Publish macros on crates.io
+        run: cargo publish
+        working-directory: macros
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+      - name: Publish parser on crates.io
+        run: cargo publish
+        working-directory: parser
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+      - name: Publish WASM package on npm
+        run: pnpm publish --access public --tag ${{ inputs.prerelease == true && 'next' || 'latest' }} --provenance --no-git-checks
+        working-directory: dist/wasm/release/package
+      - name: Publish on GitHub
+        run: |
+          cambi release -n > /tmp/release-notes.txt
+          git push origin && git push origin -f --tags
+          gh release create "v${{ inputs.version }}" -t "${{ inputs.version }}" ${{ github.event.inputs.prerelease == 'true' && '--prerelease' || '' }} -F /tmp/release-notes.txt /tmp/release/*
+        env:
+          GH_TOKEN: ${{ github.token }}

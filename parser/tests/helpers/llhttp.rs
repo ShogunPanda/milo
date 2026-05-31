@@ -6,7 +6,7 @@ use std::str::from_utf8_unchecked;
 use std::{env, vec};
 use std::{fs::read_dir, path::Path};
 
-use milo_parser::{Parser, CALLBACK_ACTIVE_ALL, STATE_TUNNEL};
+use milo_parser::{CALLBACK_ACTIVE_ALL, Parser, STATE_TUNNEL};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 

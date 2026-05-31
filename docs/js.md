@@ -26,7 +26,6 @@ Callbacks are disabled by default.
 
 The module exports several constants (`*` is used to denote a family prefix):
 
-- `DEBUG`: If debug information is enabled or not.
 - `ERROR_*`: An error code.
 - `METHOD_*`: An HTTP request method.
 - `CALLBACK_*`: A parser callback.
@@ -176,6 +175,10 @@ Marks the parser as finished. Any new invocation of `parse` will put the parser 
 #### `fail(parser, code, description)`
 
 Marks the parsing a failed, setting a error code and and error message.
+
+#### `hasDebug()`
+
+Returns `true` if debug informations are available in this build.
 
 #### `isAutodetect(parser)`
 

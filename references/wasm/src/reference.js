@@ -49,7 +49,7 @@ function onStateChange (context, parser, from, size) {
 
 function onMessageStart (context, parser, from, size) {
   return appendOutput(
-    sprintf('"pos": {}, "event": "begin", "configuration": { "debug": {} }', from, context.milo.DEBUG),
+    sprintf('"pos": {}, "event": "begin", "configuration": { "debug": {} }', from, context.milo.hasDebug()),
     context,
     parser,
     from,

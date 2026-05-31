@@ -42,7 +42,6 @@ The file `milo.h` defines several constants (`*` is used to denote a family pref
 - `MILO_VERSION_MAJOR`: The current Milo major version.
 - `MILO_VERSION_MINOR`: The current Milo minor version.
 - `MILO_VERSION_PATCH` The current Milo patch version.
-- `DEBUG`: If debug information is enabled or not.
 - `ERROR_*`: An error code.
 - `METHOD_*`: An HTTP request method.
 - `CALLBACK_*`: A parser callback.
@@ -168,6 +167,10 @@ An enum listing all possible parser callbacks.
 An enum listing all possible parser states.
 
 ## Methods
+
+### `bool milo_has_debug()`
+
+Returns `true` if debug informations are available in this build.
 
 ### `void milo_noop(Parser *_parser, uintptr_t _at, uintptr_t _len)`
 

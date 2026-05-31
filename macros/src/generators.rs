@@ -1,55 +1,15 @@
-use std::fs::{File, OpenOptions, read_to_string};
-use std::io::BufWriter;
-use std::path::Path;
-
-use indexmap::IndexMap;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use regex::{Captures, Regex};
-use semver::Version;
-use serde::Serialize;
-use serde_json::Value;
 use syn::{Arm, ItemConst, parse_str};
-use toml::Table;
 
 use crate::{native, wasm};
 
-#[derive(Serialize)]
-struct BuildInfo {
-  version: IndexMap<String, u8>,
-  constants: IndexMap<String, Value>,
-}
-
 fn init_constants() -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
-  // Load from YAML files
-  let mut absolute_path = Path::new(file!())
-    .canonicalize()
-    .unwrap()
-    .parent()
-    .unwrap()
-    .to_path_buf();
-  absolute_path.push("../../parser/constants");
-  absolute_path = absolute_path.canonicalize().unwrap();
-
-  absolute_path.push("methods.yml");
-  let f = File::open(absolute_path.to_str().unwrap()).unwrap();
-  absolute_path.pop();
-  let methods: Vec<String> = serde_yaml::from_reader(f).unwrap();
-
-  absolute_path.push("errors.yml");
-  let f = File::open(absolute_path.to_str().unwrap()).unwrap();
-  absolute_path.pop();
-  let errors: Vec<String> = serde_yaml::from_reader(f).unwrap();
-
-  absolute_path.push("callbacks.yml");
-  let f = File::open(absolute_path.to_str().unwrap()).unwrap();
-  absolute_path.pop();
-  let callbacks: Vec<String> = serde_yaml::from_reader(f).unwrap();
-
-  absolute_path.push("states.yml");
-  let f = File::open(absolute_path.to_str().unwrap()).unwrap();
-  absolute_path.pop();
-  let states: Vec<String> = serde_yaml::from_reader(f).unwrap();
+  let methods = serde_yaml::from_str(include_str!("../constants/methods.yml")).unwrap();
+  let errors = serde_yaml::from_str(include_str!("../constants/errors.yml")).unwrap();
+  let callbacks = serde_yaml::from_str(include_str!("../constants/callbacks.yml")).unwrap();
+  let states = serde_yaml::from_str(include_str!("../constants/states.yml")).unwrap();
 
   (methods, errors, callbacks, states)
 }
@@ -158,8 +118,6 @@ fn generate_constants(methods: &[String], errors: &[String], callbacks: &[String
 
     #[unsafe(no_mangle)]
     pub type Callback = fn (&mut Parser, usize, usize);
-
-    pub const DEBUG: bool = cfg!(debug_assertions);
 
     #(#methods_consts)*
     #(#errors_consts)*
@@ -392,79 +350,6 @@ fn generate_callbacks(callbacks: &[String]) -> TokenStream {
   TokenStream::from_iter([native, wasm])
 }
 
-// Export all build info to a file for the scripts to re-use it
-fn save_constants(methods: &[String], errors: &[String], callbacks: &[String], states: &[String]) {
-  let mut milo_cargo_toml_path = Path::new(file!()).parent().unwrap().to_path_buf();
-  milo_cargo_toml_path.push("../../parser/Cargo.toml");
-
-  // Get milo version
-  let milo_cargo_toml = read_to_string(milo_cargo_toml_path).unwrap().parse::<Table>().unwrap();
-  let milo_version = Version::parse(
-    milo_cargo_toml["package"].as_table().unwrap()["version"]
-      .as_str()
-      .unwrap(),
-  )
-  .unwrap();
-  let mut version: IndexMap<String, u8> = IndexMap::new();
-  version.insert("major".into(), milo_version.major as u8);
-  version.insert("minor".into(), milo_version.minor as u8);
-  version.insert("patch".into(), milo_version.patch as u8);
-
-  // Serialize constants
-  let mut consts: IndexMap<String, Value> = IndexMap::new();
-  consts.insert(
-    "DEBUG".into(),
-    if cfg!(debug_assertions) {
-      Value::Bool(true)
-    } else {
-      Value::Bool(false)
-    },
-  );
-  for (i, x) in methods.iter().enumerate() {
-    consts.insert(format!("METHOD_{}", x.replace('-', "_")), i.into());
-  }
-
-  for (i, x) in callbacks.iter().enumerate() {
-    consts.insert(format!("CALLBACK_{}", x.to_uppercase()), i.into());
-  }
-
-  let mut all = 0u64;
-  consts.insert("CALLBACK_ACTIVE_NONE".into(), 0.into());
-  for (i, x) in callbacks.iter().enumerate() {
-    let bit = 1 << i;
-    consts.insert(format!("CALLBACK_ACTIVE_{}", x.to_uppercase()), bit.into());
-    all |= bit;
-  }
-  consts.insert("CALLBACK_ACTIVE_ALL".into(), all.into());
-
-  for (i, x) in errors.iter().enumerate() {
-    consts.insert(format!("ERROR_{}", x), i.into());
-  }
-
-  for (i, x) in states.iter().enumerate() {
-    consts.insert(format!("STATE_{}", x.to_uppercase()), i.into());
-  }
-
-  // Prepare the data to save
-  let data = BuildInfo {
-    version,
-    constants: consts,
-  };
-
-  // Write information in the file
-  let mut json_path = Path::new(file!()).parent().unwrap().to_path_buf();
-  json_path.push("../../parser/target/buildinfo.json");
-
-  let file = OpenOptions::new()
-    .write(true)
-    .create(true)
-    .truncate(true)
-    .open(json_path.as_path());
-
-  let writer = BufWriter::new(file.unwrap());
-  serde_json::to_writer_pretty(writer, &data).unwrap();
-}
-
 /// Generates the complete parser.
 pub fn generate() -> TokenStream {
   let (methods, errors, callbacks, states) = init_constants();
@@ -472,7 +357,6 @@ pub fn generate() -> TokenStream {
   let constants_code = generate_constants(&methods, &errors, &callbacks, &states);
   let enums_code = generate_enums(&methods, &errors, &callbacks, &states);
   let callbacks_code = generate_callbacks(&callbacks);
-  save_constants(&methods, &errors, &callbacks, &states);
 
   TokenStream::from_iter([constants_code, enums_code, callbacks_code])
 }

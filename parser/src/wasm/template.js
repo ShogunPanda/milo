@@ -40,6 +40,10 @@ function fail (parser, code, description) {
   this.dealloc(ptr, len)
 }
 
+function hasDebug () {
+  return this.milo_has_debug() !== 0
+}
+
 /* REPLACE: enums */
 
 /* REPLACE: getters */
@@ -99,6 +103,7 @@ export function setup (env = {}) {
     destroy: destroy.bind(wasm),
     parse: parse.bind(wasm),
     fail: fail.bind(wasm),
+    hasDebug: hasDebug.bind(wasm),
     clear: wasm.clear,
     finish: wasm.finish,
     pause: wasm.pause,

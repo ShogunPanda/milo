@@ -8,6 +8,7 @@
   license     = "ISC"
   keywords    = ["http", "parser", "http-parser"]
   categories  = ["network-programming", "parser-implementations"]
+  include     = ["Cargo.toml", "src/**/*.rs", "constants/*.yml"]
 
 [lib]
   proc-macro = true

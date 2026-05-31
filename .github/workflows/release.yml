@@ -75,7 +75,7 @@ jobs:
         run: |
           node scripts/sync-versions.js $(cambi update "${{ inputs.version }}" -s)
           cd parser
-          makers cpp:release
+          makers cpp
       - name: Package C++ artifacts
         shell: bash
         run: |
@@ -172,7 +172,7 @@ jobs:
       - name: Build WASM package
         run: |
           cd parser
-          makers wasm:release
+          makers wasm
       - name: Download C++ artifacts
         uses: actions/download-artifact@v4
         with:

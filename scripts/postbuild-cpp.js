@@ -5,7 +5,7 @@ async function prependVersionAndMethodMap () {
   const headerMatcher = 'namespace milo_parser {'
 
   const {
-    version: { major, minor, patch },
+    version: { raw, major, minor, patch, prerelease },
     constants
   } = await getBuildInfo()
 
@@ -15,10 +15,11 @@ async function prependVersionAndMethodMap () {
     .map(([k, v]) => [k.replace('METHOD_', ''), v])
 
   const updatedHeader = `
-#define MILO_VERSION "${major}.${minor}.${patch}"
+#define MILO_VERSION "${raw}"
 #define MILO_VERSION_MAJOR ${major}
 #define MILO_VERSION_MINOR ${minor}
 #define MILO_VERSION_PATCH ${patch}
+#define MILO_VERSION_PRERELEASE "${prerelease}"
 
 #define MILO_METHODS_MAP(EACH) \\
 ${methods.map(([v, i]) => `  EACH(${i}, ${v}, ${v}) \\`).join('\n')}

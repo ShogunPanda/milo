@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import semver from 'semver'
 import YAML from 'yaml'
 
 async function readYamlList (name) {
@@ -14,8 +15,19 @@ async function readVersion () {
     throw new Error('Cannot find parser version in parser/Cargo.toml')
   }
 
-  const [major, minor, patch] = version.split('.', 3).map(Number)
-  return { major, minor, patch }
+  const parsed = semver.parse(version)
+
+  if (!parsed) {
+    throw new Error(`Invalid parser version in parser/Cargo.toml: ${version}`)
+  }
+
+  return {
+    raw: version,
+    major: parsed.major,
+    minor: parsed.minor,
+    patch: parsed.patch,
+    prerelease: parsed.prerelease.join('.')
+  }
 }
 
 export async function getBuildInfo () {

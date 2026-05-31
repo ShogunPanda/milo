@@ -253,7 +253,7 @@ async function main () {
   // Open the package.json and update the version
   const packageJson = JSON.parse(await readFile(new URL('../parser/src/wasm/package.json', import.meta.url), 'utf-8'))
   const rootFolder = fileURLToPath(new URL(`../dist/wasm/${profile}/package`, import.meta.url))
-  packageJson.version = Object.values(version).join('.')
+  packageJson.version = version.raw
 
   // Write files
   await mkdir(rootFolder, { recursive: true })

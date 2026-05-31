@@ -357,7 +357,7 @@ async function main () {
   const fixtureRoot = join(outputRoot, fixturePrefix)
 
   if (!llhttpRoot || !outputRoot) {
-    console.log('Usage: node parser/scripts/import-llhttp-tests.js <llhttp-root> <output-root>')
+    console.log('Usage: node scripts/import-llhttp-tests.js <llhttp-root> <output-root>')
     process.exit(0)
   }
 

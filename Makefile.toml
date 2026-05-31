@@ -26,7 +26,7 @@
   dependencies = ["references:rust", "references:cpp", "references:wasm"]
 
 [tasks."llhttp:import"]
-  script = ["cd parser", "node scripts/import-llhttp-tests.js ${1} ."]
+  script = ["cd parser", "node ../scripts/import-llhttp-tests.js ${1} ."]
 
 [tasks."llhttp:review"]
   script = ["cd parser", "cargo run --example llhttp -- --review ${1}"]

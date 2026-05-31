@@ -70,7 +70,7 @@ async function main () {
 
   // Get the new version
   const newVersion = JSON.parse(
-    await readFile(new URL('../../dist/wasm/release/package/package.json', import.meta.url), 'utf-8')
+    await readFile(new URL('../dist/wasm/release/package/package.json', import.meta.url), 'utf-8')
   ).version
   info(`Publishing version ${newVersion} (from ${latestVersion})`)
 
@@ -78,11 +78,11 @@ async function main () {
   // DIsabled for now
 
   // Publish on NPM
-  process.chdir(fileURLToPath(new URL('../../dist/wasm/release/package/', import.meta.url)))
+  process.chdir(fileURLToPath(new URL('../dist/wasm/release/package/', import.meta.url)))
   await execute('Publishing on NPM', 'npm', 'publish', '--access', 'public')
 
   // Save tags
-  process.chdir(fileURLToPath(new URL('../..', import.meta.url)))
+  process.chdir(fileURLToPath(new URL('..', import.meta.url)))
   await execute('Saving GIT tag', 'git', 'tag', `v${newVersion}`)
   await execute('Saving GIT tag', 'git', 'push', 'origin', '--tags')
 

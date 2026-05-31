@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { format } from 'prettier'
-import prettierConfig from '../../prettier.config.js'
+import prettierConfig from '../prettier.config.js'
 
 const enums = {
   ERROR: 'Errors',
@@ -184,7 +184,7 @@ function generateSimpleCallbacks (constants) {
 }
 
 async function generateModule (profile, version, flags, constants, loader) {
-  const template = await readFile(new URL('../src/wasm/template.js', import.meta.url), 'utf-8')
+  const template = await readFile(new URL('../parser/src/wasm/template.js', import.meta.url), 'utf-8')
 
   const replaced = template.replaceAll(/\/\* REPLACE: (\S+) \*\//g, (marker, id) => {
     switch (id) {
@@ -224,7 +224,7 @@ async function generateModule (profile, version, flags, constants, loader) {
 async function generateVariant (profile, version, flags, constants, rootFolder, variant) {
   const wasmFile = `${variant}.wasm`
   const sourceFolder = resolve(rootFolder, 'src', variant)
-  const wasm = await readFile(new URL(`../../dist/wasm/${profile}/binary/${wasmFile}`, import.meta.url), 'base64')
+  const wasm = await readFile(new URL(`../dist/wasm/${profile}/binary/${wasmFile}`, import.meta.url), 'base64')
   const unbundled = await generateModule(
     profile,
     version,
@@ -250,20 +250,20 @@ async function generateVariant (profile, version, flags, constants, rootFolder, 
 // TODO@PI: TypeScript
 async function main () {
   const { version, constants } = JSON.parse(
-    await readFile(new URL('../target/buildinfo.json', import.meta.url), 'utf-8')
+    await readFile(new URL('../parser/target/buildinfo.json', import.meta.url), 'utf-8')
   )
 
   const profile = process.argv[2]
   const flags = Object.fromEntries(process.argv[3].split(',').map(p => p.split(':').map(s => s.toLowerCase())))
 
   // Open the package.json and update the version
-  const packageJson = JSON.parse(await readFile(new URL('../src/wasm/package.json', import.meta.url), 'utf-8'))
-  const rootFolder = fileURLToPath(new URL(`../../dist/wasm/${profile}/package`, import.meta.url))
+  const packageJson = JSON.parse(await readFile(new URL('../parser/src/wasm/package.json', import.meta.url), 'utf-8'))
+  const rootFolder = fileURLToPath(new URL(`../dist/wasm/${profile}/package`, import.meta.url))
   packageJson.version = Object.values(version).join('.')
 
   // Write files
   await mkdir(rootFolder, { recursive: true })
-  await cp(new URL(`../../dist/wasm/${profile}/binary`, import.meta.url), resolve(rootFolder, 'binary'), {
+  await cp(new URL(`../dist/wasm/${profile}/binary`, import.meta.url), resolve(rootFolder, 'binary'), {
     recursive: true
   })
   await generateVariant(profile, version, flags, constants, rootFolder, 'simd')
@@ -272,7 +272,7 @@ async function main () {
 
   // Copy other Markdown files from root
   for (const file of ['CODE_OF_CONDUCT', 'LICENSE', 'README']) {
-    await cp(new URL(`../../${file}.md`, import.meta.url), resolve(rootFolder, `${file}.md`))
+    await cp(new URL(`../${file}.md`, import.meta.url), resolve(rootFolder, `${file}.md`))
   }
 }
 

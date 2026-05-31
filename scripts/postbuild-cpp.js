@@ -4,7 +4,7 @@ const flags = ['DEBUG']
 const configuration = Object.fromEntries(process.argv[3].split(',').map(p => p.split(':')))
 
 async function prependVersionAndMethodMap () {
-  const buildInfoPath = new URL('../target/buildinfo.json', import.meta.url)
+  const buildInfoPath = new URL('../parser/target/buildinfo.json', import.meta.url)
   const headerMatcher = 'namespace milo {'
 
   // Read the info file
@@ -50,7 +50,7 @@ function applyConfiguration () {
 }
 
 // Read the file
-const headerPath = new URL(`../../dist/cpp/${process.argv[2]}/milo.h`, import.meta.url)
+const headerPath = new URL(`../dist/cpp/${process.argv[2]}/milo.h`, import.meta.url)
 let header = await readFile(headerPath, 'utf-8')
 
 // Apply modifications

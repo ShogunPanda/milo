@@ -42,7 +42,7 @@ void on_message_start(milo_parser::Parser* parser, usize_t from, usize_t size) {
   auto message = create_string();
   snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
            "\"pos\": %lu, \"event\": \"begin\", \"configuration\": { \"debug\": %s }", position,
-           milo_parser::DEBUG ? "true" : "false");
+           milo_parser::milo_has_debug() ? "true" : "false");
 
   append_output(parser, message, data, from, size);
 }

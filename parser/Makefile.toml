@@ -25,11 +25,11 @@
   dependencies = ["cpp:release", "cpp:debug"]
 
 [tasks."cpp:release"]
-  env      = { CONFIGURATION = "release", "CARGO_OPTIONS" = "--release", POSTBUILD_OPTIONS = "DEBUG:false" }
+  env      = { CONFIGURATION = "release", "CARGO_OPTIONS" = "--release" }
   run_task = "cpp:lib"
 
 [tasks."cpp:debug"]
-  env      = { CONFIGURATION = "debug", "CARGO_OPTIONS" = "--release --features debug", POSTBUILD_OPTIONS = "DEBUG:true" }
+  env      = { CONFIGURATION = "debug", "CARGO_OPTIONS" = "--release --features debug" }
   run_task = "cpp:lib"
 
 [tasks."cpp:lib"]
@@ -39,7 +39,7 @@
     "cargo build -Z unstable-options --target ${TARGET} ${CARGO_OPTIONS} --artifact-dir target/cpp/${CONFIGURATION}",
     "cp target/cpp/${CONFIGURATION}/libmilo_parser.a ../dist/cpp/${CONFIGURATION}/libmilo.a",
     "cp target/headers/milo.h ../dist/cpp/${CONFIGURATION}",
-    "node ../scripts/postbuild-cpp.js	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
+    "node ../scripts/postbuild-cpp.js	${CONFIGURATION}",
   ]
 
 [tasks."cpp:headers"]
@@ -47,11 +47,11 @@
   args    = ["--quiet", "--output", "target/headers/milo.h"]
 
 [tasks."wasm:release"]
-  env      = { CONFIGURATION = "release", CARGO_BUILD_OPTIONS = "-Z unstable-options -Z build-std=std,panic_abort", CARGO_OPTIONS = "--release", POSTBUILD_OPTIONS = "DEBUG:false", RUSTFLAGS_BASE = "-Z unstable-options -C panic=immediate-abort", WASMPACK_OPTIONS = "--release" }
+  env      = { CONFIGURATION = "release", CARGO_BUILD_OPTIONS = "-Z unstable-options -Z build-std=std,panic_abort", CARGO_OPTIONS = "--release", RUSTFLAGS_BASE = "-Z unstable-options -C panic=immediate-abort", WASMPACK_OPTIONS = "--release" }
   run_task = "wasm:module"
 
 [tasks."wasm:debug"]
-  env      = { CONFIGURATION = "debug", CARGO_BUILD_OPTIONS = "-Z unstable-options", CARGO_OPTIONS = "--release --features debug", POSTBUILD_OPTIONS = "DEBUG:true", RUSTFLAGS_BASE = "", WASMPACK_OPTIONS = "--release" }
+  env      = { CONFIGURATION = "debug", CARGO_BUILD_OPTIONS = "-Z unstable-options", CARGO_OPTIONS = "--release --features debug", RUSTFLAGS_BASE = "", WASMPACK_OPTIONS = "--release" }
   run_task = "wasm:module"
 
 [tasks."wasm:module"]
@@ -65,5 +65,5 @@
     "RUSTFLAGS=\"${RUSTFLAGS_BASE}\" cargo build ${CARGO_BUILD_OPTIONS} --target wasm32-unknown-unknown ${CARGO_OPTIONS}",
     "cp -a target/wasm32-unknown-unknown/release/milo_parser.wasm ../dist/wasm/${CONFIGURATION}/binary/no-simd.wasm",
     "wasm-opt -O3 --enable-bulk-memory-opt -o ../dist/wasm/${CONFIGURATION}/binary/no-simd.wasm ../dist/wasm/${CONFIGURATION}/binary/no-simd.wasm",
-    "node ../scripts/postbuild-wasm.js	${CONFIGURATION} ${POSTBUILD_OPTIONS}",
+    "node ../scripts/postbuild-wasm.js	${CONFIGURATION}",
   ]

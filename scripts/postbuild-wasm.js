@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { format } from 'prettier'
 import prettierConfig from '../prettier.config.js'
+import { getBuildInfo } from './buildinfo.js'
 
 const enums = {
   ERROR: 'Errors',
@@ -88,14 +89,12 @@ function generateEnumsLists () {
   return Object.values(enums).join(',') + ','
 }
 
-function generateConstants (constants, flags) {
+function generateConstants (constants) {
   return Object.entries(constants)
     .map(([k, v]) => {
       let value = v.toString()
 
-      if (k === 'DEBUG') {
-        value = flags.debug ?? value
-      } else if (k.startsWith('CALLBACK_ACTIVE_')) {
+      if (k.startsWith('CALLBACK_ACTIVE_')) {
         value += 'n'
       }
 
@@ -183,7 +182,7 @@ function generateSimpleCallbacks (constants) {
     .join('\n')
 }
 
-async function generateModule (profile, version, flags, constants, loader) {
+async function generateModule (profile, version, constants, loader) {
   const template = await readFile(new URL('../parser/src/wasm/template.js', import.meta.url), 'utf-8')
 
   const replaced = template.replaceAll(/\/\* REPLACE: (\S+) \*\//g, (marker, id) => {
@@ -197,7 +196,7 @@ async function generateModule (profile, version, flags, constants, loader) {
       case 'enums:list':
         return generateEnumsLists()
       case 'constants':
-        return generateConstants(constants, flags)
+        return generateConstants(constants)
       case 'getters':
         return generateGetters()
       case 'setters':
@@ -221,14 +220,13 @@ async function generateModule (profile, version, flags, constants, loader) {
   return format(replaced, { ...prettierConfig, parser: 'babel' })
 }
 
-async function generateVariant (profile, version, flags, constants, rootFolder, variant) {
+async function generateVariant (profile, version, constants, rootFolder, variant) {
   const wasmFile = `${variant}.wasm`
   const sourceFolder = resolve(rootFolder, 'src', variant)
   const wasm = await readFile(new URL(`../dist/wasm/${profile}/binary/${wasmFile}`, import.meta.url), 'base64')
   const unbundled = await generateModule(
     profile,
     version,
-    flags,
     constants,
     `import { readFileSync } from 'node:fs'\n\nexport const wasmModule = new WebAssembly.Module(readFileSync(new URL('../../binary/${wasmFile}', import.meta.url)))
     `
@@ -236,7 +234,6 @@ async function generateVariant (profile, version, flags, constants, rootFolder, 
   const bundled = await generateModule(
     profile,
     version,
-    flags,
     constants,
     `export const wasmModule = new WebAssembly.Module(Uint8Array.from(globalThis.atob('${wasm}'), c => c.codePointAt(0)))
     `
@@ -249,25 +246,22 @@ async function generateVariant (profile, version, flags, constants, rootFolder, 
 
 // TODO@PI: TypeScript
 async function main () {
-  const { version, constants } = JSON.parse(
-    await readFile(new URL('../parser/target/buildinfo.json', import.meta.url), 'utf-8')
-  )
+  const { version, constants } = await getBuildInfo()
 
   const profile = process.argv[2]
-  const flags = Object.fromEntries(process.argv[3].split(',').map(p => p.split(':').map(s => s.toLowerCase())))
 
   // Open the package.json and update the version
   const packageJson = JSON.parse(await readFile(new URL('../parser/src/wasm/package.json', import.meta.url), 'utf-8'))
   const rootFolder = fileURLToPath(new URL(`../dist/wasm/${profile}/package`, import.meta.url))
-  packageJson.version = Object.values(version).join('.')
+  packageJson.version = version.raw
 
   // Write files
   await mkdir(rootFolder, { recursive: true })
   await cp(new URL(`../dist/wasm/${profile}/binary`, import.meta.url), resolve(rootFolder, 'binary'), {
     recursive: true
   })
-  await generateVariant(profile, version, flags, constants, rootFolder, 'simd')
-  await generateVariant(profile, version, flags, constants, rootFolder, 'no-simd')
+  await generateVariant(profile, version, constants, rootFolder, 'simd')
+  await generateVariant(profile, version, constants, rootFolder, 'no-simd')
   await writeFile(resolve(rootFolder, 'package.json'), JSON.stringify(packageJson, null, 2), 'utf-8')
 
   // Copy other Markdown files from root

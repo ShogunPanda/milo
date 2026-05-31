@@ -6,6 +6,10 @@ use crate::Parser;
 #[cfg(any(debug_assertions, feature = "debug"))]
 pub fn debug(message: String) { unsafe { crate::logger(((message.as_ptr() as u64) << 32) + message.len() as u64) } }
 
+/// Returns if debug informations are available in this build.
+#[unsafe(no_mangle)]
+pub fn milo_has_debug() -> bool { cfg!(any(debug_assertions, feature = "debug")) }
+
 #[unsafe(no_mangle)]
 pub fn alloc(len: usize) -> *mut c_void {
   let buffer = Vec::with_capacity(len);

@@ -23,6 +23,9 @@ importers:
       remark-parse:
         specifier: ^11.0.0
         version: 11.0.0
+      semver:
+        specifier: ^7.8.1
+        version: 7.8.1
       unified:
         specifier: ^11.0.5
         version: 11.0.5

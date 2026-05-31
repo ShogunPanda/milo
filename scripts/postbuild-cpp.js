@@ -1,17 +1,13 @@
 import { readFile, writeFile } from 'node:fs/promises'
-
-const flags = ['DEBUG']
-const configuration = Object.fromEntries(process.argv[3].split(',').map(p => p.split(':')))
+import { getBuildInfo } from './buildinfo.js'
 
 async function prependVersionAndMethodMap () {
-  const buildInfoPath = new URL('../parser/target/buildinfo.json', import.meta.url)
   const headerMatcher = 'namespace milo_parser {'
 
-  // Read the info file
   const {
-    version: { major, minor, patch },
+    version: { raw, major, minor, patch, prerelease },
     constants
-  } = JSON.parse(await readFile(buildInfoPath, 'utf-8'))
+  } = await getBuildInfo()
 
   // Create the method map, required by Node.js
   const methods = Object.entries(constants)
@@ -19,12 +15,11 @@ async function prependVersionAndMethodMap () {
     .map(([k, v]) => [k.replace('METHOD_', ''), v])
 
   const updatedHeader = `
-#define MILO_VERSION "${major}.${minor}.${patch}"
+#define MILO_VERSION "${raw}"
 #define MILO_VERSION_MAJOR ${major}
 #define MILO_VERSION_MINOR ${minor}
 #define MILO_VERSION_PATCH ${patch}
-
-#define MILO_DEBUG ${configuration.DEBUG === 'true' ? 1 : 0}
+#define MILO_VERSION_PRERELEASE "${prerelease}"
 
 #define MILO_METHODS_MAP(EACH) \\
 ${methods.map(([v, i]) => `  EACH(${i}, ${v}, ${v}) \\`).join('\n')}
@@ -38,24 +33,12 @@ struct Parser;
   return header.replace(/\n{3,}/g, '\n\n').replace(headerMatcher, updatedHeader)
 }
 
-function applyConfiguration () {
-  for (const flag of flags) {
-    header = header.replace(
-      new RegExp(`constexpr static const bool ${flag} = (?:true|false);`),
-      `constexpr static const bool ${flag} = ${configuration[flag]};`
-    )
-  }
-
-  return header
-}
-
 // Read the file
 const headerPath = new URL(`../dist/cpp/${process.argv[2]}/milo.h`, import.meta.url)
 let header = await readFile(headerPath, 'utf-8')
 
 // Apply modifications
 header = await prependVersionAndMethodMap(header)
-header = applyConfiguration(header)
 
 // Write the updated file
 await writeFile(headerPath, header, 'utf-8')

@@ -24,7 +24,6 @@ Callbacks are disabled by default.
 
 The crate exports several constants (`*` is used to denote a family prefix):
 
-- `DEBUG`: If debug information is enabled or not.
 - `ERROR_*`: An error code.
 - `METHOD_*`: An HTTP request method.
 - `CALLBACK_*`: A parser callback.
@@ -213,6 +212,10 @@ Returns the current parser's error state as string.
 Returns the current parser's error description.
 
 ## Methods
+
+### `milo_has_debug() -> bool`
+
+Returns `true` if debug informations are available in this build.
 
 ### `milo_noop(_parser: &Parser, _data: *const c_uchar, _len: usize)`
 

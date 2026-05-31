@@ -35,6 +35,10 @@ impl From<CStringWithLength> for &str {
   }
 }
 
+/// Returns if debug informations are available in this build.
+#[unsafe(no_mangle)]
+pub extern "C" fn milo_has_debug() -> bool { cfg!(any(debug_assertions, feature = "debug")) }
+
 /// A callback that simply returns `0`.
 ///
 /// Use this callback as pointer when you want to remove a callback from the

@@ -37,19 +37,23 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.cargo/bin/makers
-            ~/.cargo/bin/cbindgen
-            target
+            parser/target
+            macros/target
+            tmp/reference/rust/targets
           key: cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
       - name: Restore cached dependencies (PNPM)
         uses: actions/cache@v3
         with:
           path: ~/.pnpm-store
           key: node-modules-${{ hashFiles('package.json') }}
-      - name: Install cargo executables
-        run: |
-          [ ! -x "$HOME/.cargo/bin/makers" ] && cargo install cargo-make
-          [ ! -x "$HOME/.cargo/bin/cbindgen" ] && cargo install cbindgen
+      - name: Install makers
+        uses: taiki-e/cache-cargo-install-action@v3
+        with:
+          tool: cargo-make
+      - name: Install cbindgen
+        uses: taiki-e/cache-cargo-install-action@v3
+        with:
+          tool: cbindgen
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:

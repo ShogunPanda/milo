@@ -2,7 +2,7 @@
 
 use std::{os::unix::process, slice, str};
 
-use milo_parser::{Parser, DEBUG};
+use milo_parser::{Parser, milo_has_debug};
 
 use crate::helpers::{context, output};
 
@@ -24,7 +24,8 @@ pub fn on_message_start(parser: &mut Parser, from: usize, size: usize) {
     parser,
     format!(
       "\"pos\": {}, \"event\": \"begin\", \"configuration\": {{ \"debug\": {} }}",
-      parser.position, DEBUG,
+      parser.position,
+      milo_has_debug(),
     ),
     from,
     size,

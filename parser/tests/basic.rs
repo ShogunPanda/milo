@@ -3,7 +3,7 @@ mod helpers;
 #[allow(unused_imports)]
 use std::ffi::c_uchar;
 
-use milo::{CALLBACK_ACTIVE_ON_HEADERS, Parser, STATE_ERROR, STATE_FINISH, STATE_HEADER, STATE_START};
+use milo_parser::{CALLBACK_ACTIVE_ON_HEADERS, Parser, STATE_ERROR, STATE_FINISH, STATE_HEADER, STATE_START};
 
 use crate::helpers::{context, create_parser, http, parse};
 

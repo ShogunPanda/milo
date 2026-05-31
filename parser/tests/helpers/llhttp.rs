@@ -6,7 +6,7 @@ use std::str::from_utf8_unchecked;
 use std::{env, vec};
 use std::{fs::read_dir, path::Path};
 
-use milo::{Parser, CALLBACK_ACTIVE_ALL, STATE_TUNNEL};
+use milo_parser::{Parser, CALLBACK_ACTIVE_ALL, STATE_TUNNEL};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -153,7 +153,7 @@ fn add_event(parser: &mut Parser, kind: &str, from: usize, size: usize) {
   context.events.push(Event {
     offset: from,
     kind: kind.to_string(),
-    payload: payload,
+    payload,
   });
 
   let _ = Box::into_raw(context);
@@ -233,7 +233,7 @@ fn on_headers(parser: &mut Parser, from: usize, _size: usize) {
       status: None,
       protocol: context.protocol.clone(),
       version: context.version.clone(),
-      body: body,
+      body,
     }))
   } else {
     Some(Payload::Headers(Headers {
@@ -242,14 +242,14 @@ fn on_headers(parser: &mut Parser, from: usize, _size: usize) {
       status: Some(context.status),
       protocol: context.protocol.clone(),
       version: context.version.clone(),
-      body: body,
+      body,
     }))
   };
 
   context.events.push(Event {
     offset: from,
     kind: "headers".into(),
-    payload: payload,
+    payload,
   });
 
   let _ = Box::into_raw(context);
@@ -279,7 +279,7 @@ fn on_trailer_value(parser: &mut Parser, from: usize, size: usize) { add_event(p
 
 fn on_trailers(parser: &mut Parser, from: usize, size: usize) { add_event(parser, "trailers", from, size); }
 
-pub fn parse_input(raw: &Vec<String>) -> String {
+pub fn parse_input(raw: &[String]) -> String {
   let mut input = raw.join("\n");
 
   // Remove escaped physical newlines: "\" + CRLF/CR/LF
@@ -407,11 +407,7 @@ pub fn run_test(section: &str, path: &str) -> Result {
   // Create the parser with its context
   let mut parser = create_parser(input.clone());
   parser.autodetect = false;
-  if section == "requests" {
-    parser.is_request = true;
-  } else {
-    parser.is_request = false;
-  }
+  parser.is_request = section == "requests";
 
   // Prepare body skipping if needed
   if case

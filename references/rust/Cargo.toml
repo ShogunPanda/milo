@@ -13,7 +13,7 @@
   path = "src/readme.rs"
 
 [dependencies]
-  milo       = { path = "../../parser" }
+  milo-parser = { path = "../../parser" }
   regex      = "1.12.3"
   serde      = { version = "1.0.228", features = ["derive"] }
   serde_json = "1.0.145"

@@ -150,21 +150,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
-name = "milo"
-version = "0.3.0"
-dependencies = [
- "comfy-table",
- "libc",
- "memchr",
- "milo-macros",
- "regex",
- "serde",
- "serde_json",
- "serde_yaml",
- "similar",
-]
-
-[[package]]
 name = "milo-macros"
 version = "0.3.0"
 dependencies = [
@@ -178,6 +163,21 @@ dependencies = [
  "serde_yaml",
  "syn",
  "toml",
+]
+
+[[package]]
+name = "milo-parser"
+version = "0.3.0"
+dependencies = [
+ "comfy-table",
+ "libc",
+ "memchr",
+ "milo-macros",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "similar",
 ]
 
 [[package]]

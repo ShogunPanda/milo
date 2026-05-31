@@ -171,7 +171,7 @@ Resumes the parser.
 
 #### `finish(parser)`
 
-Marks the parser as finished. Any new invocation of `milo::milo_parse` will put the parser in the error state.
+Marks the parser as finished. Any new invocation of `parse` will put the parser in the error state.
 
 #### `fail(parser, code, description)`
 

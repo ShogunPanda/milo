@@ -1,7 +1,7 @@
 mod helpers;
 
 use helpers::{create_parser, http, parse};
-use milo::STATE_TUNNEL;
+use milo_parser::STATE_TUNNEL;
 
 #[test]
 fn upgrade_connect_request() {

@@ -5,7 +5,7 @@ const configuration = Object.fromEntries(process.argv[3].split(',').map(p => p.s
 
 async function prependVersionAndMethodMap () {
   const buildInfoPath = new URL('../parser/target/buildinfo.json', import.meta.url)
-  const headerMatcher = 'namespace milo {'
+  const headerMatcher = 'namespace milo_parser {'
 
   // Read the info file
   const {
@@ -29,7 +29,7 @@ async function prependVersionAndMethodMap () {
 #define MILO_METHODS_MAP(EACH) \\
 ${methods.map(([v, i]) => `  EACH(${i}, ${v}, ${v}) \\`).join('\n')}
 
-namespace milo {
+namespace milo_parser {
 
 struct Parser;
 `.trim()

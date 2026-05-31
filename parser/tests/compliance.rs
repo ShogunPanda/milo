@@ -1,6 +1,6 @@
 mod helpers;
 
-use milo::{ERROR_NONE, METHOD_OTHER, Parser, STATE_ERROR, STATE_FINISH, STATE_START, STATE_TUNNEL};
+use milo_parser::{ERROR_NONE, METHOD_OTHER, Parser, STATE_ERROR, STATE_FINISH, STATE_START, STATE_TUNNEL};
 
 use crate::helpers::{create_parser, parse};
 

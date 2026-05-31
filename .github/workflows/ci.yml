@@ -1,0 +1,56 @@
+name: Run Tests
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+jobs:
+  ci:
+    name: Sanity Check
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Use supported Rust version
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          components: rustfmt, clippy
+      - name: Use supported Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - name: Restore cached dependencies (Cargo)
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Restore cached dependencies (PNPM)
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: node-modules-${{ hashFiles('package.json') }}
+      - name: Install cargo-make
+        run: cargo install cargo-make
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: makers build
+      - name: Format
+        run: makers format
+      - name: Lint
+        run: makers lint
+      - name: Test
+        run: makers test
+      - name: References
+        run: makers references

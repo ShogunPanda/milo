@@ -1,6 +1,6 @@
 use std::ffi::c_void;
 
-use milo::{Parser, CALLBACK_ACTIVE_ALL};
+use milo_parser::{Parser, CALLBACK_ACTIVE_ALL};
 use regex::Regex;
 
 pub mod callbacks;

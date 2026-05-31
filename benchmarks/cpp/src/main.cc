@@ -100,20 +100,20 @@ static std::string pad_left(const std::string& value, size_t width) {
 }
 
 static void validate_milo(const Fixture& fixture) {
-  milo::Parser* parser = milo::milo_create();
+  milo_parser::Parser* parser = milo_parser::milo_create();
   parser->autodetect = false;
   parser->is_request = fixture.is_request;
 
-  const size_t consumed =
-    milo::milo_parse(parser, reinterpret_cast<const unsigned char*>(fixture.payload.data()), fixture.payload.size());
-  if (consumed != fixture.payload.size() || parser->error_code != milo::ERROR_NONE) {
+  const size_t consumed = milo_parser::milo_parse(
+    parser, reinterpret_cast<const unsigned char*>(fixture.payload.data()), fixture.payload.size());
+  if (consumed != fixture.payload.size() || parser->error_code != milo_parser::ERROR_NONE) {
     std::cerr << "Milo failed to parse fixture " << fixture.name << std::endl;
     std::cerr << "Consumed " << consumed << " of " << fixture.payload.size() << " bytes" << std::endl;
-    milo::milo_destroy(parser);
+    milo_parser::milo_destroy(parser);
     std::exit(1);
   }
 
-  milo::milo_destroy(parser);
+  milo_parser::milo_destroy(parser);
 }
 
 static void validate_llhttp(const Fixture& fixture) {
@@ -133,25 +133,25 @@ static void validate_llhttp(const Fixture& fixture) {
 static Result benchmark_milo(const Fixture& fixture) {
   const uint64_t iterations = TARGET_BYTES / fixture.payload.size();
   const uint64_t total = iterations * fixture.payload.size();
-  milo::Parser* parser = milo::milo_create();
+  milo_parser::Parser* parser = milo_parser::milo_create();
   parser->autodetect = false;
   parser->is_request = fixture.is_request;
 
   const auto start = std::chrono::steady_clock::now();
   size_t consumed = 0;
   for (uint64_t i = 0; i < iterations; i++) {
-    consumed +=
-      milo::milo_parse(parser, reinterpret_cast<const unsigned char*>(fixture.payload.data()), fixture.payload.size());
+    consumed += milo_parser::milo_parse(parser, reinterpret_cast<const unsigned char*>(fixture.payload.data()),
+                                        fixture.payload.size());
   }
   const auto end = std::chrono::steady_clock::now();
 
-  if (consumed != total || parser->error_code != milo::ERROR_NONE) {
+  if (consumed != total || parser->error_code != milo_parser::ERROR_NONE) {
     std::cerr << "Milo failed while benchmarking fixture " << fixture.name << std::endl;
-    milo::milo_destroy(parser);
+    milo_parser::milo_destroy(parser);
     std::exit(1);
   }
 
-  milo::milo_destroy(parser);
+  milo_parser::milo_destroy(parser);
 
   const std::chrono::duration<double> elapsed = end - start;
   const double seconds = elapsed.count();

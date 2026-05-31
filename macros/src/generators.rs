@@ -54,7 +54,7 @@ fn init_constants() -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
   (methods, errors, callbacks, states)
 }
 
-fn generate_constants_internal(items: &Vec<String>, prefix: &str) -> Vec<ItemConst> {
+fn generate_constants_internal(items: &[String], prefix: &str) -> Vec<ItemConst> {
   let mut consts: Vec<ItemConst> = Vec::new();
   let mut bytes: Vec<&[u8]> = vec![];
 
@@ -69,7 +69,7 @@ fn generate_constants_internal(items: &Vec<String>, prefix: &str) -> Vec<ItemCon
   consts
 }
 
-fn generate_bitmask(items: &Vec<String>, prefix: &str) -> Vec<ItemConst> {
+fn generate_bitmask(items: &[String], prefix: &str) -> Vec<ItemConst> {
   let mut consts: Vec<ItemConst> = Vec::new();
   let mut all = 0u64;
 
@@ -97,17 +97,12 @@ where
 }
 
 /// Generates all parser constants.
-fn generate_constants(
-  methods: &Vec<String>,
-  errors: &Vec<String>,
-  callbacks: &Vec<String>,
-  states: &Vec<String>,
-) -> TokenStream {
-  let methods_consts = generate_constants_internal(&methods, "METHOD");
-  let states_consts = generate_constants_internal(&states, "STATE");
-  let errors_consts = generate_constants_internal(&errors, "ERROR");
-  let callbacks_consts = generate_constants_internal(&callbacks, "CALLBACK");
-  let callbacks_bitmask = generate_bitmask(&callbacks, "CALLBACK_ACTIVE");
+fn generate_constants(methods: &[String], errors: &[String], callbacks: &[String], states: &[String]) -> TokenStream {
+  let methods_consts = generate_constants_internal(methods, "METHOD");
+  let states_consts = generate_constants_internal(states, "STATE");
+  let errors_consts = generate_constants_internal(errors, "ERROR");
+  let callbacks_consts = generate_constants_internal(callbacks, "CALLBACK");
+  let callbacks_bitmask = generate_bitmask(callbacks, "CALLBACK_ACTIVE");
   let token_table = generate_table(|byte| {
     (0x30..=0x39).contains(&byte)
       || (0x41..=0x5a).contains(&byte)
@@ -187,12 +182,7 @@ fn generate_constants(
 }
 
 /// Generates all parser enums.
-fn generate_enums(
-  methods: &Vec<String>,
-  errors: &Vec<String>,
-  callbacks: &Vec<String>,
-  states: &Vec<String>,
-) -> TokenStream {
+fn generate_enums(methods: &[String], errors: &[String], callbacks: &[String], states: &[String]) -> TokenStream {
   let snake_matcher = Regex::new(r"_([a-z])").unwrap();
 
   let methods_ref = methods;
@@ -395,7 +385,7 @@ fn generate_enums(
   })
 }
 
-fn generate_callbacks(callbacks: &Vec<String>) -> TokenStream {
+fn generate_callbacks(callbacks: &[String]) -> TokenStream {
   let native = native::generate_callbacks(callbacks);
   let wasm = wasm::generate_callbacks(callbacks);
 
@@ -403,7 +393,7 @@ fn generate_callbacks(callbacks: &Vec<String>) -> TokenStream {
 }
 
 // Export all build info to a file for the scripts to re-use it
-fn save_constants(methods: &Vec<String>, errors: &Vec<String>, callbacks: &Vec<String>, states: &Vec<String>) {
+fn save_constants(methods: &[String], errors: &[String], callbacks: &[String], states: &[String]) {
   let mut milo_cargo_toml_path = Path::new(file!()).parent().unwrap().to_path_buf();
   milo_cargo_toml_path.push("../../parser/Cargo.toml");
 

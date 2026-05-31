@@ -276,7 +276,7 @@ The `autodetect` and `is_request` fields are not cleared.
 
 ### `milo_pause(parser: *mut Parser)`
 
-Pauses the parser. The parser will have to be resumed via `milo::milo_resume`.
+Pauses the parser. The parser will have to be resumed via `milo_parser::milo_resume`.
 
 ### `milo_resume(parser: *mut Parser)`
 

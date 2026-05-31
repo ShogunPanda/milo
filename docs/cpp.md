@@ -19,7 +19,7 @@ When downloading Milo, you can choose between `debug` or `release` version:
 All callbacks in Milo have the following signature (`Callback`):
 
 ```cpp
-void(*)(milo::Parser*, uintptr_t, uintptr_t)
+void(*)(milo_parser::Parser*, uintptr_t, uintptr_t)
 ```
 
 where the parameters have the following meaning:
@@ -53,14 +53,14 @@ Internal generated lookup tables used by the parser are not exported in `milo.h`
 
 ## Types
 
-### `milo::CStringWithLength`
+### `milo_parser::CStringWithLength`
 
 A struct representing a string containing the following fields:
 
 - `ptr` (`const unsigned char *`): The string data pointer.
 - `len` (`uintptr_t`): The string length.
 
-### `milo::ParserCallbacks`
+### `milo_parser::ParserCallbacks`
 
 A struct representing the callbacks for a parser. Here's the list of supported callbacks:
 
@@ -93,9 +93,9 @@ A struct representing the callbacks for a parser. Here's the list of supported c
 - `on_trailer_value`: Invoked after a new trailer value has been parsed.
 - `on_trailers`: Invoked after trailers are completed.
 
-If you want to remove a previously set callback, you can use `milo::milo_noop`.
+If you want to remove a previously set callback, you can use `milo_parser::milo_noop`.
 
-### `milo::Parser`
+### `milo_parser::Parser`
 
 A struct representing a parser. It has the following fields:
 
@@ -151,19 +151,19 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 
 ## Enumerations
 
-### `milo::Errors`
+### `milo_parser::Errors`
 
 An enum listing all possible parser errors.
 
-### `milo::Methods`
+### `milo_parser::Methods`
 
 An enum listing all possible HTTP methods recognized by Milo.
 
-### `milo::Callbacks`
+### `milo_parser::Callbacks`
 
 An enum listing all possible parser callbacks.
 
-### `milo::States`
+### `milo_parser::States`
 
 An enum listing all possible parser states.
 
@@ -224,7 +224,7 @@ The `autodetect` and `is_request` fields are not cleared.
 
 ### `void milo_pause(Parser *parser)`
 
-Pauses the parser. The parser will have to be resumed via `milo::milo_resume`.
+Pauses the parser. The parser will have to be resumed via `milo_parser::milo_resume`.
 
 ### `void milo_resume(Parser *parser)`
 
@@ -232,7 +232,7 @@ Resumes the parser.
 
 ### `void milo_finish(Parser *parser)`
 
-Marks the parser as finished. Any new invocation of `milo::milo_parse` will put the parser in the error state.
+Marks the parser as finished. Any new invocation of `milo_parser::milo_parse` will put the parser in the error state.
 
 ### `void milo_fail(Parser *parser, uintptr_t code, CStringWithLength description)`
 
@@ -242,16 +242,16 @@ Marks the parsing a failed, setting a error code and and error message.
 
 Returns the current parser's state as string.
 
-**The returned value MUST be freed using `milo::milo_free_string`.**
+**The returned value MUST be freed using `milo_parser::milo_free_string`.**
 
 ### `CStringWithLength *milo_error_code_string(Parser *parser)`
 
 Returns the current parser's error state as string.
 
-**The returned value MUST be freed using `milo::milo_free_string`.**
+**The returned value MUST be freed using `milo_parser::milo_free_string`.**
 
 ### `CStringWithLength *milo_error_description_string(Parser *parser)`
 
 Returns the current parser's error description.
 
-**The returned value MUST be freed using `milo::milo_free_string`.**
+**The returned value MUST be freed using `milo_parser::milo_free_string`.**

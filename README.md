@@ -87,7 +87,7 @@ node index.js
 
 ## How to use it (Rust)
 
-Add `milo` to your `Cargo.toml`:
+Add `milo-parser` to your `Cargo.toml`:
 
 ```toml
 [package]
@@ -97,7 +97,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-milo = "0.4.0"
+milo-parser = "0.4.0"
 ```
 
 Create a sample source file:
@@ -106,7 +106,7 @@ Create a sample source file:
 use core::ffi::c_void;
 use core::slice;
 
-use milo::{Parser, CALLBACK_ACTIVE_ON_DATA};
+use milo_parser::{Parser, CALLBACK_ACTIVE_ON_DATA};
 
 fn main() {
   // Create the parser.
@@ -169,7 +169,7 @@ Create a sample source file:
 
 int main() {
   // Create the parser.
-  milo::Parser* parser = milo::milo_create();
+  milo_parser::Parser* parser = milo_parser::milo_create();
 
   // Prepare a message to parse.
   const char* message = "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc";
@@ -189,20 +189,20 @@ int main() {
 
     If the current callback has no payload, both values are set to 0.
   */
-  parser->callbacks.on_data = [](milo::Parser* p, uintptr_t from, uintptr_t size) {
+  parser->callbacks.on_data = [](milo_parser::Parser* p, uintptr_t from, uintptr_t size) {
     const char* payload = reinterpret_cast<const char*>(p->context) + from;
 
     printf("Pos=%" PRIuPTR " Body: %.*s\n", from, static_cast<int>(size), payload);
   };
 
   // Toggle on the callbacks you want to receive
-  parser->active_callbacks |= milo::CALLBACK_ACTIVE_ON_DATA;
+  parser->active_callbacks |= milo_parser::CALLBACK_ACTIVE_ON_DATA;
 
   // Now perform the main parsing using milo.parse. The method returns the number of consumed characters.
-  milo::milo_parse(parser, reinterpret_cast<const unsigned char*>(message), strlen(message));
+  milo_parser::milo_parse(parser, reinterpret_cast<const unsigned char*>(message), strlen(message));
 
   // Cleanup used resources.
-  milo::milo_destroy(parser);
+  milo_parser::milo_destroy(parser);
 }
 ```
 

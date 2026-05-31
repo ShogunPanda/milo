@@ -16,7 +16,7 @@ pub fn callback(definition: &CallbackRequest) -> proc_macro2::TokenStream {
 }
 
 /// Generates all parser callbacks.
-pub fn generate_callbacks(callbacks: &Vec<String>) -> TokenStream {
+pub fn generate_callbacks(callbacks: &[String]) -> TokenStream {
   let callbacks: Vec<_> = callbacks.iter().map(|x| format_ident!("{}", x)).collect();
 
   TokenStream::from(quote! {

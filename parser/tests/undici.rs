@@ -1,7 +1,7 @@
 mod helpers;
 
 use helpers::{context, create_parser, http, parse};
-use milo::STATE_ERROR;
+use milo_parser::STATE_ERROR;
 
 #[test]
 fn undici() {

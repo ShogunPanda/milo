@@ -1,6 +1,6 @@
 use core::{ffi::c_uchar, slice, str};
 
-use milo::Parser;
+use milo_parser::Parser;
 
 use crate::helpers::context;
 

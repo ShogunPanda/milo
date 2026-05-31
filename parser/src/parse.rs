@@ -79,7 +79,7 @@ impl Parser {
 
     #[cfg(any(debug_assertions, feature = "debug"))]
     if self.debug {
-      eprintln!("[milo::debug] loop enter");
+      eprintln!("[milo_parser::debug] loop enter");
     }
 
     // Until there is data or there is a request to continue
@@ -87,7 +87,7 @@ impl Parser {
       #[cfg(any(debug_assertions, feature = "debug"))]
       if self.debug {
         eprintln!(
-          "[milo::debug] loop before processing: previous_position={}, position={}, available={}, \
+          "[milo_parser::debug] loop before processing: previous_position={}, position={}, available={}, \
            continue_without_data={}",
           previous_position, self.position, available, self.continue_without_data
         );
@@ -908,11 +908,11 @@ impl Parser {
                 while i < chunk_length_end {
                   let b = data[i];
 
-                  let hex = if b >= b'0' && b <= b'9' {
+                  let hex = if b.is_ascii_digit() {
                     (b - b'0') as u64
-                  } else if b >= b'a' && b <= b'f' {
+                  } else if (b'a'..=b'f').contains(&b) {
                     (b - b'a' + 10) as u64
-                  } else if b >= b'A' && b <= b'F' {
+                  } else if (b'A'..=b'F').contains(&b) {
                     (b - b'A' + 10) as u64
                   } else {
                     fail!(UNEXPECTED_CHARACTER, "Invalid chunk length character");
@@ -1037,7 +1037,7 @@ impl Parser {
                             i -= 1;
                           }
 
-                          if backslash_count % 2 == 0 {
+                          if backslash_count.is_multiple_of(2) {
                             // quote is not escaped
                             value_end = index;
                             break;
@@ -1245,7 +1245,8 @@ impl Parser {
         #[cfg(any(debug_assertions, feature = "debug"))]
         if self.debug {
           eprintln!(
-            "[milo::debug] loop before processing: position={}, advanced={}, available={}, continue_without_data={}",
+            "[milo_parser::debug] loop before processing: position={}, advanced={}, available={}, \
+             continue_without_data={}",
             self.position, advanced, available, self.continue_without_data
           );
         }
@@ -1265,7 +1266,7 @@ impl Parser {
 
         if duration > 0 {
           eprintln!(
-            "[milo::debug] loop iteration ({:?}) completed in {} ns",
+            "[milo_parser::debug] loop iteration ({:?}) completed in {} ns",
             self.state_str(),
             duration
           );
@@ -1277,7 +1278,7 @@ impl Parser {
 
     #[cfg(any(debug_assertions, feature = "debug"))]
     if self.debug {
-      eprintln!("[milo::debug] loop exit");
+      eprintln!("[milo_parser::debug] loop exit");
     }
 
     let consumed = self.position;
@@ -1310,7 +1311,7 @@ impl Parser {
 
       if duration > 0 {
         eprintln!(
-          "[milo::debug] parse ({:?}, consumed {} of {}) completed in {} ns",
+          "[milo_parser::debug] parse ({:?}, consumed {} of {}) completed in {} ns",
           self.state_str(),
           consumed,
           limit,

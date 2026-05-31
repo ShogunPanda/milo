@@ -4,7 +4,7 @@ use std::os::raw::c_void;
 mod helpers;
 
 use helpers::{callbacks, context::Context, parse};
-use milo::{Parser, CALLBACK_ACTIVE_ALL};
+use milo_parser::{Parser, CALLBACK_ACTIVE_ALL};
 
 fn main() {
   let mut parser = Parser::new();

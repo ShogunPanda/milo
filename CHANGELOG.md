@@ -1,3 +1,7 @@
+### 2026-05-31 / 0.4.0-alpha.5
+
+- feat: Rewritten using SIMD. (#14)
+
 ### 2025-04-20 / 0.3.0
 
 - feat: Avoid function calls.

@@ -54,17 +54,19 @@ jobs:
             ~/.cargo/bin/makers
             ~/.cargo/bin/cbindgen
             target
-          key: cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
+          key: release-cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
       - name: Restore cached dependencies (PNPM)
         uses: actions/cache@v3
         with:
           path: ~/.pnpm-store
           key: release-node-${{ hashFiles('package.json') }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - name: Install cargo executables
-        shell: bash
+      - name: Install makers
         run: |
-          [ ! -x "$HOME/.cargo/bin/makers" ] && cargo install cargo-make
-          [ ! -x "$HOME/.cargo/bin/cbindgen" ] && cargo install cbindgen
+          ARCH=x86_64-unknown-linux-gnu
+          MAKERS_VERSION=$(curl -sSL https://api.github.com/repos/sagiegurari/cargo-make/releases/latest | yq .tag_name | sed "s#v##")
+          curl -sSL -o /tmp/makers.zip "https://github.com/sagiegurari/cargo-make/releases/latest/download/cargo-make-v$MAKERS_VERSION-$ARCH.zip"
+          unzip -d /tmp /tmp/makers.zip
+          echo "/tmp/cargo-make-v$MAKERS_VERSION-$ARCH" >> "$GITHUB_PATH"
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -147,10 +149,13 @@ jobs:
         with:
           path: ~/.pnpm-store
           key: release-node-${{ hashFiles('package.json') }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - name: Install cargo executables
+      - name: Install makers
         run: |
-          [ ! -x "$HOME/.cargo/bin/makers" ] && cargo install cargo-make
-          [ ! -x "$HOME/.cargo/bin/cbindgen" ] && cargo install cbindgen
+          ARCH=x86_64-unknown-linux-gnu
+          MAKERS_VERSION=$(curl -sSL https://api.github.com/repos/sagiegurari/cargo-make/releases/latest | yq .tag_name | sed "s#v##")
+          curl -sSL -o /tmp/makers.zip "https://github.com/sagiegurari/cargo-make/releases/latest/download/cargo-make-v$MAKERS_VERSION-$ARCH.zip"
+          unzip -d /tmp /tmp/makers.zip
+          echo "/tmp/cargo-make-v$MAKERS_VERSION-$ARCH" >> "$GITHUB_PATH"
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:

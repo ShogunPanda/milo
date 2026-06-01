@@ -12,6 +12,10 @@
 [lib]
   crate-type = ["cdylib", "staticlib", "lib"]
 
+[[bin]]
+  name = "milo-parser"
+  path = "src/main.rs"
+
 [features]
   debug = []
 

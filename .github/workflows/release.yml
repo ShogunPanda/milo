@@ -14,7 +14,8 @@ on:
         default: false
 
 jobs:
-  build-cpp:
+  build-libraries:
+    name: Build Libraries (${{ matrix.name }})
     permissions:
       contents: read
     strategy:
@@ -23,16 +24,15 @@ jobs:
           - name: Linux x64
             os: ubuntu-latest
             cambi: cambi-linux
-            artifact: milo-cpp-linux-x64
+            artifact: milo-parser-lib-linux
           - name: macOS arm64
             os: macos-latest
             cambi: cambi-macos-arm
-            artifact: milo-cpp-macos-arm64
+            artifact: milo-parser-lib-macos-arm
           - name: macOS x64
             os: macos-15-intel
             cambi: cambi-macos-intel
-            artifact: milo-cpp-macos-x64
-    name: Build C++ (${{ matrix.name }})
+            artifact: milo-parser-lib-macos-intel
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -102,11 +102,81 @@ jobs:
           name: ${{ matrix.artifact }}
           path: /tmp/${{ matrix.artifact }}.tar.gz
 
+  build-binaries:
+    name: Build Binary (${{ matrix.name }})
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-latest
+            cambi: cambi-linux
+            artifact: milo-parser-bin-linux
+          - name: macOS arm64
+            os: macos-latest
+            cambi: cambi-macos-arm
+            artifact: milo-parser-bin-macos-arm
+          - name: macOS x64
+            os: macos-15-intel
+            cambi: cambi-macos-intel
+            artifact: milo-parser-bin-macos-intel
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Use supported Rust version
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+      - name: Use supported Node.js version
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - name: Restore cached dependencies (Cargo)
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            parser/target
+            macros/target
+          key: cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Download latest cambi
+        shell: bash
+        run: |
+          mkdir -p /tmp/cambi-bootstrap
+          gh release download --repo ShogunPanda/cambi --pattern "${{ matrix.cambi }}" --dir /tmp/cambi-bootstrap
+          chmod +x "/tmp/cambi-bootstrap/${{ matrix.cambi }}"
+          ln -sf "/tmp/cambi-bootstrap/${{ matrix.cambi }}" /tmp/cambi-bootstrap/cambi
+          echo "/tmp/cambi-bootstrap" >> "$GITHUB_PATH"
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Build binary
+        shell: bash
+        run: |
+          node scripts/sync-versions.js $(cambi update "${{ inputs.version }}" -s)
+          cd parser
+          cargo build --release --bin milo-parser
+      - name: Package binary
+        shell: bash
+        run: |
+          mkdir -p /tmp/${{ matrix.artifact }}
+          cp parser/target/release/milo-parser /tmp/${{ matrix.artifact }}/milo-parser
+          tar -C /tmp -czf /tmp/${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: /tmp/${{ matrix.artifact }}.tar.gz
+
   release:
     name: Release
     environment: main
     runs-on: ubuntu-latest
-    needs: build-cpp
+    needs:
+      - build-libraries
+      - build-binaries
     permissions:
       id-token: write
       contents: write
@@ -203,9 +273,12 @@ jobs:
       - name: Prepare GitHub release assets
         run: |
           mkdir -p /tmp/release
-          mv /tmp/artifacts/milo-cpp-linux-x64/milo-cpp-linux-x64.tar.gz /tmp/release/
-          mv /tmp/artifacts/milo-cpp-macos-arm64/milo-cpp-macos-arm64.tar.gz /tmp/release/
-          mv /tmp/artifacts/milo-cpp-macos-x64/milo-cpp-macos-x64.tar.gz /tmp/release/
+          mv /tmp/artifacts/milo-parser-lib-linux/milo-parser-lib-linux.tar.gz /tmp/release/
+          mv /tmp/artifacts/milo-parser-lib-macos-arm/milo-parser-lib-macos-arm.tar.gz /tmp/release/
+          mv /tmp/artifacts/milo-parser-lib-macos-intel/milo-parser-lib-macos-intel.tar.gz /tmp/release/
+          mv /tmp/artifacts/milo-parser-bin-linux/milo-parser-bin-linux.tar.gz /tmp/release/
+          mv /tmp/artifacts/milo-parser-bin-macos-arm/milo-parser-bin-macos-arm.tar.gz /tmp/release/
+          mv /tmp/artifacts/milo-parser-bin-macos-intel/milo-parser-bin-macos-intel.tar.gz /tmp/release/
       - name: Push release commit and tag
         run: |
           git add -f package.json CHANGELOG.md parser/Cargo.toml parser/Cargo.lock macros/Cargo.toml macros/Cargo.lock references/rust/Cargo.toml references/rust/Cargo.lock parser/src/wasm/package.json

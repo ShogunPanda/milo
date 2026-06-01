@@ -11,6 +11,7 @@ Milo supports strict HTTP/1.1 message parsing for Rust, C++, and JavaScript via 
 | Rust       | Supported | `milo` crate                                  |
 | C++        | Supported | `milo.h` and `libmilo.a`                      |
 | JavaScript | Supported | `@perseveranza-pets/milo` WebAssembly package |
+| CLI        | Supported | `milo-parser` binary                          |
 
 Milo intentionally rejects HTTP/0.9, HTTP/1.0, RTSP, obs-fold, bare LF, and bare CR. It does not parse HTTP/2 messages, except for strict `PRI * HTTP/2.0` switch-over detection.
 
@@ -251,6 +252,49 @@ The command above will produce debug and release builds for each language in the
 The WebAssembly release build uses immediate-abort panics to keep the artifact smaller. Panics trap without unwinding or rich panic messages.
 
 The debug build also enables the `on_state_change` callback and is more verbose in case of WebAssembly errors.
+
+## How to use it (CLI)
+
+Install it from crates.io:
+
+```bash
+cargo install milo-parser
+```
+
+The `milo-parser` binary reads an HTTP/1.1 message from standard input by default and prints the callbacks emitted by Milo:
+
+```bash
+printf 'GET / HTTP/1.1\r\nHost: example.com\r\n\r\n' | milo-parser
+# offset=0 size=0 event=request
+# offset=0 size=0 event=message_start
+# offset=0 size=0 event=state_change
+# offset=0 size=3 event=method
+```
+
+Each output line uses this format:
+
+```text
+offset=$OFFSET size=$SIZE event=$EVENT
+```
+
+Parser errors are emitted as callback lines too:
+
+```text
+offset=$OFFSET size=$SIZE event=error error=$ERROR description="$DESCRIPTION"
+```
+
+Use `-f` or `--file` to parse a file:
+
+```bash
+milo-parser --file request.http
+```
+
+By default Milo autodetects request or response input. Use `-o` or `--request` to force request parsing, and `-i` or `--response` to force response parsing:
+
+```bash
+milo-parser --request --file request.http
+milo-parser --response --file response.http
+```
 
 ## API
 

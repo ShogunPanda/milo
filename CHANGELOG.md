@@ -1,3 +1,8 @@
+### 2026-06-01 / 0.4.0
+
+- feat: Added binary parser.
+- feat: Rewritten using SIMD. (#14)
+
 ### 2026-06-01 / 0.4.0-alpha.6
 
 - feat: Added binary parser.

@@ -230,13 +230,6 @@ function generateCommonjsPackageJson (packageJson) {
 
   cjsPackageJson.name = '@perseveranza-pets/milo-cjs'
   cjsPackageJson.type = 'commonjs'
-  cjsPackageJson.main = 'src/simd/index.js'
-  cjsPackageJson.exports = {
-    '.': './src/simd/index.js',
-    './unbundled': './src/simd/unbundled.js',
-    './no-simd': './src/no-simd/index.js',
-    './no-simd/unbundled': './src/no-simd/unbundled.js'
-  }
 
   return cjsPackageJson
 }

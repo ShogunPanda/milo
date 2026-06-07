@@ -1,3 +1,7 @@
+### 2026-06-07 / 0.6.0
+
+- feat: Added dual package publishing on NPM.
+
 ### 2026-06-07 / 0.5.0
 
 - feat: Generate CommonJS files as well.

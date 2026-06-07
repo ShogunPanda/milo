@@ -294,9 +294,12 @@ jobs:
         working-directory: parser
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-      - name: Publish WASM package on npm
+      - name: Publish WASM ESM package on npm
         run: pnpm publish --access public --tag ${{ inputs.prerelease == true && 'next' || 'latest' }} --provenance --no-git-checks
         working-directory: dist/wasm/release/package
+      - name: Publish WASM CJS package on npm
+        run: pnpm publish --access public --tag ${{ inputs.prerelease == true && 'next' || 'latest' }} --provenance --no-git-checks
+        working-directory: dist/wasm/release/package-cjs
       - name: Publish on GitHub
         run: |
           cambi release -n > /tmp/release-notes.txt

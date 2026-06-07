@@ -27,6 +27,12 @@ Install it from npm:
 npm install @perseveranza-pets/milo
 ```
 
+For CommonJS projects, install the CJS-only package instead:
+
+```
+npm install @perseveranza-pets/milo-cjs
+```
+
 Then create a sample source file:
 
 ```javascript
@@ -78,6 +84,12 @@ milo.dealloc(ptr, message.length)
 ```
 
 The default JavaScript entry point uses the SIMD WebAssembly build. Use `@perseveranza-pets/milo/no-simd` when SIMD is not available, and add `/unbundled` to either entry point to load the external `.wasm` file instead of the bundled JavaScript module.
+
+CommonJS projects can use the same entry points from `@perseveranza-pets/milo-cjs`:
+
+```javascript
+const { setup } = require('@perseveranza-pets/milo-cjs')
+```
 
 Finally build and execute it using `node`:
 

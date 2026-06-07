@@ -27,22 +27,10 @@
   ],
   "main": "src/simd/index.js",
   "exports": {
-    ".": {
-      "import": "./src/simd/index.js",
-      "require": "./src/simd/index.cjs"
-    },
-    "./unbundled": {
-      "import": "./src/simd/unbundled.js",
-      "require": "./src/simd/unbundled.cjs"
-    },
-    "./no-simd": {
-      "import": "./src/no-simd/index.js",
-      "require": "./src/no-simd/index.cjs"
-    },
-    "./no-simd/unbundled": {
-      "import": "./src/no-simd/unbundled.js",
-      "require": "./src/no-simd/unbundled.cjs"
-    }
+    ".": "./src/simd/index.js",
+    "./unbundled": "./src/simd/unbundled.js",
+    "./no-simd": "./src/no-simd/index.js",
+    "./no-simd/unbundled": "./src/no-simd/unbundled.js"
   },
   "engines": {
     "node": ">= 22.21.0"

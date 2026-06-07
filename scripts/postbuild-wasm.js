@@ -182,10 +182,10 @@ function generateSimpleCallbacks (constants) {
     .join('\n')
 }
 
-async function generateModule (profile, version, constants, loader) {
+async function generateModule (profile, version, constants, loader, moduleFormat) {
   const template = await readFile(new URL('../parser/src/wasm/template.js', import.meta.url), 'utf-8')
 
-  const replaced = template.replaceAll(/\/\* REPLACE: (\S+) \*\//g, (marker, id) => {
+  let replaced = template.replaceAll(/\/\* REPLACE: (\S+) \*\//g, (marker, id) => {
     switch (id) {
       case 'module':
         return loader
@@ -217,6 +217,11 @@ async function generateModule (profile, version, constants, loader) {
     }
   })
 
+  if (moduleFormat === 'commonjs') {
+    replaced = replaced.replaceAll(/^export function /gm, 'function ')
+    replaced += '\nmodule.exports = { wasmModule, noop, setup, simple }\n'
+  }
+
   return format(replaced, { ...prettierConfig, parser: 'babel' })
 }
 
@@ -229,19 +234,42 @@ async function generateVariant (profile, version, constants, rootFolder, variant
     version,
     constants,
     `import { readFileSync } from 'node:fs'\n\nexport const wasmModule = new WebAssembly.Module(readFileSync(new URL('../../binary/${wasmFile}', import.meta.url)))
-    `
+    `,
+    'module'
+  )
+  const unbundledCjs = await generateModule(
+    profile,
+    version,
+    constants,
+    `const { readFileSync } = require('node:fs')
+const { join } = require('node:path')
+
+const wasmModule = new WebAssembly.Module(readFileSync(join(__dirname, '../../binary/${wasmFile}')))
+    `,
+    'commonjs'
   )
   const bundled = await generateModule(
     profile,
     version,
     constants,
     `export const wasmModule = new WebAssembly.Module(Uint8Array.from(globalThis.atob('${wasm}'), c => c.codePointAt(0)))
-    `
+    `,
+    'module'
+  )
+  const bundledCjs = await generateModule(
+    profile,
+    version,
+    constants,
+    `const wasmModule = new WebAssembly.Module(Buffer.from('${wasm}', 'base64'))
+    `,
+    'commonjs'
   )
 
   await mkdir(sourceFolder, { recursive: true })
   await writeFile(resolve(sourceFolder, 'unbundled.js'), unbundled, 'utf-8')
+  await writeFile(resolve(sourceFolder, 'unbundled.cjs'), unbundledCjs, 'utf-8')
   await writeFile(resolve(sourceFolder, 'index.js'), bundled, 'utf-8')
+  await writeFile(resolve(sourceFolder, 'index.cjs'), bundledCjs, 'utf-8')
 }
 
 // TODO@PI: TypeScript

@@ -1,6 +1,6 @@
 {
   "name": "@perseveranza-pets/milo",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "A fast and embeddable HTTP/1.1 parser.",
   "homepage": "https://sw.cowtech.it/milo",
   "repository": {

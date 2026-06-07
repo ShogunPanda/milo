@@ -1,3 +1,7 @@
+### 2026-06-07 / 0.5.0
+
+- feat: Generate CommonJS files as well.
+
 ### 2026-06-01 / 0.4.0
 
 - feat: Added binary parser.

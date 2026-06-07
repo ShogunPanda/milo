@@ -49,7 +49,7 @@ checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 
 [[package]]
 name = "milo-macros"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "indexmap",
  "proc-macro2",

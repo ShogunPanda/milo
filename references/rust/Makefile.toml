@@ -17,30 +17,17 @@
   args         = ["--test", "../reference.js"]
 
 [tasks.release]
-  command = "cargo"
-  args = [
-    "build",
-    "-Z",
-    "unstable-options",
-    "--target",
-    "${TARGET}",
-    "--target-dir",
-    "../../tmp/references/rust/targets/release",
-    "--release",
-    "--artifact-dir",
-    "../../tmp/references/rust/release",
+  script = [
+    "cargo build --target ${TARGET} --target-dir ../../tmp/references/rust/targets/release --release",
+    "mkdir -p ../../tmp/references/rust/release",
+    "cp ../../tmp/references/rust/targets/release/${TARGET}/release/readme ../../tmp/references/rust/release/",
+    "cp ../../tmp/references/rust/targets/release/${TARGET}/release/reference ../../tmp/references/rust/release/",
   ]
 
 [tasks.debug]
-  command = "cargo"
-  args = [
-    "build",
-    "-Z",
-    "unstable-options",
-    "--target",
-    "${TARGET}",
-    "--target-dir",
-    "../../tmp/references/rust/targets/debug",
-    "--artifact-dir",
-    "../../tmp/references/rust/debug",
+  script = [
+    "cargo build --target ${TARGET} --target-dir ../../tmp/references/rust/targets/debug",
+    "mkdir -p ../../tmp/references/rust/debug",
+    "cp ../../tmp/references/rust/targets/debug/${TARGET}/debug/readme ../../tmp/references/rust/debug/",
+    "cp ../../tmp/references/rust/targets/debug/${TARGET}/debug/reference ../../tmp/references/rust/debug/",
   ]

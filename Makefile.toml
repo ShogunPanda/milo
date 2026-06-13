@@ -74,12 +74,7 @@
     "-style=file:clang-format.yml",
     "-i",
     "benchmarks/cpp/src/main.cc",
-    "references/cpp/src/output.h",
-    "references/cpp/src/output.cc",
-    "references/cpp/src/utils.h",
-    "references/cpp/src/utils.cc",
-    "references/cpp/src/reference.cc",
-    "references/cpp/src/readme.cc",
+    "references/cpp/src/main.cc",
   ]
 
 [tasks."format:js"]

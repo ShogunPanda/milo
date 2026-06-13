@@ -5,7 +5,7 @@
   dependencies = ["test"]
 
 [tasks.build]
-  dependencies = ["prepare", "milo", "release", "debug", "readme"]
+  dependencies = ["prepare", "milo", "release", "debug"]
 
 [tasks.test]
   env          = { VARIANT = "cpp" }
@@ -30,9 +30,7 @@
     "../../dist/cpp/release",
     "-o",
     "../../tmp/references/cpp/release",
-    "src/output.cc",
-    "src/utils.cc",
-    "src/reference.cc",
+    "src/main.cc",
     "../../dist/cpp/release/libmilo.a",
   ]
 
@@ -44,24 +42,8 @@
     "../../dist/cpp/debug",
     "-o",
     "../../tmp/references/cpp/debug",
-    "src/output.cc",
-    "src/utils.cc",
-    "src/reference.cc",
+    "src/main.cc",
     "../../dist/cpp/debug/libmilo.a",
-  ]
-
-[tasks.readme]
-  command = "clang++"
-  args = [
-    "-std=c++11",
-    "-I",
-    "../../dist/cpp/release",
-    "-o",
-    "../../tmp/references/cpp/readme",
-    "src/output.cc",
-    "src/utils.cc",
-    "src/readme.cc",
-    "../../dist/cpp/release/libmilo.a",
   ]
 
 [tasks."milo:headers"]

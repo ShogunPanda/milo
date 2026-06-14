@@ -36,22 +36,23 @@
   script = [
     "mkdir -p ../dist/cpp/${CONFIGURATION}",
     "rm -rf ../dist/cpp/${CONFIGURATION}/*",
-    "cargo build -Z unstable-options --target ${TARGET} ${CARGO_OPTIONS} --artifact-dir target/cpp/${CONFIGURATION}",
-    "cp target/cpp/${CONFIGURATION}/libmilo_parser.a ../dist/cpp/${CONFIGURATION}/libmilo.a",
+    "cargo build --target ${TARGET} ${CARGO_OPTIONS}",
+    "cp target/${TARGET}/release/libmilo_parser.a ../dist/cpp/${CONFIGURATION}/libmilo.a",
     "cp target/headers/milo.h ../dist/cpp/${CONFIGURATION}",
     "node ../scripts/postbuild-cpp.js	${CONFIGURATION}",
   ]
 
 [tasks."cpp:headers"]
+  env     = { RUSTC_BOOTSTRAP = "1" }
   command = "cbindgen"
   args    = ["--quiet", "--output", "target/headers/milo.h"]
 
 [tasks."wasm:release"]
-  env      = { CONFIGURATION = "release", CARGO_BUILD_OPTIONS = "-Z unstable-options -Z build-std=std,panic_abort", CARGO_OPTIONS = "--release", RUSTFLAGS_BASE = "-Z unstable-options -C panic=immediate-abort", WASMPACK_OPTIONS = "--release" }
+  env      = { CONFIGURATION = "release", CARGO_OPTIONS = "--release", RUSTFLAGS_BASE = "-C panic=abort", WASMPACK_OPTIONS = "--release" }
   run_task = "wasm:module"
 
 [tasks."wasm:debug"]
-  env      = { CONFIGURATION = "debug", CARGO_BUILD_OPTIONS = "-Z unstable-options", CARGO_OPTIONS = "--release --features debug", RUSTFLAGS_BASE = "", WASMPACK_OPTIONS = "--release" }
+  env      = { CONFIGURATION = "debug", CARGO_OPTIONS = "--release --features debug", RUSTFLAGS_BASE = "", WASMPACK_OPTIONS = "--release" }
   run_task = "wasm:module"
 
 [tasks."wasm:module"]
@@ -59,10 +60,10 @@
     "mkdir -p ../dist/wasm",
     "rm -rf ../dist/wasm/${CONFIGURATION}",
     "mkdir -p ../dist/wasm/${CONFIGURATION}/binary",
-    "RUSTFLAGS=\"${RUSTFLAGS_BASE} -C target-feature=+simd128\" cargo build --lib ${CARGO_BUILD_OPTIONS} --target wasm32-unknown-unknown ${CARGO_OPTIONS}",
+    "RUSTFLAGS=\"${RUSTFLAGS_BASE} -C target-feature=+simd128\" cargo build --lib --target wasm32-unknown-unknown ${CARGO_OPTIONS}",
     "cp -a target/wasm32-unknown-unknown/release/milo_parser.wasm ../dist/wasm/${CONFIGURATION}/binary/simd.wasm",
     "wasm-opt -O3 --enable-bulk-memory-opt --enable-simd -o ../dist/wasm/${CONFIGURATION}/binary/simd.wasm ../dist/wasm/${CONFIGURATION}/binary/simd.wasm",
-    "RUSTFLAGS=\"${RUSTFLAGS_BASE}\" cargo build --lib ${CARGO_BUILD_OPTIONS} --target wasm32-unknown-unknown ${CARGO_OPTIONS}",
+    "RUSTFLAGS=\"${RUSTFLAGS_BASE}\" cargo build --lib --target wasm32-unknown-unknown ${CARGO_OPTIONS}",
     "cp -a target/wasm32-unknown-unknown/release/milo_parser.wasm ../dist/wasm/${CONFIGURATION}/binary/no-simd.wasm",
     "wasm-opt -O3 --enable-bulk-memory-opt -o ../dist/wasm/${CONFIGURATION}/binary/no-simd.wasm ../dist/wasm/${CONFIGURATION}/binary/no-simd.wasm",
     "node ../scripts/postbuild-wasm.js	${CONFIGURATION}",

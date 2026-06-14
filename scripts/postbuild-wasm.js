@@ -185,6 +185,7 @@ function generateSimpleCallbacks (constants) {
 async function generateModule (profile, version, constants, loader, moduleFormat) {
   const template = await readFile(new URL('../parser/src/wasm/template.js', import.meta.url), 'utf-8')
 
+  // The template is shared by bundled/unbundled and ESM/CJS outputs; placeholders keep the runtime code identical.
   let replaced = template.replaceAll(/\/\* REPLACE: (\S+) \*\//g, (marker, id) => {
     switch (id) {
       case 'module':

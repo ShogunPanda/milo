@@ -30,6 +30,7 @@ async function loadFixture (name, isRequest) {
 function decodeFixture (raw) {
   const decoded = []
 
+  // Fixtures encode CRLF as text and separate rows with LF; rebuild the payload bytes used by parsers.
   let i = 0
   while (i < raw.length) {
     if (raw[i] === 0x0a) {

@@ -51,6 +51,7 @@ function parseHtmlMeta (value) {
     return null
   }
 
+  // llhttp stores JSON metadata in markdown HTML nodes, sometimes entity-escaped by the parser.
   const meta = JSON.parse(decodeHtmlEntities(match[1].trim()))
   if (!meta || typeof meta !== 'object' || Array.isArray(meta) || Object.keys(meta).length === 0) {
     return null
@@ -78,6 +79,7 @@ function normalizeFixtureForComparison (value) {
     return value.map(normalizeFixtureForComparison)
   }
 
+  // Compare semantic fixture data only; checked is local review state and key order is irrelevant.
   if (value && typeof value === 'object') {
     const normalized = {}
 
@@ -121,6 +123,7 @@ async function processSection (llhttpRoot, outputRoot, fixtureRoot, section, see
     let currentCase = null
 
     const flushCase = () => {
+      // A valid llhttp markdown case is complete only after both input and expected log blocks are seen.
       if (currentCase && currentCase.http != null && currentCase.log != null) {
         parsed.push({
           titles: currentCase.titles,

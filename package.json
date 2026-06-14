@@ -19,8 +19,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "format": "prettier -w \"parser/**/*.js\" \"benchmarks/**/*.js\" \"references/**/*.js\"",
-    "lint": "eslint --cache \"parser/**/*.js\" \"benchmarks/**/*.js\" \"references/**/*.js\""
+    "format": "prettier -w \"parser/**/*.js\" \"benchmarks/**/*.js\" \"references/**/*.js\" \"scripts/**/*.js\"",
+    "lint": "eslint --cache \"parser/**/*.js\" \"benchmarks/**/*.js\" \"references/**/*.js\" \"scripts/**/*.js\""
   },
   "dependencies": {
     "@cowtech/eslint-config": "^11.1.3",

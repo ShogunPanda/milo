@@ -187,6 +187,8 @@ pub fn find_header_line_end(ptr: *const u8, len: usize) -> HeaderLineScanResult 
     let eq_tab = unsafe { vceqq_u8(x, v_tab) };
     let eq_cr = unsafe { vceqq_u8(x, v_cr) };
     let eq_7f = unsafe { vceqq_u8(x, v_7f) };
+
+    // Header lines stop at CR; other control bytes are invalid except HTAB.
     let ctrl = unsafe { vbicq_u8(lt_20, eq_tab) };
     let invalid = unsafe { vbicq_u8(vorrq_u8(ctrl, eq_7f), eq_cr) };
     let found = unsafe { vorrq_u8(eq_cr, invalid) };
@@ -224,6 +226,8 @@ pub fn find_header_line_end(ptr: *const u8, len: usize) -> HeaderLineScanResult 
     let eq_tab = unsafe { _mm_cmpeq_epi8(x, v_tab) };
     let eq_cr = unsafe { _mm_cmpeq_epi8(x, v_cr) };
     let eq_7f = unsafe { _mm_cmpeq_epi8(x, v_7f) };
+
+    // Header lines stop at CR; other control bytes are invalid except HTAB.
     let ctrl = unsafe { _mm_andnot_si128(eq_tab, lt_20) };
     let invalid = unsafe { _mm_andnot_si128(eq_cr, _mm_or_si128(ctrl, eq_7f)) };
     let cr_mask = unsafe { _mm_movemask_epi8(eq_cr) };
@@ -312,6 +316,8 @@ pub fn find_header_line_end(ptr: *const u8, len: usize) -> HeaderLineScanResult 
     let eq_tab = u8x16_eq(x, v_tab);
     let eq_cr = u8x16_eq(x, v_cr);
     let eq_7f = u8x16_eq(x, v_7f);
+
+    // Header lines stop at CR; other control bytes are invalid except HTAB.
     let ctrl = v128_andnot(eq_tab, lt_20);
     let invalid = v128_andnot(eq_cr, v128_or(ctrl, eq_7f));
     let found = v128_or(eq_cr, invalid);
@@ -350,6 +356,8 @@ pub fn validate_token_value(ptr: *const u8, len: usize) -> bool {
     let lt_20 = vcltq_u8(x, v_20);
     let eq_tab = vceqq_u8(x, v_tab);
     let eq_7f = vceqq_u8(x, v_7f);
+
+    // Field values allow HTAB but reject the remaining C0 controls and DEL.
     let ctrl = vbicq_u8(lt_20, eq_tab); // lt_20 & !eq_tab
     let invalid = vorrq_u8(ctrl, eq_7f);
 
@@ -390,6 +398,8 @@ pub fn validate_token_value(ptr: *const u8, len: usize) -> bool {
     let lt_20 = _mm_andnot_si128(_mm_cmpeq_epi8(_mm_subs_epu8(v_20, x), v_zero), v_ones);
     let eq_tab = _mm_cmpeq_epi8(x, v_tab);
     let eq_7f = _mm_cmpeq_epi8(x, v_7f);
+
+    // Field values allow HTAB but reject the remaining C0 controls and DEL.
     let ctrl = _mm_andnot_si128(eq_tab, lt_20);
     let invalid = _mm_or_si128(ctrl, eq_7f);
 
@@ -428,6 +438,8 @@ pub fn validate_token_value(ptr: *const u8, len: usize) -> bool {
     let lt_20 = u8x16_lt(x, v_20);
     let eq_tab = u8x16_eq(x, v_tab);
     let eq_7f = u8x16_eq(x, v_7f);
+
+    // Field values allow HTAB but reject the remaining C0 controls and DEL.
     let ctrl = v128_andnot(eq_tab, lt_20);
     let invalid = v128_or(ctrl, eq_7f);
 

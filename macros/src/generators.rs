@@ -53,6 +53,7 @@ fn generate_table<F>(validator: F) -> Vec<bool>
 where
   F: Fn(u16) -> bool,
 {
+  // Precompute byte validators so the parser can use table lookups in hot paths.
   (0..=255).map(validator).collect()
 }
 

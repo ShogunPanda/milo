@@ -43,6 +43,8 @@ impl Parser {
         limit += unconsumed_len;
         let unconsumed = from_raw_parts(self.unconsumed, unconsumed_len);
 
+        // Rebuild a contiguous view so state handlers can scan across parse-call
+        // boundaries.
         aggregate = [unconsumed, input].concat();
         &aggregate[..]
       }
@@ -93,7 +95,8 @@ impl Parser {
         );
       }
 
-      // Reset the continue_without_data flag
+      // Reset the flag before processing; states set it again when they need another
+      // zero-byte turn.
       self.continue_without_data = false;
       advanced = 0;
 

@@ -1,7 +1,7 @@
 use core::ffi::c_void;
 use core::slice;
 
-use milo_parser::{Parser, CALLBACK_ACTIVE_ON_DATA};
+use milo_parser::{CALLBACK_ACTIVE_ON_DATA, Parser};
 
 fn main() {
   // Create the parser.

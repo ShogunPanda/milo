@@ -50,9 +50,9 @@ REPLACEMENT=$(
   printf '#define MILO_VERSION_PATCH %s\n' "$PATCH"
   printf '#define MILO_VERSION_PRERELEASE "%s"\n' "$PRERELEASE"
   printf '\n'
-  printf '#define MILO_METHODS_MAP(EACH) \\\n'
+  printf '#define MILO_METHODS_MAP(EACH) \\\\\n'
   for i in "${!METHODS[@]}"; do
-    printf '  EACH(%d, %s, %s) \\\n' "$i" "${METHODS[$i]}" "${METHODS[$i]}"
+    printf '  EACH(%d, %s, %s) \\\\\n' "$i" "${METHODS[$i]}" "${METHODS[$i]}"
   done
   printf '\n'
   printf 'namespace milo_parser {\n'

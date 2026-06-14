@@ -39,12 +39,11 @@
     "cargo build -Z unstable-options --target ${TARGET} ${CARGO_OPTIONS} --artifact-dir target/cpp/${CONFIGURATION}",
     "cp target/cpp/${CONFIGURATION}/libmilo_parser.a ../dist/cpp/${CONFIGURATION}/libmilo.a",
     "cp target/headers/milo.h ../dist/cpp/${CONFIGURATION}",
-    "node ../scripts/postbuild-cpp.js	${CONFIGURATION}",
   ]
 
 [tasks."cpp:headers"]
-  command = "cbindgen"
-  args    = ["--quiet", "--output", "target/headers/milo.h"]
+  command = "bash"
+  args    = ["../scripts/postbuild-cpp.sh", "target/headers/milo.h"]
 
 [tasks."wasm:release"]
   env      = { CONFIGURATION = "release", CARGO_BUILD_OPTIONS = "-Z unstable-options -Z build-std=std,panic_abort", CARGO_OPTIONS = "--release", RUSTFLAGS_BASE = "-Z unstable-options -C panic=immediate-abort", WASMPACK_OPTIONS = "--release" }

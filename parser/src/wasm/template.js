@@ -30,6 +30,16 @@ function parse (parser, data, limit) {
   return this.parse(parser, data, limit) >>> 0
 }
 
+function parseWithError (parser, data, limit) {
+  const result = this.parse_with_error(parser, data, limit) | 0
+  const errored = result < 0
+
+  return {
+    consumed: errored ? -result - 1 : result,
+    errored
+  }
+}
+
 function fail (parser, code, description) {
   const len = description.length
   const ptr = this.alloc(len)
@@ -102,6 +112,7 @@ export function setup (env = {}) {
     create: create.bind(wasm),
     destroy: destroy.bind(wasm),
     parse: parse.bind(wasm),
+    parseWithError: parseWithError.bind(wasm),
     fail: fail.bind(wasm),
     hasDebug: hasDebug.bind(wasm),
     clear: wasm.clear,

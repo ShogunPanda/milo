@@ -135,6 +135,23 @@ Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
+#### `parseWithError(parser, data, limit)`
+
+Parses `data` up to `limit` characters.
+
+It returns an object containing the number of consumed characters and whether the parser errored:
+
+```javascript
+{
+  consumed: 0,
+  errored: false
+}
+```
+
+Internally this wraps the `parse_with_error` WebAssembly export, which returns a signed 32-bit integer: `consumed` on success, and `-(consumed + 1)` on error. The extra `+ 1` allows representing errors that happen after consuming zero bytes.
+
+Since the raw return value is a signed 32-bit integer, `parseWithError` supports up to `2_147_483_646` consumed bytes per call when an error is reported.
+
 #### `reset(parser)`
 
 Resets a parser. The second parameters specifies if to also reset the

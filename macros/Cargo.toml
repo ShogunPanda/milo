@@ -1,6 +1,6 @@
 [package]
   name        = "milo-macros"
-  version     = "0.6.0"
+  version     = "0.7.0"
   edition     = "2024"
   description = "Macros for milo-parser, a fast and embeddable HTTP/1.1 parser."
   homepage    = "https://sw.cowtech.it/milo"

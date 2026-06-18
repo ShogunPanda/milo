@@ -1,3 +1,7 @@
+### 2026-06-18 / 0.7.0
+
+- feat: Added parseWithError. (#20)
+
 ### 2026-06-07 / 0.6.0
 
 - feat: Added dual package publishing on NPM.

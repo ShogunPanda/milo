@@ -78,6 +78,8 @@ milo.setActiveCallbacks(parser, milo.CALLBACK_ACTIVE_ON_DATA)
 buffer.set(message, 0)
 milo.parse(parser, ptr, message.length)
 
+// Use milo.parseWithError to get the consumed characters plus an error flag in a single call.
+
 // Cleanup used resources.
 milo.destroy(parser)
 milo.dealloc(ptr, message.length)

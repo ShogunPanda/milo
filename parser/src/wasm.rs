@@ -70,6 +70,20 @@ pub fn parse(parser: *mut c_void, data: *const c_uchar, limit: usize) -> usize {
   unsafe { (*(parser as *mut Parser)).parse(data, limit) }
 }
 
+/// Parses a slice of characters. It returns consumed bytes, or -(consumed + 1)
+/// if the parser errored.
+#[unsafe(no_mangle)]
+pub fn parse_with_error(parser: *mut c_void, data: *const c_uchar, limit: usize) -> i32 {
+  let parser = unsafe { &mut *(parser as *mut Parser) };
+  let consumed = parser.parse(data, limit) as i32;
+
+  if parser.error_code == crate::ERROR_NONE {
+    consumed
+  } else {
+    -(consumed + 1)
+  }
+}
+
 /// Pauses the parser. It will have to be resumed via `resume`.
 #[unsafe(no_mangle)]
 pub fn pause(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).pause() } }

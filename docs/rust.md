@@ -102,6 +102,7 @@ A struct representing a parser. It has the following fields:
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
 - `is_connect` (`bool`): If the current request used `CONNECT` method.
 - `skip_body` (`bool`): If the parser should skip the body.
+- `debug` (`bool`): If debug tracing is enabled for this parser. It only affects tracing in debug-enabled builds.
 - `max_start_line_length` (`usize`): Maximum allowed request/status line length. By default is `8192`.
 - `max_header_length` (`usize`): Maximum allowed header length. By default is `8192`.
 - `context` (`*mut c_void`): The context of this parser. Use is reserved to the developer.
@@ -139,6 +140,7 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 - `continue_without_data`
 - `is_connect`
 - `skip_body`
+- `debug`
 - `max_start_line_length`
 - `max_header_length`
 - `context`
@@ -168,6 +170,7 @@ The following fields are not modified:
 - `is_request`
 - `manage_unconsumed`
 - `continue_without_data`
+- `debug`
 - `max_start_line_length`
 - `max_header_length`
 - `context`

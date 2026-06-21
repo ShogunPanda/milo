@@ -10,7 +10,8 @@ const enums = {
   METHOD: 'Methods',
   CALLBACK: 'Callbacks',
   CALLBACK_ACTIVE: 'CallbackActives',
-  STATE: 'States'
+  STATE: 'States',
+  PARSER_FIELD: 'ParserFields'
 }
 
 const getters = {
@@ -22,6 +23,7 @@ const getters = {
   getMaxHeaderLength: ['number', 'get_max_header_length'],
   shouldContinueWithoutData: ['bool', 'should_continue_without_data'],
   isConnect: ['bool', 'is_connect'],
+  isDebug: ['bool', 'is_debug'],
   shouldSkipBody: ['bool', 'should_skip_body'],
   getState: ['number', 'get_state'],
   getPosition: ['number', 'get_position'],
@@ -50,6 +52,7 @@ const setters = {
   setShouldContinueWithoutData: 'set_should_continue_without_data',
   setIsRequest: 'set_is_request',
   setIsConnect: 'set_is_connect',
+  setDebug: 'set_debug',
   setShouldManageUnconsumed: 'set_should_manage_unconsumed',
   setMaxStartLineLength: 'set_max_start_line_length',
   setMaxHeaderLength: 'set_max_header_length',

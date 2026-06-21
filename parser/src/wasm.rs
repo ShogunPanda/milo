@@ -70,20 +70,6 @@ pub fn parse(parser: *mut c_void, data: *const c_uchar, limit: usize) -> usize {
   unsafe { (*(parser as *mut Parser)).parse(data, limit) }
 }
 
-/// Parses a slice of characters. It returns consumed bytes, or -(consumed + 1)
-/// if the parser errored.
-#[unsafe(no_mangle)]
-pub fn parse_with_error(parser: *mut c_void, data: *const c_uchar, limit: usize) -> i32 {
-  let parser = unsafe { &mut *(parser as *mut Parser) };
-  let consumed = parser.parse(data, limit) as i32;
-
-  if parser.error_code == crate::ERROR_NONE {
-    consumed
-  } else {
-    -(consumed + 1)
-  }
-}
-
 /// Pauses the parser. It will have to be resumed via `resume`.
 #[unsafe(no_mangle)]
 pub fn pause(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).pause() } }
@@ -138,6 +124,10 @@ pub fn is_autodetect(parser: *const c_void) -> bool { unsafe { (*(parser as *con
 // Get the parser is_request property.
 #[unsafe(no_mangle)]
 pub fn is_request(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).is_request } }
+
+// Get the parser debug property.
+#[unsafe(no_mangle)]
+pub fn is_debug(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).debug } }
 
 // Get the parser paused property.
 #[unsafe(no_mangle)]
@@ -328,6 +318,13 @@ pub fn set_should_skip_body(parser: *mut c_void, value: bool) {
 pub fn set_is_connect(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).is_connect = value;
+  }
+}
+
+#[unsafe(no_mangle)]
+pub fn set_debug(parser: *mut c_void, value: bool) {
+  unsafe {
+    (*(parser as *mut Parser)).debug = value;
   }
 }
 

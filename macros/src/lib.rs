@@ -4,6 +4,7 @@ mod actions;
 mod generators;
 mod matchers;
 mod native;
+mod parser_fields;
 mod structs;
 mod wasm;
 

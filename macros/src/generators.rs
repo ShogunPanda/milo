@@ -3,7 +3,7 @@ use quote::{format_ident, quote};
 use regex::{Captures, Regex};
 use syn::{Arm, ItemConst, parse_str};
 
-use crate::{native, wasm};
+use crate::{native, parser_fields, wasm};
 
 fn init_constants() -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
   let methods = serde_yaml::from_str(include_str!("../constants/methods.yml")).unwrap();
@@ -64,6 +64,7 @@ fn generate_constants(methods: &[String], errors: &[String], callbacks: &[String
   let errors_consts = generate_constants_internal(errors, "ERROR");
   let callbacks_consts = generate_constants_internal(callbacks, "CALLBACK");
   let callbacks_bitmask = generate_bitmask(callbacks, "CALLBACK_ACTIVE");
+  let parser_field_offsets = parser_fields::generate_constants();
   let token_table = generate_table(|byte| {
     (0x30..=0x39).contains(&byte)
       || (0x41..=0x5a).contains(&byte)
@@ -125,6 +126,7 @@ fn generate_constants(methods: &[String], errors: &[String], callbacks: &[String
     #(#callbacks_consts)*
     #(#callbacks_bitmask)*
     #(#states_consts)*
+    #parser_field_offsets
 
     /// cbindgen:ignore
     static TOKEN_TABLE: [bool; 256] = [#(#token_table),*];

@@ -39,6 +39,10 @@ impl From<CStringWithLength> for &str {
 #[unsafe(no_mangle)]
 pub extern "C" fn milo_has_debug() -> bool { cfg!(any(debug_assertions, feature = "debug")) }
 
+/// Returns if debug tracing is enabled for this parser.
+#[unsafe(no_mangle)]
+pub extern "C" fn milo_is_debug(parser: *const Parser) -> bool { unsafe { (*parser).debug } }
+
 /// A callback that simply returns `0`.
 ///
 /// Use this callback as pointer when you want to remove a callback from the
@@ -87,6 +91,7 @@ pub extern "C" fn milo_parse(parser: *mut Parser, data: *const c_uchar, limit: u
 ///   * is_request
 ///   * manage_unconsumed
 ///   * continue_without_data
+///   * debug
 ///   * context
 #[unsafe(no_mangle)]
 pub extern "C" fn milo_reset(parser: *mut Parser, keep_parsed: bool) { unsafe { (*parser).reset(keep_parsed) } }

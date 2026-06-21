@@ -105,6 +105,7 @@ A struct representing a parser. It has the following fields:
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
 - `is_connect` (`bool`): If the current request used `CONNECT` method.
 - `skip_body` (`bool`): If the parser should skip the body.
+- `debug` (`bool`): If debug tracing is enabled for this parser. It only affects tracing in debug-enabled builds.
 - `max_start_line_length` (`uintptr_t`): Maximum allowed request/status line length. By default is `8192`.
 - `max_header_length` (`uintptr_t`): Maximum allowed header length. By default is `8192`.
 - `context` (`void*`): The context of this parser. Use is reserved to the developer.
@@ -142,6 +143,7 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 - `continue_without_data`
 - `is_connect`
 - `skip_body`
+- `debug`
 - `max_start_line_length`
 - `max_header_length`
 - `context`
@@ -171,6 +173,10 @@ An enum listing all possible parser states.
 ### `bool milo_has_debug()`
 
 Returns `true` if debug informations are available in this build.
+
+### `bool milo_is_debug(Parser *parser)`
+
+Returns `true` if debug tracing is enabled for this parser.
 
 ### `void milo_noop(Parser *_parser, uintptr_t _at, uintptr_t _len)`
 
@@ -213,6 +219,7 @@ The following fields are not modified:
 - `is_request`
 - `manage_unconsumed`
 - `continue_without_data`
+- `debug`
 - `max_start_line_length`
 - `max_header_length`
 - `context`

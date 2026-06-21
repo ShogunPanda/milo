@@ -18,35 +18,34 @@ use milo_macros::{callback, generate, next};
 #[derive(Clone, Debug)]
 pub struct Parser {
   // User writable
+  #[cfg(not(target_family = "wasm"))]
+  pub context: *mut c_void,
+  pub max_start_line_length: usize,
+  pub max_header_length: usize,
   pub autodetect: bool,
   pub is_request: bool,
   pub manage_unconsumed: bool,
   pub continue_without_data: bool,
   pub is_connect: bool,
   pub skip_body: bool,
-  pub max_start_line_length: usize,
-  pub max_header_length: usize,
-  #[cfg(not(target_family = "wasm"))]
-  pub context: *mut c_void,
-  #[cfg(any(debug_assertions, feature = "debug"))]
   pub debug: bool,
 
   // Generic state
-  pub state: u8,
-  pub position: usize,
   pub parsed: u64,
+  pub position: usize,
+  pub state: u8,
   pub paused: bool,
   pub error_code: u8,
 
   // Current message flags
-  pub method: u8,
-  pub status: u32,
-  pub version_major: u8,
-  pub version_minor: u8,
   pub content_length: u64,
   pub chunk_size: u64,
   pub remaining_content_length: u64,
   pub remaining_chunk_size: u64,
+  pub status: u32,
+  pub method: u8,
+  pub version_major: u8,
+  pub version_minor: u8,
   pub has_content_length: bool,
   pub has_transfer_encoding: bool,
   pub has_chunked_transfer_encoding: bool,
@@ -66,9 +65,9 @@ pub struct Parser {
 
   // Complex data types - We need to split them in order to be exportable to C++
   pub error_description: *const c_uchar,
-  pub error_description_len: u16,
   pub unconsumed: *const c_uchar,
   pub unconsumed_len: usize,
+  pub error_description_len: u16,
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -90,33 +89,32 @@ impl Parser {
   pub fn new() -> Parser {
     Parser {
       // User writable
+      #[cfg(not(target_family = "wasm"))]
+      context: ptr::null_mut(),
+      max_start_line_length: 8192,
+      max_header_length: 8192,
       autodetect: true,
       is_request: false,
       manage_unconsumed: false,
       continue_without_data: false,
       is_connect: false,
       skip_body: false,
-      max_start_line_length: 8192,
-      max_header_length: 8192,
-      #[cfg(any(debug_assertions, feature = "debug"))]
       debug: false,
-      #[cfg(not(target_family = "wasm"))]
-      context: ptr::null_mut(),
       // Generic state
-      state: STATE_START,
-      position: 0,
       parsed: 0,
+      position: 0,
+      state: STATE_START,
       paused: false,
       error_code: ERROR_NONE,
       // Current message flags
-      method: 0,
-      status: 0,
-      version_major: 0,
-      version_minor: 0,
       content_length: 0,
       chunk_size: 0,
       remaining_content_length: 0,
       remaining_chunk_size: 0,
+      status: 0,
+      method: 0,
+      version_major: 0,
+      version_minor: 0,
       has_content_length: false,
       has_transfer_encoding: false,
       has_chunked_transfer_encoding: false,
@@ -133,9 +131,9 @@ impl Parser {
       ptr: ptr::null_mut(),
       // Complex data types
       error_description: ptr::null(),
-      error_description_len: 0,
       unconsumed: ptr::null(),
       unconsumed_len: 0,
+      error_description_len: 0,
     }
   }
 
@@ -149,6 +147,7 @@ impl Parser {
   ///   * is_request
   ///   * manage_unconsumed
   ///   * continue_without_data
+  ///   * debug
   ///   * context
   pub fn reset(&mut self, keep_parsed: bool) {
     self.state = STATE_START;

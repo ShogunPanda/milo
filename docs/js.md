@@ -31,6 +31,7 @@ The module exports several constants (`*` is used to denote a family prefix):
 - `CALLBACK_*`: A parser callback.
 - `CALLBACK_ACTIVE_*`: Callback activation flags.
 - `STATE_*`: A parser state.
+- `PARSER_FIELD_*`: A WebAssembly parser field offset.
 
 Internal generated lookup tables used by the parser are not exported from the WebAssembly package.
 
@@ -65,6 +66,38 @@ Access is supported from string constant or numeric value.
 An enum listing all possible parser states.
 
 Access is supported from string constant or numeric value.
+
+#### `ParserFields`
+
+An enum listing WebAssembly parser field offsets.
+
+Access is supported from string constant or numeric value.
+
+### Parser Fields
+
+`ParserFields` contains byte offsets for reading parser fields directly from WebAssembly memory.
+
+Use the offset with the parser pointer returned by `create()`:
+
+```javascript
+const milo = setup()
+const parser = milo.create()
+
+const status = new DataView(milo.memory.buffer).getUint32(parser + milo.ParserFields.STATUS, true)
+const paused = new Uint8Array(milo.memory.buffer)[parser + milo.ParserFields.PAUSED] !== 0
+
+milo.destroy(parser)
+```
+
+Read fields with the matching WebAssembly representation:
+
+- `bool` and `u8`: `Uint8Array`
+- `u16`: `DataView#getUint16(..., true)`
+- `u32` and `usize`: `DataView#getUint32(..., true)`
+- `u64`: `DataView#getBigUint64(..., true)`
+- pointers: `DataView#getUint32(..., true)`
+
+Prefer the regular getters when available. `ParserFields` is intended for advanced WebAssembly integrations that need direct memory access.
 
 ### Methods
 
@@ -135,23 +168,6 @@ Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
-#### `parseWithError(parser, data, limit)`
-
-Parses `data` up to `limit` characters.
-
-It returns an object containing the number of consumed characters and whether the parser errored:
-
-```javascript
-{
-  consumed: 0,
-  errored: false
-}
-```
-
-Internally this wraps the `parse_with_error` WebAssembly export, which returns a signed 32-bit integer: `consumed` on success, and `-(consumed + 1)` on error. The extra `+ 1` allows representing errors that happen after consuming zero bytes.
-
-Since the raw return value is a signed 32-bit integer, `parseWithError` supports up to `2_147_483_646` consumed bytes per call when an error is reported.
-
 #### `reset(parser)`
 
 Resets a parser. The second parameters specifies if to also reset the
@@ -165,6 +181,7 @@ The following fields are not modified:
 - `is_request`
 - `manage_unconsumed`
 - `continue_without_data`
+- `debug`
 - `max_start_line_length`
 - `max_header_length`
 - `context`
@@ -204,6 +221,12 @@ Returns `true` if the parser autodetects requests and responses.
 #### `isRequest(parser)`
 
 Returns `true` if the configured or detected message type is a request.
+
+#### `isDebug(parser)`
+
+Returns `true` if debug tracing is enabled for this parser.
+
+The flag only affects tracing in debug-enabled builds.
 
 #### `isPaused(parser)`
 
@@ -356,6 +379,12 @@ Set if the parser should skip the body.
 #### `setIsConnect(parser, value)`
 
 Sets if the current request used the `CONNECT` method.
+
+#### `setDebug(parser, value)`
+
+Sets if debug tracing is enabled for this parser.
+
+The flag only affects tracing in debug-enabled builds.
 
 ## Simple API
 

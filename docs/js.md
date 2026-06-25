@@ -30,7 +30,10 @@ The module exports several constants (`*` is used to denote a family prefix):
 - `METHOD_*`: An HTTP request method.
 - `CALLBACK_*`: A parser callback.
 - `CALLBACK_ACTIVE_*`: Callback activation flags.
+- `EVENT_*`: A parser event type.
+- `EVENT_ACTIVE_*`: Event activation flags.
 - `STATE_*`: A parser state.
+- `PARSER_FIELD_*`: A WebAssembly parser field offset.
 
 Internal generated lookup tables used by the parser are not exported from the WebAssembly package.
 
@@ -60,11 +63,169 @@ An enum listing all possible parser callbacks bitmask.
 
 Access is supported from string constant or numeric value.
 
+#### `Events`
+
+An enum listing all possible parser event types.
+
+Access is supported from string constant or numeric value.
+
+#### `EventActives`
+
+An enum listing all possible parser event activation flags.
+
+Access is supported from string constant or bigint value.
+
 #### `States`
 
 An enum listing all possible parser states.
 
 Access is supported from string constant or numeric value.
+
+#### `ParserFields`
+
+An enum listing WebAssembly parser field offsets.
+
+Access is supported from string constant or numeric value.
+
+### Parser Fields
+
+`ParserFields` contains byte offsets for reading parser fields directly from WebAssembly memory.
+
+Use the offset with the parser pointer returned by `create()`:
+
+```javascript
+const milo = setup()
+const parser = milo.create()
+
+const status = new DataView(milo.memory.buffer).getUint32(parser + milo.ParserFields.STATUS, true)
+const paused = new Uint8Array(milo.memory.buffer)[parser + milo.ParserFields.PAUSED] !== 0
+
+milo.destroy(parser)
+```
+
+Read fields with the matching WebAssembly representation:
+
+- `bool` and `u8`: `Uint8Array`
+- `u16`: `DataView#getUint16(..., true)`
+- `u32` and `usize`: `DataView#getUint32(..., true)`
+- `u64`: `DataView#getBigUint64(..., true)`
+- pointers: `DataView#getUint32(..., true)`
+
+`ParserFields.ERROR_DESCRIPTION` points to an inline `Uint8Array` buffer of 255 bytes inside the parser. It is always NIL-terminated. `ParserFields.ERROR_DESCRIPTION_LEN` is a `u8` length that excludes the terminator; error descriptions are clamped to 254 bytes.
+
+Prefer the regular getters when available. `ParserFields` is intended for advanced WebAssembly integrations that need direct memory access.
+
+### Events
+
+Events are parser-owned records written to the parser event buffer during parsing. They are disabled by default. Enable them with `setActiveEvents(parser, mask)` using one or more `EVENT_ACTIVE_*` constants.
+
+Callbacks are replayed from the same event buffer. Calling `setActiveCallbacks(parser, mask)` also enables event emission for those callbacks, then callbacks are invoked in event order before `parse()` returns.
+
+Read the event buffer pointer from `parser + ParserFields.EVENTS`, then drain records from that pointer. The event stream is terminated by `EVENT_END`. Do not rely on the internal buffer size; always stop reading at `EVENT_END`. Event payload integers are little-endian.
+
+If an active event would exceed the internal event buffer, parsing stops before consuming the data that would have produced the event. This is not a parser error and does not pause the parser. Call `parse()` again after draining the event buffer.
+
+### Body Payload Limit
+
+`setMaxBodyPayload(parser, value)` limits how many body payload bytes a single `parse()` invocation can consume. The default value is `0`, which means unlimited.
+
+When the limit is reached, `parse()` returns normally with a consumed byte count smaller than `limit` and leaves the remaining input unconsumed. This is not a parser error and does not pause the parser. The next `parse()` invocation continues from the same parser state.
+
+The limit applies only to body payload bytes. Framing bytes such as chunk headers, chunk CRLFs, and trailers are not counted.
+
+### Suspend After Headers
+
+`setShouldSuspendAfterHeaders(parser, true)` makes `parse()` return after the final header terminator has been consumed and `on_headers` has been emitted. The parser is not paused; the next `parse()` invocation continues with body decision and body parsing.
+
+#### Range events
+
+Most events use this payload:
+
+```text
+u8  type
+u32 at
+u32 len
+```
+
+`type` is one of the `EVENT_*` constants. `at` and `len` are relative to the last input passed to `parse()`. `len` can be `0`.
+
+`EVENT_STATE_CHANGE` is debug-only and uses the same payload. For this event, `len` contains the new parser state id as a `u32`. Callback replay passes that value as the callback `size` argument.
+
+#### Metadata events
+
+`EVENT_HEADERS` uses this payload:
+
+```text
+u8  type
+u32 at
+u16 status_or_method
+u8  should_keep_alive
+u8  should_upgrade
+u8  has_trailers
+u8  body_kind
+u64 content_length
+```
+
+`status_or_method` is the response status for responses and the request method for requests.
+
+`body_kind` values are:
+
+- `0`: `Content-Length`
+- `1`: chunked transfer encoding
+- `2`: no explicit body length
+
+#### Error events
+
+`EVENT_ERROR` uses this payload:
+
+```text
+u8  type
+u32 at
+u8  error_code
+```
+
+#### Reading events
+
+```javascript
+function readEvents (milo, parser) {
+  const memory = milo.memory.buffer
+  const eventsPtr = new DataView(memory).getUint32(parser + milo.ParserFields.EVENTS, true)
+  const events = new Uint8Array(memory, eventsPtr)
+  const view = new DataView(memory, eventsPtr)
+  const decoded = []
+  let cursor = 0
+
+  for (;;) {
+    const type = events[cursor]
+
+    if (type === milo.EVENT_END) {
+      break
+    }
+
+    if (type === milo.EVENT_ERROR) {
+      decoded.push({ type, at: view.getUint32(cursor + 1, true), errorCode: events[cursor + 5] })
+      cursor += 6
+    } else if (type === milo.EVENT_HEADERS) {
+      decoded.push({
+        type,
+        at: view.getUint32(cursor + 1, true),
+        statusOrMethod: view.getUint16(cursor + 5, true),
+        shouldKeepAlive: events[cursor + 7] !== 0,
+        shouldUpgrade: events[cursor + 8] !== 0,
+        hasTrailers: events[cursor + 9] !== 0,
+        bodyKind: events[cursor + 10],
+        contentLength: view.getBigUint64(cursor + 11, true)
+      })
+      cursor += 19
+    } else {
+      decoded.push({ type, at: view.getUint32(cursor + 1, true), len: view.getUint32(cursor + 5, true) })
+      cursor += 9
+    }
+  }
+
+  return decoded
+}
+```
 
 ### Methods
 
@@ -135,23 +296,6 @@ Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
-#### `parseWithError(parser, data, limit)`
-
-Parses `data` up to `limit` characters.
-
-It returns an object containing the number of consumed characters and whether the parser errored:
-
-```javascript
-{
-  consumed: 0,
-  errored: false
-}
-```
-
-Internally this wraps the `parse_with_error` WebAssembly export, which returns a signed 32-bit integer: `consumed` on success, and `-(consumed + 1)` on error. The extra `+ 1` allows representing errors that happen after consuming zero bytes.
-
-Since the raw return value is a signed 32-bit integer, `parseWithError` supports up to `2_147_483_646` consumed bytes per call when an error is reported.
-
 #### `reset(parser)`
 
 Resets a parser. The second parameters specifies if to also reset the
@@ -165,6 +309,7 @@ The following fields are not modified:
 - `is_request`
 - `manage_unconsumed`
 - `continue_without_data`
+- `debug`
 - `max_start_line_length`
 - `max_header_length`
 - `context`
@@ -184,6 +329,15 @@ Pauses the parser. The parser will have to be resumed via `resume`.
 #### `resume(parser)`
 
 Resumes the parser.
+
+#### `complete(parser)`
+
+Completes the current message without consuming more input.
+
+This emits normal completion events and performs the same completion transition
+used by `parse`. It is valid only while the parser is in `BODY_DECISION`,
+`TUNNEL`, `BODY_VIA_CONTENT_LENGTH`, `BODY_WITH_NO_LENGTH`, `CHUNK_HEADER`, or
+`TRAILER`. Other states fail with `ERROR_UNEXPECTED_STATE`.
 
 #### `finish(parser)`
 
@@ -205,6 +359,12 @@ Returns `true` if the parser autodetects requests and responses.
 
 Returns `true` if the configured or detected message type is a request.
 
+#### `isDebug(parser)`
+
+Returns `true` if debug tracing is enabled for this parser.
+
+The flag only affects tracing in debug-enabled builds.
+
 #### `isPaused(parser)`
 
 Returns `true` if the parser is paused.
@@ -225,6 +385,12 @@ Returns the parser maximum allowed header length.
 
 Default is `8192`.
 
+#### `getMaxBodyPayload(parser)`
+
+Returns the maximum body payload bytes consumed by a single `parse()` invocation.
+
+Default is `0`, which means unlimited.
+
 #### `shouldContinueWithoutData(parser)`
 
 Returns `true` if the next execution of the parse loop should execute even if there is no more data.
@@ -236,6 +402,10 @@ Returns `true` if the current request used `CONNECT` method.
 #### `shouldSkipBody(parser)`
 
 Returns `true` if the parser should skip the body.
+
+#### `shouldSuspendAfterHeaders(parser)`
+
+Returns `true` if parsing should return after headers have completed.
 
 #### `getState(parser)`
 
@@ -260,14 +430,6 @@ Returns the parser current request method.
 #### `getStatus(parser)`
 
 Returns the parser current response status.
-
-#### `getVersionMajor(parser)`
-
-Returns the parser current message HTTP version major version.
-
-#### `getVersionMinor(parser)`
-
-Returns the parser current message HTTP version minor version.
 
 #### `hasConnectionClose(parser)`
 
@@ -337,13 +499,25 @@ Sets the parser maximum allowed header length.
 
 Defaults to `8192` in a new parser.
 
+#### `setMaxBodyPayload(parser, value)`
+
+Sets the maximum body payload bytes consumed by a single `parse()` invocation. Use `0` for unlimited.
+
 #### `setActiveCallbacks(parser, value)`
 
 Sets the active callback bitmask on the parser.
 
+#### `setActiveEvents(parser, value)`
+
+Sets the active event bitmask on the parser.
+
 #### `setShouldManageUnconsumed(parser, value)`
 
 Sets if the parser should automatically copy and prepend unconsumed data.
+
+#### `setShouldSuspendAfterHeaders(parser, value)`
+
+Sets if parsing should return after headers have completed.
 
 #### `setShouldContinueWithoutData(parser, value)`
 
@@ -356,6 +530,12 @@ Set if the parser should skip the body.
 #### `setIsConnect(parser, value)`
 
 Sets if the current request used the `CONNECT` method.
+
+#### `setDebug(parser, value)`
+
+Sets if debug tracing is enabled for this parser.
+
+The flag only affects tracing in debug-enabled builds.
 
 ## Simple API
 

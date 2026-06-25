@@ -5,7 +5,7 @@ const TARGET_BYTES = 8n << 30n
 const ERROR_NONE = 0
 const HTTP_REQUEST = 1
 const HTTP_RESPONSE = 2
-const MILO_ACTIVE_CALLBACKS =
+const MILO_ACTIVE_EVENTS =
   4n | // ON_MESSAGE_START
   8n | // ON_MESSAGE_COMPLETE
   256n | // ON_URL
@@ -129,7 +129,8 @@ function createMilo () {
       on_status: noop,
       on_reason: noop,
       on_method: noop,
-      on_url: noop
+      on_url: noop,
+      on_state_change: noop
     }
   }).exports
 }
@@ -166,7 +167,7 @@ function validateMilo (milo, fixture) {
 
   milo.set_should_autodetect(parser, false)
   milo.set_is_request(parser, fixture.isRequest)
-  milo.set_active_callbacks(parser, MILO_ACTIVE_CALLBACKS)
+  milo.set_active_events(parser, MILO_ACTIVE_EVENTS)
 
   const consumed = milo.parse(parser, ptr, fixture.payload.length)
   const error = milo.get_error_code(parser)
@@ -205,7 +206,7 @@ function benchmarkMilo (milo, fixture) {
 
   milo.set_should_autodetect(parser, false)
   milo.set_is_request(parser, fixture.isRequest)
-  milo.set_active_callbacks(parser, MILO_ACTIVE_CALLBACKS)
+  milo.set_active_events(parser, MILO_ACTIVE_EVENTS)
 
   const start = process.hrtime.bigint()
   let consumed = 0

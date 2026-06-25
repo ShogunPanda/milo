@@ -2,6 +2,8 @@
 
 Milo is a fast and embeddable HTTP/1.1 parser written in [Rust][rust].
 
+Milo can report parser activity through callbacks or through parser-owned event buffers. See the language-specific API docs for event decoding details: [JavaScript](./docs/js.md), [Rust](./docs/rust.md), and [C++](./docs/cpp.md).
+
 ## Support Matrix
 
 Milo supports strict HTTP/1.1 message parsing for Rust, C++, and JavaScript via WebAssembly.
@@ -16,6 +18,10 @@ Milo supports strict HTTP/1.1 message parsing for Rust, C++, and JavaScript via 
 Milo intentionally rejects HTTP/0.9, HTTP/1.0, RTSP, obs-fold, bare LF, and bare CR. It does not parse HTTP/2 messages, except for strict `PRI * HTTP/2.0` switch-over detection.
 
 For security and ambiguity reduction, Milo rejects request bodies on `GET` and `HEAD`. Responses to `HEAD` are application context: callers must use `skip_body` when they know a response has no body because it belongs to a `HEAD` request.
+
+Use `max_body_payload` when an integration needs to cap body payload consumed by a single parse call. `0` means unlimited. Reaching the limit returns normally with unconsumed input left for the next parse call.
+
+Use `suspend_after_headers` when an integration needs to inspect headers before body parsing starts. Parsing returns after consuming the header terminator and can continue with the next parse call.
 
 For full parser scope, strictness, and protocol behavior, see [Milo Design](./docs/design.md).
 
@@ -77,8 +83,6 @@ milo.setActiveCallbacks(parser, milo.CALLBACK_ACTIVE_ON_DATA)
 // Now perform the main parsing using milo.parse. The method returns the number of consumed characters.
 buffer.set(message, 0)
 milo.parse(parser, ptr, message.length)
-
-// Use milo.parseWithError to get the consumed characters plus an error flag in a single call.
 
 // Cleanup used resources.
 milo.destroy(parser)

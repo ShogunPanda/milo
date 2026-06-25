@@ -4,6 +4,7 @@ mod actions;
 mod generators;
 mod matchers;
 mod native;
+mod parser_fields;
 mod structs;
 mod wasm;
 
@@ -14,7 +15,13 @@ pub fn generate(_: TokenStream) -> TokenStream { generators::generate() }
 pub fn case_insensitive_string(input: TokenStream) -> TokenStream { matchers::case_insensitive_string(input) }
 
 #[proc_macro]
-pub fn callback(input: TokenStream) -> TokenStream { actions::callback(input) }
+pub fn event_with_range(input: TokenStream) -> TokenStream { actions::event_with_range(input) }
+
+#[proc_macro]
+pub fn event_with_error(input: TokenStream) -> TokenStream { actions::event_with_error(input) }
+
+#[proc_macro]
+pub fn event_with_metadata(input: TokenStream) -> TokenStream { actions::event_with_metadata(input) }
 
 #[proc_macro]
 pub fn advance(input: TokenStream) -> TokenStream { actions::advance(input) }

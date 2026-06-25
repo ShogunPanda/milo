@@ -9,8 +9,8 @@ pub struct FailureRequest {
 }
 
 /// An identifier associated to an expression - An example of this is used in
-/// `callback!`.
-pub struct CallbackRequest {
+/// `event_with_range!`.
+pub struct EventRequest {
   pub identifier: Ident,
   pub offset: Option<Expr>,
   pub length: Option<Expr>,
@@ -32,7 +32,7 @@ impl Parse for FailureRequest {
   }
 }
 
-impl Parse for CallbackRequest {
+impl Parse for EventRequest {
   // Parses a identifier and its optional expression
   fn parse(input: ParseStream) -> Result<Self> {
     let identifier = input.parse()?;
@@ -47,14 +47,16 @@ impl Parse for CallbackRequest {
       // Parse the expression
       offset = Some(input.parse::<Expr>()?);
 
-      // Discard the comma
-      input.parse::<Token![,]>()?;
+      if !input.is_empty() {
+        // Discard the comma
+        input.parse::<Token![,]>()?;
 
-      // Parse the expression
-      length = Some(input.parse::<Expr>()?);
+        // Parse the expression
+        length = Some(input.parse::<Expr>()?);
+      }
     }
 
-    Ok(CallbackRequest {
+    Ok(EventRequest {
       identifier,
       offset,
       length,

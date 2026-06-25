@@ -2,20 +2,18 @@
 
 use std::{os::unix::process, slice, str};
 
-use milo_parser::{Parser, milo_has_debug};
+use milo_parser::{Parser, States, milo_has_debug};
 
 use crate::helpers::{context, output};
 
 pub fn on_state_change(parser: &mut Parser, from: usize, size: usize) {
+  let state = States::try_from(size as u8).unwrap().as_str();
+
   output::append_output(
     parser,
-    format!(
-      "\"pos\": {}, \"event\": \"state\", \"state\": \"{}\"",
-      parser.position,
-      parser.state_str()
-    ),
+    format!("\"pos\": {}, \"event\": \"state\", \"state\": \"{}\"", from, state),
     from,
-    size,
+    0,
   );
 }
 
@@ -24,7 +22,7 @@ pub fn on_message_start(parser: &mut Parser, from: usize, size: usize) {
     parser,
     format!(
       "\"pos\": {}, \"event\": \"begin\", \"configuration\": {{ \"debug\": {} }}",
-      parser.position,
+      from,
       milo_has_debug(),
     ),
     from,
@@ -41,7 +39,7 @@ pub fn on_error(parser: &mut Parser, from: usize, size: usize) {
     parser,
     format!(
       "\"pos\": {}, \"event\": {}, \"error_code={}, \"error_code_string\": \"{}\", reason=\"{}\"",
-      parser.position,
+      from,
       "error",
       parser.error_code,
       parser.error_code_str(),
@@ -81,7 +79,7 @@ pub fn on_header_value(parser: &mut Parser, from: usize, size: usize) {
 pub fn on_headers(parser: &mut Parser, from: usize, size: usize) {
   let context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
 
-  let position = parser.position;
+  let position = from;
   let chunked = parser.has_chunked_transfer_encoding;
   let content_length = parser.content_length;
 

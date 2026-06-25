@@ -13,6 +13,10 @@
 [lib]
   proc-macro = true
 
+[[bin]]
+  name = "milo-parser-fields"
+  path = "src/parser_fields.rs"
+
 [dependencies]
   indexmap    = { version = "2.13.0", features = ["serde"] }
   proc-macro2 = "1.0.106"

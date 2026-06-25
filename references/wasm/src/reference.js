@@ -39,11 +39,11 @@ function showSpan (name, context, parser, from, size) {
 
 function onStateChange (context, parser, from, size) {
   return appendOutput(
-    sprintf('"pos": {}, "event": "state", "state": "{}"', from, context.milo.States[context.milo.getState(parser)]),
+    sprintf('"pos": {}, "event": "state", "state": "{}"', from, context.milo.States[size]),
     context,
     parser,
     from,
-    size
+    0
   )
 }
 
@@ -125,7 +125,7 @@ function onHeaderValue (context, parser, from, size) {
   return showSpan('header_value', context, parser, from, size)
 }
 
-function onHeaders (context, parser, from, size) {
+function onHeaders (context, parser, from) {
   const position = from
   const chunked = context.milo.hasChunkedTransferEncoding(parser)
   const contentLength = context.milo.getContentLength(parser)
@@ -150,7 +150,7 @@ function onHeaders (context, parser, from, size) {
         context,
         parser,
         from,
-        size
+        0
       )
     } else if (contentLength > 0) {
       return appendOutput(
@@ -165,7 +165,7 @@ function onHeaders (context, parser, from, size) {
         context,
         parser,
         from,
-        size
+        0
       )
     } else {
       return appendOutput(
@@ -173,7 +173,7 @@ function onHeaders (context, parser, from, size) {
         context,
         parser,
         from,
-        size
+        0
       )
     }
   } else {
@@ -192,7 +192,7 @@ function onHeaders (context, parser, from, size) {
         context,
         parser,
         from,
-        size
+        0
       )
     } else if (contentLength > 0) {
       return appendOutput(
@@ -208,7 +208,7 @@ function onHeaders (context, parser, from, size) {
         context,
         parser,
         from,
-        size
+        0
       )
     } else {
       return appendOutput(
@@ -223,7 +223,7 @@ function onHeaders (context, parser, from, size) {
         context,
         parser,
         from,
-        size
+        0
       )
     }
   }

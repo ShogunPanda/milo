@@ -3,7 +3,7 @@ use quote::{format_ident, quote};
 use regex::{Captures, Regex};
 use syn::{Arm, ItemConst, parse_str};
 
-use crate::{native, wasm};
+use crate::{native, parser_fields, wasm};
 
 fn init_constants() -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
   let methods = serde_yaml::from_str(include_str!("../constants/methods.yml")).unwrap();
@@ -14,16 +14,22 @@ fn init_constants() -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
   (methods, errors, callbacks, states)
 }
 
-fn generate_constants_internal(items: &[String], prefix: &str) -> Vec<ItemConst> {
+fn generate_constants_internal(
+  items: &[String],
+  prefix: &str,
+  start: usize,
+  strip_prefix: Option<&str>,
+) -> Vec<ItemConst> {
   let mut consts: Vec<ItemConst> = Vec::new();
   let mut bytes: Vec<&[u8]> = vec![];
 
   for (i, x) in items.iter().enumerate() {
-    let uppercased = x.to_uppercase();
+    let value = strip_prefix.and_then(|prefix| x.strip_prefix(prefix)).unwrap_or(x);
+    let uppercased = value.to_uppercase();
     let name = uppercased.replace('-', "_");
     bytes.push(x.as_bytes());
 
-    consts.push(parse_str::<ItemConst>(&format!("pub const {}_{}: u8 = {};", prefix, name, i)).unwrap());
+    consts.push(parse_str::<ItemConst>(&format!("pub const {}_{}: u8 = {};", prefix, name, i + start)).unwrap());
   }
 
   consts
@@ -59,11 +65,14 @@ where
 
 /// Generates all parser constants.
 fn generate_constants(methods: &[String], errors: &[String], callbacks: &[String], states: &[String]) -> TokenStream {
-  let methods_consts = generate_constants_internal(methods, "METHOD");
-  let states_consts = generate_constants_internal(states, "STATE");
-  let errors_consts = generate_constants_internal(errors, "ERROR");
-  let callbacks_consts = generate_constants_internal(callbacks, "CALLBACK");
+  let methods_consts = generate_constants_internal(methods, "METHOD", 0, None);
+  let states_consts = generate_constants_internal(states, "STATE", 0, None);
+  let errors_consts = generate_constants_internal(errors, "ERROR", 0, None);
+  let callbacks_consts = generate_constants_internal(callbacks, "CALLBACK", 0, None);
   let callbacks_bitmask = generate_bitmask(callbacks, "CALLBACK_ACTIVE");
+  let event_bitmask = generate_bitmask(callbacks, "EVENT_ACTIVE");
+  let event_consts = generate_constants_internal(callbacks, "EVENT", 1, Some("on_"));
+  let parser_field_offsets = parser_fields::generate_constants();
   let token_table = generate_table(|byte| {
     (0x30..=0x39).contains(&byte)
       || (0x41..=0x5a).contains(&byte)
@@ -123,8 +132,14 @@ fn generate_constants(methods: &[String], errors: &[String], callbacks: &[String
     #(#methods_consts)*
     #(#errors_consts)*
     #(#callbacks_consts)*
+    pub const EVENT_END: u8 = 0;
+    #(#event_consts)*
     #(#callbacks_bitmask)*
+    #(#event_bitmask)*
     #(#states_consts)*
+    #parser_field_offsets
+
+    const EVENTS_BUFFER_SIZE: usize = 64 * 1024;
 
     /// cbindgen:ignore
     static TOKEN_TABLE: [bool; 256] = [#(#token_table),*];
@@ -147,6 +162,9 @@ fn generate_enums(methods: &[String], errors: &[String], callbacks: &[String], s
   let methods_ref = methods;
   let errors_ref = errors;
   let callbacks_ref = callbacks;
+  let events_ref: Vec<String> = core::iter::once("END".to_string())
+    .chain(callbacks_ref.iter().map(|x| x.strip_prefix("on_").unwrap_or(x).to_string()))
+    .collect();
   let states_ref = states;
 
   let methods: Vec<_> = methods_ref
@@ -167,6 +185,8 @@ fn generate_enums(methods: &[String], errors: &[String], callbacks: &[String], s
       )
     })
     .collect();
+
+  let events: Vec<_> = events_ref.iter().map(|x| format_ident!("{}", x.to_uppercase())).collect();
 
   let states: Vec<_> = states_ref
     .iter()
@@ -191,6 +211,12 @@ fn generate_enums(methods: &[String], errors: &[String], callbacks: &[String], s
     .map(|(x, i)| parse_str::<Arm>(&format!("{} => Ok(Callbacks::{})", x, i)).unwrap())
     .collect();
 
+  let events_from: Vec<_> = events
+    .iter()
+    .enumerate()
+    .map(|(x, i)| parse_str::<Arm>(&format!("{} => Ok(Events::{})", x, i)).unwrap())
+    .collect();
+
   let states_from: Vec<_> = states
     .iter()
     .enumerate()
@@ -210,6 +236,11 @@ fn generate_enums(methods: &[String], errors: &[String], callbacks: &[String], s
   let callbacks_into: Vec<_> = callbacks
     .iter()
     .map(|x| parse_str::<Arm>(&format!("Callbacks::{} => \"{}\"", x, x)).unwrap())
+    .collect();
+
+  let events_into: Vec<_> = events_ref
+    .iter()
+    .map(|x| parse_str::<Arm>(&format!("Events::{} => \"{}\"", x.to_uppercase(), x.to_uppercase())).unwrap())
     .collect();
 
   let states_into: Vec<_> = states
@@ -234,6 +265,12 @@ fn generate_enums(methods: &[String], errors: &[String], callbacks: &[String], s
     #[derive(Copy, Clone, Debug)]
     pub enum Callbacks {
       #(#callbacks),*
+    }
+
+    #[repr(u8)]
+    #[derive(Copy, Clone, Debug)]
+    pub enum Events {
+      #(#events),*
     }
 
     #[repr(u8)]
@@ -275,6 +312,17 @@ fn generate_enums(methods: &[String], errors: &[String], callbacks: &[String], s
       }
     }
 
+    impl TryFrom<u8> for Events {
+      type Error = ();
+
+      fn try_from(value: u8) -> Result<Self, ()> {
+        match value {
+          #(#events_from),*,
+          _ => Err(())
+        }
+      }
+    }
+
     impl TryFrom<u8> for States {
       type Error = ();
 
@@ -310,6 +358,14 @@ fn generate_enums(methods: &[String], errors: &[String], callbacks: &[String], s
       }
     }
 
+    impl From<Events> for &str {
+      fn from(value: Events) -> Self {
+        match value {
+          #(#events_into),*
+        }
+      }
+    }
+
     impl From<States> for &str {
       fn from(value: States) -> Self {
         match value {
@@ -331,6 +387,12 @@ fn generate_enums(methods: &[String], errors: &[String], callbacks: &[String], s
     }
 
     impl Callbacks {
+      pub fn as_str(self) -> &'static str {
+        self.into()
+      }
+    }
+
+    impl Events {
       pub fn as_str(self) -> &'static str {
         self.into()
       }

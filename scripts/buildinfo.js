@@ -1,6 +1,11 @@
+import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import semver from 'semver'
 import YAML from 'yaml'
+
+const execFileAsync = promisify(execFile)
 
 async function readYamlList (name) {
   const raw = await readFile(new URL(`../macros/constants/${name}.yml`, import.meta.url), 'utf-8')
@@ -30,13 +35,27 @@ async function readVersion () {
   }
 }
 
+async function readParserFields () {
+  const { stdout } = await execFileAsync('cargo', [
+    'run',
+    '--quiet',
+    '--manifest-path',
+    fileURLToPath(new URL('../macros/Cargo.toml', import.meta.url)),
+    '--bin',
+    'milo-parser-fields'
+  ])
+
+  return JSON.parse(stdout)
+}
+
 export async function getBuildInfo () {
-  const [version, methods, errors, callbacks, states] = await Promise.all([
+  const [version, methods, errors, callbacks, states, parserFields] = await Promise.all([
     readVersion(),
     readYamlList('methods'),
     readYamlList('errors'),
     readYamlList('callbacks'),
-    readYamlList('states')
+    readYamlList('states'),
+    readParserFields()
   ])
   const constants = {}
 
@@ -48,14 +67,22 @@ export async function getBuildInfo () {
     constants[`CALLBACK_${callback.toUpperCase()}`] = i
   }
 
+  constants.EVENT_END = 0
+  for (const [i, callback] of callbacks.entries()) {
+    constants[`EVENT_${callback.replace(/^on_/, '').toUpperCase()}`] = i + 1
+  }
+
   let all = 0
   constants.CALLBACK_ACTIVE_NONE = 0
+  constants.EVENT_ACTIVE_NONE = 0
   for (const [i, callback] of callbacks.entries()) {
     const bit = 1 << i
     constants[`CALLBACK_ACTIVE_${callback.toUpperCase()}`] = bit
+    constants[`EVENT_ACTIVE_${callback.toUpperCase()}`] = bit
     all |= bit
   }
   constants.CALLBACK_ACTIVE_ALL = all
+  constants.EVENT_ACTIVE_ALL = all
 
   for (const [i, error] of errors.entries()) {
     constants[`ERROR_${error}`] = i
@@ -64,6 +91,8 @@ export async function getBuildInfo () {
   for (const [i, state] of states.entries()) {
     constants[`STATE_${state.toUpperCase()}`] = i
   }
+
+  Object.assign(constants, parserFields)
 
   return { version, constants }
 }

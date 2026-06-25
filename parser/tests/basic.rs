@@ -3,9 +3,31 @@ mod helpers;
 #[allow(unused_imports)]
 use std::ffi::c_uchar;
 
-use milo_parser::{CALLBACK_ACTIVE_ON_HEADERS, Parser, STATE_ERROR, STATE_FINISH, STATE_HEADER, STATE_START};
+use milo_parser::{
+  CALLBACK_ACTIVE_ON_HEADERS, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER, ERROR_UNEXPECTED_STATE,
+  EVENT_ACTIVE_ON_HEADER_NAME, EVENT_ACTIVE_ON_HEADER_VALUE, STATE_BODY_DECISION, STATE_ERROR, STATE_FINISH,
+  STATE_HEADER, STATE_START,
+};
 
 use crate::helpers::{context, create_parser, http, parse};
+
+#[test]
+fn basic_error_description_is_clamped_and_terminated() {
+  let mut parser = create_parser();
+  let description = "a".repeat(300);
+
+  parser.fail(ERROR_UNEXPECTED_CHARACTER, &description);
+
+  assert_eq!(parser.error_description_len, 254);
+  assert_eq!(parser.error_description[254], 0);
+  assert_eq!(parser.error_description_str().len(), 254);
+  assert!(parser.error_description_str().bytes().all(|byte| byte == b'a'));
+
+  parser.reset(false);
+
+  assert_eq!(parser.error_description_len, 0);
+  assert_eq!(parser.error_description[0], 0);
+}
 
 #[test]
 fn basic_disable_autodetect() {
@@ -219,6 +241,181 @@ fn basic_connection_close() {
 }
 
 #[test]
+fn basic_max_body_payload_content_length() {
+  let mut parser = create_parser();
+  parser.autodetect = false;
+  parser.is_request = false;
+  parser.max_body_payload = 3;
+
+  let message = String::from("HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nabcdef");
+  let body_start = message.find("\r\n\r\n").unwrap() + 4;
+
+  let consumed = parse(&mut parser, &message);
+  assert_eq!(consumed, body_start + 3);
+  assert_eq!(parser.remaining_content_length, 3);
+  assert!(!parser.paused);
+
+  let consumed = parser.parse(unsafe { message.as_ptr().add(body_start + 3) }, 3);
+  assert_eq!(consumed, 3);
+  assert_eq!(parser.remaining_content_length, 0);
+}
+
+#[test]
+fn basic_max_body_payload_chunked() {
+  let mut parser = create_parser();
+  parser.autodetect = false;
+  parser.is_request = false;
+  parser.max_body_payload = 3;
+
+  let message = String::from("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n6\r\nabcdef\r\n0\r\n\r\n");
+  let chunk_data_start = message.find("\r\n\r\n6\r\n").unwrap() + 7;
+
+  let consumed = parse(&mut parser, &message);
+  assert_eq!(consumed, chunk_data_start + 3);
+  assert_eq!(parser.remaining_chunk_size, 3);
+  assert!(!parser.paused);
+
+  let remaining = &message[chunk_data_start + 3..];
+  let consumed = parser.parse(remaining.as_ptr(), remaining.len());
+  assert_eq!(consumed, remaining.len());
+  assert_eq!(parser.remaining_chunk_size, 0);
+}
+
+#[test]
+fn basic_max_body_payload_no_length() {
+  let mut parser = create_parser();
+  parser.autodetect = false;
+  parser.is_request = false;
+  parser.max_body_payload = 3;
+
+  let message = String::from("HTTP/1.1 200 OK\r\n\r\nabcdef");
+  let body_start = message.find("\r\n\r\n").unwrap() + 4;
+
+  let consumed = parse(&mut parser, &message);
+  assert_eq!(consumed, body_start + 3);
+  assert!(!parser.paused);
+
+  let consumed = parser.parse(unsafe { message.as_ptr().add(body_start + 3) }, 3);
+  assert_eq!(consumed, 3);
+}
+
+#[test]
+fn basic_max_body_payload_zero_is_unlimited() {
+  let mut parser = create_parser();
+  parser.autodetect = false;
+  parser.is_request = false;
+  parser.max_body_payload = 0;
+
+  let message = String::from("HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nabcdef");
+  let consumed = parse(&mut parser, &message);
+  assert_eq!(consumed, message.len());
+  assert_eq!(parser.remaining_content_length, 0);
+}
+
+#[test]
+fn basic_suspend_after_headers_content_length() {
+  let mut parser = create_parser();
+  parser.suspend_after_headers = true;
+
+  let message = String::from("POST / HTTP/1.1\r\nContent-Length: 6\r\n\r\nabcdef");
+  let body_start = message.find("\r\n\r\n").unwrap() + 4;
+
+  let consumed = parse(&mut parser, &message);
+  assert_eq!(consumed, body_start);
+  assert_eq!(parser.state, STATE_BODY_DECISION);
+  assert!(!parser.paused);
+
+  let consumed = parser.parse(unsafe { message.as_ptr().add(body_start) }, message.len() - body_start);
+  assert_eq!(consumed, message.len() - body_start);
+  assert_eq!(parser.state, STATE_START);
+}
+
+#[test]
+fn basic_suspend_after_headers_emits_headers_once() {
+  let mut parser = create_parser();
+  parser.active_callbacks = CALLBACK_ACTIVE_ON_HEADERS;
+  parser.suspend_after_headers = true;
+
+  let message = String::from("POST / HTTP/1.1\r\nContent-Length: 6\r\n\r\nabcdef");
+  let body_start = message.find("\r\n\r\n").unwrap() + 4;
+
+  let consumed = parse(&mut parser, &message);
+  assert_eq!(consumed, body_start);
+
+  let consumed = parser.parse(unsafe { message.as_ptr().add(body_start) }, message.len() - body_start);
+  assert_eq!(consumed, message.len() - body_start);
+
+  let context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
+  let headers_count = context.output.matches("\"event\": \"headers\"").count();
+  let _ = Box::into_raw(context);
+
+  assert_eq!(headers_count, 1);
+}
+
+#[test]
+fn basic_suspend_after_headers_zero_body_completes_on_empty_parse() {
+  let mut parser = create_parser();
+  parser.suspend_after_headers = true;
+
+  let message = String::from("HTTP/1.1 204 No Content\r\n\r\n");
+  let consumed = parse(&mut parser, &message);
+
+  assert_eq!(consumed, message.len());
+  assert_eq!(parser.state, STATE_BODY_DECISION);
+
+  let consumed = parser.parse(message.as_ptr(), 0);
+  assert_eq!(consumed, 0);
+  assert_eq!(parser.state, STATE_START);
+}
+
+#[test]
+fn basic_complete_after_suspend_after_headers() {
+  let mut parser = create_parser();
+  parser.suspend_after_headers = true;
+
+  let message = String::from("POST / HTTP/1.1\r\nContent-Length: 6\r\n\r\nabcdef");
+  let body_start = message.find("\r\n\r\n").unwrap() + 4;
+
+  let consumed = parse(&mut parser, &message);
+  assert_eq!(consumed, body_start);
+  assert_eq!(parser.state, STATE_BODY_DECISION);
+
+  parser.complete();
+  assert_eq!(parser.state, STATE_START);
+  assert_eq!(parser.error_code, ERROR_NONE);
+}
+
+#[test]
+fn basic_complete_rejects_invalid_state() {
+  let mut parser = create_parser();
+
+  parser.complete();
+
+  assert_eq!(parser.state, STATE_ERROR);
+  assert_eq!(parser.error_code, ERROR_UNEXPECTED_STATE);
+  assert_eq!(parser.error_description_str(), "Invalid state");
+}
+
+#[test]
+fn basic_event_buffer_full_stops_parsing() {
+  let mut parser = milo_parser::Parser::new();
+  parser.autodetect = false;
+  parser.is_request = false;
+  parser.active_events = EVENT_ACTIVE_ON_HEADER_NAME | EVENT_ACTIVE_ON_HEADER_VALUE;
+
+  let mut message = String::from("HTTP/1.1 200 OK\r\n");
+  for i in 0..4000 {
+    message.push_str(&format!("Header{i}: value\r\n"));
+  }
+  message.push_str("\r\n");
+
+  let consumed = parser.parse(message.as_ptr(), message.len());
+  assert!(consumed < message.len());
+  assert!(!parser.paused);
+  assert_eq!(parser.error_code, ERROR_NONE);
+}
+
+#[test]
 fn basic_sample_multiple_responses() {
   let mut parser = create_parser();
 
@@ -352,13 +549,7 @@ fn basic_pause_and_resume() {
         Content-Length: 3\r\n
       "#,
   );
-  let sample2 = http(r#"\r\nabc"#); // This will be paused before the body
-  let sample3 = http(r#"abc"#);
-
-  parser.callbacks.on_headers = |p: &mut Parser, _at: usize, _size: usize| {
-    p.pause();
-  };
-  parser.active_callbacks |= CALLBACK_ACTIVE_ON_HEADERS;
+  let sample2 = http(r#"\r\nabc"#);
 
   assert_eq!(parser.paused, false);
 
@@ -366,19 +557,18 @@ fn basic_pause_and_resume() {
   assert_eq!(consumed1, sample1.len());
 
   assert_eq!(parser.paused, false);
-  let consumed2 = parse(&mut parser, &sample2);
-  assert_eq!(consumed2, sample2.len() - 3);
+  parser.pause();
   assert_eq!(parser.paused, true);
 
-  let consumed3 = parse(&mut parser, &sample3);
+  let consumed3 = parse(&mut parser, &sample2);
   assert_eq!(consumed3, 0);
 
   assert_eq!(parser.paused, true);
   parser.resume();
   assert_eq!(parser.paused, false);
 
-  let consumed4 = parse(&mut parser, &sample3);
-  assert_eq!(consumed4, sample3.len());
+  let consumed4 = parse(&mut parser, &sample2);
+  assert_eq!(consumed4, sample2.len());
   assert_eq!(parser.paused, false);
 
   assert_ne!(parser.state, STATE_ERROR);

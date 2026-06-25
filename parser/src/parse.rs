@@ -25,8 +25,17 @@ impl Parser {
   ///
   /// It returns the number of consumed characters.
   pub fn parse(&mut self, input: *const c_uchar, limit: usize) -> usize {
+    let mut event_cursor = 0usize;
+    let active_events = self.active_events | self.active_callbacks;
+
     // If the self.is paused, this is a no-op
     if self.paused {
+      if active_events != 0 {
+        unsafe {
+          *self.events = EVENT_END;
+        }
+      }
+
       return 0;
     }
 
@@ -54,6 +63,7 @@ impl Parser {
 
     // Limit the data that is currently analyzed
     data = &data[..limit];
+
     let mut available = data.len();
 
     #[cfg(all(not(target_family = "wasm"), any(debug_assertions, feature = "debug")))]
@@ -73,11 +83,44 @@ impl Parser {
     self.position = 0;
     let mut advanced: usize;
     let mut parsing = true;
-    let has_active_callbacks = self.active_callbacks != 0;
-    let has_header_name_callback = self.active_callbacks & CALLBACK_ACTIVE_ON_HEADER_NAME != 0;
-    let has_header_value_callback = self.active_callbacks & CALLBACK_ACTIVE_ON_HEADER_VALUE != 0;
-    let has_trailer_name_callback = self.active_callbacks & CALLBACK_ACTIVE_ON_TRAILER_NAME != 0;
-    let has_trailer_value_callback = self.active_callbacks & CALLBACK_ACTIVE_ON_TRAILER_VALUE != 0;
+    let max_body_payload = self.max_body_payload;
+    let mut body_payload_read = 0u64;
+    let has_active_events = active_events != 0;
+    let (
+      has_request_start_events,
+      has_response_start_events,
+      has_request_line_events,
+      has_response_line_events,
+      has_metadata_event,
+      has_header_name_event,
+      has_header_value_event,
+      has_trailer_name_event,
+      has_trailer_value_event,
+      has_complete_events,
+      has_finish_event,
+    ) = if has_active_events {
+      (
+        active_events & (EVENT_ACTIVE_ON_REQUEST | EVENT_ACTIVE_ON_MESSAGE_START) != 0,
+        active_events & (EVENT_ACTIVE_ON_RESPONSE | EVENT_ACTIVE_ON_MESSAGE_START) != 0,
+        active_events
+          & (EVENT_ACTIVE_ON_METHOD | EVENT_ACTIVE_ON_URL | EVENT_ACTIVE_ON_PROTOCOL | EVENT_ACTIVE_ON_VERSION)
+          != 0,
+        active_events
+          & (EVENT_ACTIVE_ON_PROTOCOL | EVENT_ACTIVE_ON_VERSION | EVENT_ACTIVE_ON_STATUS | EVENT_ACTIVE_ON_REASON)
+          != 0,
+        active_events & EVENT_ACTIVE_ON_HEADERS != 0,
+        active_events & EVENT_ACTIVE_ON_HEADER_NAME != 0,
+        active_events & EVENT_ACTIVE_ON_HEADER_VALUE != 0,
+        active_events & EVENT_ACTIVE_ON_TRAILER_NAME != 0,
+        active_events & EVENT_ACTIVE_ON_TRAILER_VALUE != 0,
+        active_events & (EVENT_ACTIVE_ON_MESSAGE_COMPLETE | EVENT_ACTIVE_ON_RESET) != 0,
+        active_events & EVENT_ACTIVE_ON_FINISH != 0,
+      )
+    } else {
+      (
+        false, false, false, false, false, false, false, false, false, false, false,
+      )
+    };
 
     #[cfg(any(debug_assertions, feature = "debug"))]
     if self.debug {
@@ -115,22 +158,22 @@ impl Parser {
           // Choose the initial state depending on the configured message type.
           STATE_START => {
             if !self.autodetect && self.is_request {
-              if has_active_callbacks {
-                callback!(on_request);
-                callback!(on_message_start);
+              if has_request_start_events {
+                event_with_range!(on_request, 0, 0);
+                event_with_range!(on_message_start, 0, 0);
               }
               move_to!(request_line);
             } else if !self.autodetect {
-              if has_active_callbacks {
-                callback!(on_response);
-                callback!(on_message_start);
+              if has_response_start_events {
+                event_with_range!(on_response, 0, 0);
+                event_with_range!(on_message_start, 0, 0);
               }
               move_to!(status_line);
             } else if data.len() >= 5 && data[4] == b'/' && data.starts_with(b"HTTP") {
               self.is_request = false;
-              if has_active_callbacks {
-                callback!(on_response);
-                callback!(on_message_start);
+              if has_response_start_events {
+                event_with_range!(on_response, 0, 0);
+                event_with_range!(on_message_start, 0, 0);
               }
               move_to!(status_line);
             } else if data.len() >= 2 && data.starts_with(b"\r\n") {
@@ -140,9 +183,9 @@ impl Parser {
               // For performance reason, we assume it's a request so we don't lookup the
               // method twice
               self.is_request = true;
-              if has_active_callbacks {
-                callback!(on_request);
-                callback!(on_message_start);
+              if has_request_start_events {
+                event_with_range!(on_request, 0, 0);
+                event_with_range!(on_message_start, 0, 0);
               }
               move_to!(request_line);
             }
@@ -262,25 +305,19 @@ impl Parser {
                   if self.method == METHOD_PRI {
                     fail!(UNSUPPORTED_HTTP_VERSION, "PRI is only valid with HTTP/2.0");
                   }
-
-                  self.version_major = 1;
-                  self.version_minor = 1;
                 } else if &data[protocol_start..cr] == b"HTTP/2.0" {
                   if self.method != METHOD_PRI {
                     fail!(UNSUPPORTED_HTTP_VERSION, "Unsupported HTTP version");
                   }
-
-                  self.version_major = 2;
-                  self.version_minor = 0;
                 } else {
                   fail!(UNEXPECTED_CHARACTER, "Invalid protocol");
                 }
 
-                if has_active_callbacks {
-                  callback!(on_method, method_start, method_end - method_start);
-                  callback!(on_url, url_start, url_end - url_start);
-                  callback!(on_protocol, protocol_start, protocol_end - protocol_start);
-                  callback!(on_version, version_start, 3);
+                if has_request_line_events {
+                  event_with_range!(on_method, method_start, method_end - method_start);
+                  event_with_range!(on_url, url_start, url_end - url_start);
+                  event_with_range!(on_protocol, protocol_start, protocol_end - protocol_start);
+                  event_with_range!(on_version, version_start, 3);
                 }
 
                 advance!(cr + 2);
@@ -338,10 +375,7 @@ impl Parser {
                 }
 
                 match &data[protocol_start..version_end] {
-                  b"HTTP/1.1" => {
-                    self.version_major = 1;
-                    self.version_minor = 1;
-                  }
+                  b"HTTP/1.1" => {}
                   [b'H', b'T', b'T', b'P', b'/', ..] => {
                     fail!(UNSUPPORTED_HTTP_VERSION, "Unsupported HTTP version");
                   }
@@ -381,12 +415,12 @@ impl Parser {
                   + ((data[status_start + 1] - b'0') as u32) * 10
                   + (data[status_start + 2] - b'0') as u32;
 
-                if has_active_callbacks {
-                  callback!(on_protocol, protocol_start, 4);
-                  callback!(on_version, version_start, 3);
-                  callback!(on_status, status_start, 3);
+                if has_response_line_events {
+                  event_with_range!(on_protocol, protocol_start, 4);
+                  event_with_range!(on_version, version_start, 3);
+                  event_with_range!(on_status, status_start, 3);
                   if reason_end > reason_start {
-                    callback!(on_reason, reason_start, reason_end - reason_start);
+                    event_with_range!(on_reason, reason_start, reason_end - reason_start);
                   }
                 }
 
@@ -429,10 +463,18 @@ impl Parser {
 
                 // No more headers or no headers at all, move to the headers state
                 if cr == 0 {
-                  self.continue_without_data = true;
                   advance!(2);
+                  if has_metadata_event {
+                    event_with_metadata!(on_headers, 2);
+                  }
                   move_to!(body_decision);
-                  next!();
+                  self.continue_without_data = true;
+
+                  if self.suspend_after_headers {
+                    suspend!();
+                  } else {
+                    next!();
+                  }
                 }
 
                 // RFC 9112 section.4
@@ -454,7 +496,7 @@ impl Parser {
                     fail!(UNEXPECTED_CHARACTER, "Invalid header field name character");
                   }
 
-                  if has_header_value_callback {
+                  if has_header_value_event {
                     strip_ows_fast(data, &mut header_value_start, &mut header_value_end, true);
                   }
                 } else {
@@ -727,19 +769,19 @@ impl Parser {
                         fail!(UNEXPECTED_CHARACTER, "Invalid header field name character");
                       }
 
-                      if has_header_value_callback {
+                      if has_header_value_event {
                         strip_ows_fast(data, &mut header_value_start, &mut header_value_end, true);
                       }
                     }
                   }
                 }
 
-                if has_header_name_callback {
-                  callback!(on_header_name, header_name_start, header_name_end - header_name_start);
+                if has_header_name_event {
+                  event_with_range!(on_header_name, header_name_start, header_name_end - header_name_start);
                 }
 
-                if has_header_value_callback {
-                  callback!(
+                if has_header_value_event {
+                  event_with_range!(
                     on_header_value,
                     header_value_start,
                     header_value_end - header_value_start
@@ -771,10 +813,6 @@ impl Parser {
           // RFC 9110 section 9.3.6 and 7.8 - Headers have finished, check if the
           // connection must be upgraded or a body is expected.
           STATE_BODY_DECISION => {
-            if has_active_callbacks {
-              callback!(on_headers);
-            }
-
             let method = self.method;
             let status = self.status;
 
@@ -797,10 +835,10 @@ impl Parser {
             // In case of Connection: Upgrade or a CONNECT method
             if self.is_connect {
               // In case of CONNECT method
-              callback!(on_connect);
+              event_with_range!(on_connect, 0, 0);
               move_to!(tunnel);
             } else if self.has_upgrade && !self.is_request && status == 101 {
-              callback!(on_upgrade);
+              event_with_range!(on_upgrade, 0, 0);
               move_to!(tunnel);
             } else if self.is_request {
               if self.has_transfer_encoding && !self.has_chunked_transfer_encoding {
@@ -810,18 +848,42 @@ impl Parser {
                 );
               } else if self.skip_body {
                 self.continue_without_data = true;
-                self.complete(0);
+                if !self.complete_message(
+                  0,
+                  active_events,
+                  has_complete_events,
+                  has_finish_event,
+                  &mut event_cursor,
+                ) {
+                  suspend!();
+                }
               } else if self.has_content_length {
                 // RFC 9110 section 6.3
                 if self.content_length == 0 {
                   self.continue_without_data = true;
-                  self.complete(0);
+                  if !self.complete_message(
+                    0,
+                    active_events,
+                    has_complete_events,
+                    has_finish_event,
+                    &mut event_cursor,
+                  ) {
+                    suspend!();
+                  }
                 } else {
                   move_to!(body_via_content_length);
                 }
               } else if !self.has_chunked_transfer_encoding {
                 self.continue_without_data = true;
-                self.complete(0);
+                if !self.complete_message(
+                  0,
+                  active_events,
+                  has_complete_events,
+                  has_finish_event,
+                  &mut event_cursor,
+                ) {
+                  suspend!();
+                }
               } else {
                 move_to!(chunk_header);
               }
@@ -830,11 +892,27 @@ impl Parser {
               // RFC 9110 section 15.4.5
               if self.skip_body || (status < 200 && status != 101) || status == 204 || status == 205 || status == 304 {
                 self.continue_without_data = true;
-                self.complete(0);
+                if !self.complete_message(
+                  0,
+                  active_events,
+                  has_complete_events,
+                  has_finish_event,
+                  &mut event_cursor,
+                ) {
+                  suspend!();
+                }
               } else if self.has_content_length {
                 if self.content_length == 0 {
                   self.continue_without_data = true;
-                  self.complete(0);
+                  if !self.complete_message(
+                    0,
+                    active_events,
+                    has_complete_events,
+                    has_finish_event,
+                    &mut event_cursor,
+                  ) {
+                    suspend!();
+                  }
                 } else {
                   move_to!(body_via_content_length);
                 }
@@ -849,24 +927,45 @@ impl Parser {
           // RFC 9112 section 6.2
           STATE_BODY_VIA_CONTENT_LENGTH => {
             let expected = self.remaining_content_length;
-            let available_64 = available as u64;
+            let mut to_consume = expected.min(available as u64);
 
-            // Less data than what it is expected
-            if available_64 < expected {
-              self.remaining_content_length -= available_64;
+            if max_body_payload != 0 {
+              if body_payload_read >= max_body_payload {
+                suspend!();
+              }
 
-              callback!(on_data, 0, available);
-              advance!(available);
+              to_consume = to_consume.min(max_body_payload - body_payload_read);
+            }
+
+            if to_consume == 0 {
+              suspend!();
+            }
+
+            let to_consume_usize = to_consume as usize;
+            body_payload_read += to_consume;
+
+            if to_consume < expected {
+              event_with_range!(on_data, 0, to_consume_usize);
+              self.remaining_content_length -= to_consume;
+              advance!(to_consume_usize);
             } else {
-              self.remaining_content_length = 0;
+              event_with_range!(on_data, 0, to_consume_usize);
+              event_with_range!(on_body, to_consume_usize, 0);
 
-              callback!(on_data, 0, expected as usize);
-              callback!(on_body, expected as usize, 0);
+              self.remaining_content_length = 0;
 
               self.continue_without_data = true;
 
-              advance!(expected as usize);
-              self.complete(expected as usize);
+              if !self.complete_message(
+                to_consume_usize,
+                active_events,
+                has_complete_events,
+                has_finish_event,
+                &mut event_cursor,
+              ) {
+                suspend!();
+              }
+              advance!(to_consume_usize);
             }
           }
 
@@ -875,8 +974,25 @@ impl Parser {
           // Note that on_body can't and will not be called here as there is no way to
           // know when the response finishes.
           STATE_BODY_WITH_NO_LENGTH => {
-            callback!(on_data, 0, available);
-            advance!(available);
+            let mut to_consume = available as u64;
+
+            if max_body_payload != 0 {
+              if body_payload_read >= max_body_payload {
+                suspend!();
+              }
+
+              to_consume = to_consume.min(max_body_payload - body_payload_read);
+            }
+
+            if to_consume == 0 {
+              suspend!();
+            }
+
+            let to_consume_usize = to_consume as usize;
+            body_payload_read += to_consume;
+
+            event_with_range!(on_data, 0, to_consume_usize);
+            advance!(to_consume_usize);
           }
 
           // RFC 9112 section 7.1
@@ -928,7 +1044,7 @@ impl Parser {
                 self.chunk_size = chunk_length;
                 self.remaining_chunk_size = chunk_length;
 
-                callback!(
+                event_with_range!(
                   on_chunk_length,
                   chunk_length_start,
                   chunk_length_end - chunk_length_start
@@ -940,13 +1056,14 @@ impl Parser {
                   move_to!(chunk_extensions);
                 } else {
                   self.continue_without_data = true;
-                  advance!(cr + 2);
 
                   if self.chunk_size == 0 {
-                    callback!(on_chunk, 3, 0);
-                    callback!(on_body, 3, 0);
+                    event_with_range!(on_chunk, 3, 0);
+                    event_with_range!(on_body, 3, 0);
+                    advance!(cr + 2);
                     move_to!(trailer);
                   } else {
+                    advance!(cr + 2);
                     move_to!(chunk_data);
                   }
                 }
@@ -989,15 +1106,15 @@ impl Parser {
 
                 // No value
                 if name_end == cr || data[name_end_raw] == b';' {
-                  callback!(on_chunk_extension_name, name_start, name_end - name_start);
+                  event_with_range!(on_chunk_extension_name, name_start, name_end - name_start);
 
                   if name_end_raw == cr {
-                    advance!(cr + 2);
-
                     if self.chunk_size == 0 {
-                      callback!(on_body);
+                      event_with_range!(on_body, 0, 0);
+                      advance!(cr + 2);
                       move_to!(trailer);
                     } else {
+                      advance!(cr + 2);
                       move_to!(chunk_data);
                     }
                   } else {
@@ -1073,12 +1190,12 @@ impl Parser {
                     }
                   }
 
-                  callback!(on_chunk_extension_name, name_start, name_end - name_start);
+                  event_with_range!(on_chunk_extension_name, name_start, name_end - name_start);
 
                   if quoted {
-                    callback!(on_chunk_extension_value, quote_start, value_end - quote_start + 1);
+                    event_with_range!(on_chunk_extension_value, quote_start, value_end - quote_start + 1);
                   } else {
-                    callback!(on_chunk_extension_value, value_start, value_end - value_start);
+                    event_with_range!(on_chunk_extension_value, value_start, value_end - value_start);
                   }
 
                   let next_semicolon = find_char(data, next_extension, cr, b';').unwrap_or(cr);
@@ -1094,12 +1211,12 @@ impl Parser {
                   if next_semicolon < cr {
                     advance!(next_semicolon + 1);
                   } else {
-                    advance!(cr + 2);
-
                     if self.chunk_size == 0 {
-                      callback!(on_body);
+                      event_with_range!(on_body, 0, 0);
+                      advance!(cr + 2);
                       move_to!(trailer);
                     } else {
+                      advance!(cr + 2);
                       move_to!(chunk_data);
                     }
                   }
@@ -1118,7 +1235,6 @@ impl Parser {
 
           STATE_CHUNK_DATA => {
             let expected = self.remaining_chunk_size;
-            let available_64 = available as u64;
 
             // No more data for this chunk, just wait for the CRLF
             if expected == 0 {
@@ -1130,21 +1246,34 @@ impl Parser {
                 advance!(2);
                 move_to!(chunk_header);
               }
-            } else if available_64 < expected {
-              // Less data than what it is expected for this chunk
-              self.remaining_chunk_size -= available_64;
-
-              callback!(on_chunk, 0, available);
-              callback!(on_data, 0, available);
-
-              advance!(available);
             } else {
-              self.remaining_chunk_size = 0;
+              let mut to_consume = expected.min(available as u64);
 
-              callback!(on_chunk, 0, expected as usize);
-              callback!(on_data, 0, expected as usize);
+              if max_body_payload != 0 {
+                if body_payload_read >= max_body_payload {
+                  suspend!();
+                }
 
-              advance!(expected as usize);
+                to_consume = to_consume.min(max_body_payload - body_payload_read);
+              }
+
+              if to_consume == 0 {
+                suspend!();
+              }
+
+              let to_consume_usize = to_consume as usize;
+              body_payload_read += to_consume;
+
+              event_with_range!(on_chunk, 0, to_consume_usize);
+              event_with_range!(on_data, 0, to_consume_usize);
+
+              if to_consume < expected {
+                self.remaining_chunk_size -= to_consume;
+              } else {
+                self.remaining_chunk_size = 0;
+              }
+
+              advance!(to_consume_usize);
             }
           }
 
@@ -1164,10 +1293,18 @@ impl Parser {
 
                 // No more trailers or no trailers at all, message completed
                 if cr == 0 {
-                  callback!(on_trailers, 2, 0);
+                  event_with_range!(on_trailers, 2, 0);
                   self.continue_without_data = true;
+                  if !self.complete_message(
+                    2,
+                    active_events,
+                    has_complete_events,
+                    has_finish_event,
+                    &mut event_cursor,
+                  ) {
+                    suspend!();
+                  }
                   advance!(2);
-                  self.complete(2);
                   next!();
                 }
 
@@ -1181,7 +1318,7 @@ impl Parser {
 
                 let mut trailer_value_start = trailer_name_end + 1;
                 let mut trailer_value_end = cr;
-                if has_trailer_value_callback {
+                if has_trailer_value_event {
                   strip_ows_fast(data, &mut trailer_value_start, &mut trailer_value_end, true);
                 }
 
@@ -1190,16 +1327,16 @@ impl Parser {
                   fail!(UNEXPECTED_CHARACTER, "Invalid trailer field name character");
                 }
 
-                if has_trailer_name_callback {
-                  callback!(
+                if has_trailer_name_event {
+                  event_with_range!(
                     on_trailer_name,
                     trailer_name_start,
                     trailer_name_end - trailer_name_start
                   );
                 }
 
-                if has_trailer_value_callback {
-                  callback!(
+                if has_trailer_value_event {
+                  event_with_range!(
                     on_trailer_value,
                     trailer_value_start,
                     trailer_value_end - trailer_value_start
@@ -1258,7 +1395,17 @@ impl Parser {
       // Notify the status change
       #[cfg(any(debug_assertions, feature = "debug"))]
       if previous_state != self.state {
-        callback!(on_state_change);
+        if active_events & EVENT_ACTIVE_ON_STATE_CHANGE != 0
+          && !self.try_emit_event_range(
+            &mut event_cursor,
+            EVENT_STATE_CHANGE,
+            self.position,
+            self.state as usize,
+          )
+        {
+          parsing = false;
+          continue 'parser;
+        }
         previous_state = self.state;
       }
 
@@ -1323,16 +1470,77 @@ impl Parser {
       }
     }
 
+    if has_active_events {
+      unsafe {
+        *self.events.add(event_cursor) = EVENT_END;
+      }
+    }
+
+    if self.active_callbacks != 0 {
+      self.invoke_callbacks();
+    }
+
     // Return the number of consumed bytes
     consumed
   }
 
-  // RFC 9110 section 6.4.1 - Message completed
+  /// Completes the current message without consuming more input.
+  ///
+  /// This is intended for integrations that consume opaque body bytes outside
+  /// Milo after headers were parsed, then need Milo to perform the normal
+  /// completion transition and emit completion events.
+  pub fn complete(&mut self) {
+    match self.state {
+      STATE_BODY_DECISION
+      | STATE_TUNNEL
+      | STATE_BODY_VIA_CONTENT_LENGTH
+      | STATE_BODY_WITH_NO_LENGTH
+      | STATE_CHUNK_HEADER
+      | STATE_TRAILER => {}
+      _ => {
+        self.fail(ERROR_UNEXPECTED_STATE, "Invalid state");
+        return;
+      }
+    }
+
+    let active_events = self.active_events | self.active_callbacks;
+    let has_complete_events = active_events & (EVENT_ACTIVE_ON_MESSAGE_COMPLETE | EVENT_ACTIVE_ON_RESET) != 0;
+    let has_finish_event = active_events & EVENT_ACTIVE_ON_FINISH != 0;
+    let mut event_cursor = 0usize;
+
+    if !self.complete_message(
+      0,
+      active_events,
+      has_complete_events,
+      has_finish_event,
+      &mut event_cursor,
+    ) {
+      self.paused = true;
+    }
+
+    unsafe {
+      *self.events.add(event_cursor) = EVENT_END;
+    }
+  }
+
+  // RFC 9110 section 6.4.1 - Message completed.
   #[inline(always)]
-  fn complete(&mut self, offset: usize) {
-    if self.active_callbacks != 0 {
-      callback!(on_message_complete, offset, 0);
-      callback!(on_reset, offset, 0);
+  fn complete_message(
+    &mut self,
+    offset: usize,
+    active_events: u64,
+    has_complete_events: bool,
+    has_finish_event: bool,
+    event_cursor: &mut usize,
+  ) -> bool {
+    if has_complete_events {
+      if (active_events & EVENT_ACTIVE_ON_MESSAGE_COMPLETE != 0
+        && !self.try_emit_event_range(event_cursor, EVENT_MESSAGE_COMPLETE, self.position + offset, 0))
+        || (active_events & EVENT_ACTIVE_ON_RESET != 0
+          && !self.try_emit_event_range(event_cursor, EVENT_RESET, self.position + offset, 0))
+      {
+        return false;
+      }
     }
 
     self.continue_without_data = false;
@@ -1341,12 +1549,14 @@ impl Parser {
     if self.has_upgrade && self.is_request {
       move_to!(tunnel);
     } else if self.has_connection_close {
-      if self.active_callbacks != 0 {
-        callback!(on_finish);
+      if has_finish_event && !self.try_emit_event_range(event_cursor, EVENT_FINISH, self.position, 0) {
+        return false;
       }
       move_to!(finish);
     } else {
       move_to!(start);
     }
+
+    true
   }
 }

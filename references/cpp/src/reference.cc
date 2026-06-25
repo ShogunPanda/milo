@@ -23,25 +23,22 @@ uchar_t* copy_string(uchar_t* source, usize_t size) {
 }
 
 void on_state_change(milo_parser::Parser* parser, usize_t from, usize_t size) {
-  EXTRACT_PAYLOAD(data, parser, from, size);
-  usize_t position = parser->position;
-  auto state = milo_parser::milo_state_string(parser);
+  auto state = milo_parser::milo_state_to_string(static_cast<uint8_t>(size));
 
   auto message = create_string();
   snprintf(reinterpret_cast<char*>(message), MAX_FORMAT, "\"pos\": %lu, \"event\": \"state\", \"state\": \"%s\"",
-           position, state.ptr);
+           from, state.ptr);
   milo_parser::milo_free_string(state);
 
-  append_output(parser, message, data, from, size);
+  append_output(parser, message, NULL, from, 0);
 }
 
 void on_message_start(milo_parser::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  usize_t position = parser->position;
 
   auto message = create_string();
   snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
-           "\"pos\": %lu, \"event\": \"begin\", \"configuration\": { \"debug\": %s }", position,
+           "\"pos\": %lu, \"event\": \"begin\", \"configuration\": { \"debug\": %s }", from,
            milo_parser::milo_has_debug() ? "true" : "false");
 
   append_output(parser, message, data, from, size);
@@ -54,7 +51,6 @@ void on_message_complete(milo_parser::Parser* parser, usize_t from, usize_t size
 
 void on_error(milo_parser::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  usize_t position = parser->position;
   usize_t error_code = static_cast<usize_t>(parser->error_code);
   auto error_code_string = milo_parser::milo_error_code_string(parser);
   auto error_code_description = milo_parser::milo_error_description_string(parser);
@@ -62,7 +58,7 @@ void on_error(milo_parser::Parser* parser, usize_t from, usize_t size) {
   auto message = create_string();
   snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
            "\"pos\": %lu, \"event\": \"error\", \"error_code\": %lu, \"error_code_string\": \"%s\", \"reason\": \"%s\"",
-           position, error_code, error_code_string.ptr, error_code_description.ptr);
+           from, error_code, error_code_string.ptr, error_code_description.ptr);
   milo_parser::milo_free_string(error_code_string);
   milo_parser::milo_free_string(error_code_description);
 
@@ -126,7 +122,6 @@ void on_header_value(milo_parser::Parser* parser, usize_t from, usize_t size) {
 
 void on_headers(milo_parser::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
-  usize_t position = parser->position;
   usize_t content_length = parser->content_length;
   bool chunked = parser->has_chunked_transfer_encoding;
 
@@ -143,34 +138,34 @@ void on_headers(milo_parser::Parser* parser, usize_t from, usize_t size) {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %u, \"protocol\": \"%s\", "
                "\"version\": \"%s\", \"body\": \"chunked\"",
-               position, parser->status, protocol, version);
+                from, parser->status, protocol, version);
     } else if (content_length > 0) {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %u, \"protocol\": \"%s\", "
                "\"version\": \"%s\", \"body\": %lu",
-               position, parser->status, protocol, version, content_length);
+                from, parser->status, protocol, version, content_length);
     } else {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %u, \"protocol\": \"%s\", "
                "\"version\": \"%s\", \"body\": null",
-               position, parser->status, protocol, version);
+                from, parser->status, protocol, version);
     }
   } else {
     if (chunked) {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"request\", \"method\": \"%s\", \"url\": \"%s\", "
                "\"protocol\": \"%s\", \"version\": \"%s\", \"body\": \"chunked\"",
-               position, method, url, protocol, version);
+                from, method, url, protocol, version);
     } else if (content_length > 0) {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"request\", \"method\": \"%s\", \"url\": \"%s\", "
                "\"protocol\": \"%s\", \"version\": \"%s\", \"body\": %lu",
-               position, method, url, protocol, version, content_length);
+                from, method, url, protocol, version, content_length);
     } else {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"request\", \"method\": \"%s\", \"url\": \"%s\", "
                "\"protocol\": \"%s\", \"version\": \"%s\", \"body\": null",
-               position, method, url, protocol, version);
+                from, method, url, protocol, version);
     }
   }
 

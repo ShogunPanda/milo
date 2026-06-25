@@ -46,6 +46,8 @@ The file `milo.h` defines several constants (`*` is used to denote a family pref
 - `METHOD_*`: An HTTP request method.
 - `CALLBACK_*`: A parser callback.
 - `CALLBACK_ACTIVE_*`: A callback activation flag.
+- `EVENT_*`: A parser event type.
+- `EVENT_ACTIVE_*`: An event activation flag.
 - `STATE_*`: A parser state.
 
 Internal generated lookup tables used by the parser are not exported in `milo.h`.
@@ -102,12 +104,14 @@ A struct representing a parser. It has the following fields:
 - `is_request` (`bool`): The configured or detected message type. Set this when `autodetect` is `false`.
 - `paused` (`bool`): If the parser is paused.
 - `manage_unconsumed` (`bool`): If the parser should automatically copy and prepend unconsumed data.
+- `suspend_after_headers` (`bool`): If parsing should stop after headers have completed. Disabled by default.
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
 - `is_connect` (`bool`): If the current request used `CONNECT` method.
 - `skip_body` (`bool`): If the parser should skip the body.
 - `debug` (`bool`): If debug tracing is enabled for this parser. It only affects tracing in debug-enabled builds.
 - `max_start_line_length` (`uintptr_t`): Maximum allowed request/status line length. By default is `8192`.
 - `max_header_length` (`uintptr_t`): Maximum allowed header length. By default is `8192`.
+- `max_body_payload` (`uint64_t`): Maximum body payload bytes consumed in a single `milo_parse()` call. `0` means unlimited and is the default.
 - `context` (`void*`): The context of this parser. Use is reserved to the developer.
 - `state` (`uint8_t`): The current parser state.
 - `position` (`uintptr_t`): The current parser position in the slice in the current execution of `milo_parse`.
@@ -115,8 +119,6 @@ A struct representing a parser. It has the following fields:
 - `error_code` (`uint8_t`): The parser error. By default is `ERROR_NONE`.
 - `method` (`uint8_t`): The current request method.
 - `status` (`uint32_t`): The current response status.
-- `version_major` (`uint8_t`): The current message HTTP version major version.
-- `version_minor` (`uint8_t`): The current message HTTP version minor version.
 - `content_length` (`uint64_t`): The value of the `Content-Length` header.
 - `chunk_size` (`uint64_t`): The expected length of the next chunk.
 - `remaining_content_length` (`uint64_t`): The missing data length of the body according to the `content_length` field.
@@ -129,26 +131,138 @@ A struct representing a parser. It has the following fields:
 - `has_upgrade` (`bool`): If the current message has an `Upgrade` header.
 - `has_trailers` (`bool`): If the current message has a `Trailer` header.
 - `active_callbacks` (`uint64_t`): Active callback bitmask. Set to one or more `CALLBACK_ACTIVE_*` values.
+- `active_events` (`uint64_t`): Active event bitmask. Set to one or more `EVENT_ACTIVE_*` values.
 - `callbacks` (`ParserCallbacks`): The callbacks for the current parser.
-- `error_description` (`const unsigned char*`): The parser error description.
-- `error_description_len` (`uint16_t`): The parser error description length.
+- `error_description` (`unsigned char[255]`): The parser error description buffer. It is always NIL-terminated.
+- `error_description_len` (`uint8_t`): The parser error description length, excluding the NIL terminator. Error descriptions are clamped to 254 bytes.
 - `unconsumed` (`const unsigned char*`): The unconsumed data from the previous execution of `parse` when `manage_unconsumed` is `true`.
 - `unconsumed_len` (`uintptr_t`): The unconsumed data length from the previous execution of `parse` when `manage_unconsumed` is `true`.
+- `events` (`unsigned char[65536]`): Parser-owned event buffer.
 
 All the fields **MUST** be considered readonly, with the following exceptions:
 
 - `autodetect`
 - `is_request`
 - `manage_unconsumed`
+- `suspend_after_headers`
 - `continue_without_data`
 - `is_connect`
 - `skip_body`
 - `debug`
 - `max_start_line_length`
 - `max_header_length`
+- `max_body_payload`
 - `context`
 - `active_callbacks`
+- `active_events`
 - `callbacks`
+
+## Events
+
+Events are parser-owned records written to `Parser::events` during parsing. They are disabled by default. Enable them by setting `Parser::active_events` or by calling `milo_parser::milo_set_active_events()` with one or more `EVENT_ACTIVE_*` values.
+
+Callbacks are replayed from the same event buffer. Setting `active_callbacks` also enables event emission for those callbacks, then callbacks are invoked in event order before `milo_parse()` returns.
+
+The event buffer is terminated by `EVENT_END`. Do not rely on the internal buffer size; always stop reading at `EVENT_END`. Event payload integers are little-endian and may be unaligned, so copy multi-byte values before decoding them.
+
+If an active event would exceed the internal event buffer, parsing stops before consuming the data that would have produced the event. This is not a parser error and does not pause the parser. Call `milo_parse()` again after draining the event buffer.
+
+## Body Payload Limit
+
+`max_body_payload` limits how many body payload bytes a single `milo_parse()` invocation can consume. The default value is `0`, which means unlimited.
+
+When the limit is reached, `milo_parse()` returns normally with a consumed byte count smaller than `limit` and leaves the remaining input unconsumed. This is not a parser error and does not pause the parser. The next `milo_parse()` invocation continues from the same parser state.
+
+The limit applies only to body payload bytes. Framing bytes such as chunk headers, chunk CRLFs, and trailers are not counted.
+
+## Suspend After Headers
+
+`suspend_after_headers` stops parsing after the final header terminator has been consumed and `on_headers` has been emitted. `milo_parse()` returns normally, the parser is not paused, and the next `milo_parse()` call continues with body decision and body parsing.
+
+### Range events
+
+Most events use this payload:
+
+```text
+uint8_t  type
+uint32_t at
+uint32_t len
+```
+
+`type` is one of the `EVENT_*` constants. `at` and `len` are relative to the last input passed to `milo_parse()`. `len` can be `0`.
+
+`EVENT_STATE_CHANGE` is debug-only and uses the same payload. For this event, `len` contains the new parser state id as a `uint32_t`. Callback replay passes that value as the callback `size` argument.
+
+### Metadata events
+
+`EVENT_HEADERS` uses this payload:
+
+```text
+uint8_t  type
+uint32_t at
+uint16_t status_or_method
+uint8_t  should_keep_alive
+uint8_t  should_upgrade
+uint8_t  has_trailers
+uint8_t  body_kind
+uint64_t content_length
+```
+
+`status_or_method` is the response status for responses and the request method for requests.
+
+`body_kind` values are:
+
+- `0`: `Content-Length`
+- `1`: chunked transfer encoding
+- `2`: no explicit body length
+
+### Error events
+
+`EVENT_ERROR` uses this payload:
+
+```text
+uint8_t  type
+uint32_t at
+uint8_t  error_code
+```
+
+### Reading events
+
+```cpp
+#include "milo.h"
+
+#include <cstdint>
+
+static uint32_t read_u32_le(const unsigned char* ptr) {
+  return static_cast<uint32_t>(ptr[0]) |
+    (static_cast<uint32_t>(ptr[1]) << 8) |
+    (static_cast<uint32_t>(ptr[2]) << 16) |
+    (static_cast<uint32_t>(ptr[3]) << 24);
+}
+
+static void drain_events(const milo_parser::Parser* parser) {
+  uintptr_t cursor = 0;
+
+  for (;;) {
+    const uint8_t event_type = parser->events[cursor];
+
+    if (event_type == milo_parser::EVENT_END) {
+      break;
+    }
+
+    if (event_type == milo_parser::EVENT_DATA) {
+      const uint32_t at = read_u32_le(parser->events + cursor + 1);
+      const uint32_t len = read_u32_le(parser->events + cursor + 5);
+      // Use at and len.
+      cursor += 9;
+      continue;
+    }
+
+    // Decode other events according to their payload type.
+    break;
+  }
+}
+```
 
 ## Enumerations
 
@@ -163,6 +277,10 @@ An enum listing all possible HTTP methods recognized by Milo.
 ### `milo_parser::Callbacks`
 
 An enum listing all possible parser callbacks.
+
+### `milo_parser::Events`
+
+An enum listing all possible parser events.
 
 ### `milo_parser::States`
 
@@ -206,6 +324,18 @@ Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
+### `void milo_set_active_events(Parser *parser, uint64_t value)`
+
+Sets the active event bitmask on the parser.
+
+### `void milo_set_max_body_payload(Parser *parser, uint64_t value)`
+
+Sets the maximum body payload bytes consumed by a single `milo_parse()` invocation. Use `0` for unlimited.
+
+### `void milo_set_suspend_after_headers(Parser *parser, bool value)`
+
+Sets whether `milo_parse()` should return after headers have completed.
+
 ### `void milo_reset(Parser *parser, bool keep_parsed)`
 
 Resets a parser. The second parameters specifies if to also reset the
@@ -218,6 +348,7 @@ The following fields are not modified:
 - `autodetect`
 - `is_request`
 - `manage_unconsumed`
+- `suspend_after_headers`
 - `continue_without_data`
 - `debug`
 - `max_start_line_length`
@@ -240,6 +371,15 @@ Pauses the parser. The parser will have to be resumed via `milo_parser::milo_res
 
 Resumes the parser.
 
+### `void milo_complete(Parser *parser)`
+
+Completes the current message without consuming more input.
+
+This emits normal completion events and performs the same completion transition
+used by `milo_parse()`. It is valid only while the parser is in `BODY_DECISION`,
+`TUNNEL`, `BODY_VIA_CONTENT_LENGTH`, `BODY_WITH_NO_LENGTH`, `CHUNK_HEADER`, or
+`TRAILER`. Other states fail with `ERROR_UNEXPECTED_STATE`.
+
 ### `void milo_finish(Parser *parser)`
 
 Marks the parser as finished. Any new invocation of `milo_parser::milo_parse` will put the parser in the error state.
@@ -251,6 +391,36 @@ Marks the parsing a failed, setting a error code and and error message.
 ### `CStringWithLength *milo_state_string(Parser *parser)`
 
 Returns the current parser's state as string.
+
+**The returned value MUST be freed using `milo_parser::milo_free_string`.**
+
+### `CStringWithLength *milo_method_to_string(uint8_t method)`
+
+Returns a parser method as string.
+
+**The returned value MUST be freed using `milo_parser::milo_free_string`.**
+
+### `CStringWithLength *milo_error_to_string(uint8_t error)`
+
+Returns a parser error as string.
+
+**The returned value MUST be freed using `milo_parser::milo_free_string`.**
+
+### `CStringWithLength *milo_callback_to_string(uint8_t callback)`
+
+Returns a parser callback as string.
+
+**The returned value MUST be freed using `milo_parser::milo_free_string`.**
+
+### `CStringWithLength *milo_state_to_string(uint8_t state)`
+
+Returns a parser state as string.
+
+**The returned value MUST be freed using `milo_parser::milo_free_string`.**
+
+### `CStringWithLength *milo_event_to_string(uint8_t event)`
+
+Returns a parser event as string. `EVENT_END` returns `END`.
 
 **The returned value MUST be freed using `milo_parser::milo_free_string`.**
 

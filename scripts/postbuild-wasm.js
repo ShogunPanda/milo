@@ -10,6 +10,8 @@ const enums = {
   METHOD: 'Methods',
   CALLBACK: 'Callbacks',
   CALLBACK_ACTIVE: 'CallbackActives',
+  EVENT: 'Events',
+  EVENT_ACTIVE: 'EventActives',
   STATE: 'States',
   PARSER_FIELD: 'ParserFields'
 }
@@ -19,8 +21,10 @@ const getters = {
   isRequest: ['bool', 'is_request'],
   isPaused: ['bool', 'is_paused'],
   shouldManageUnconsumed: ['bool', 'should_manage_unconsumed'],
+  shouldSuspendAfterHeaders: ['bool', 'should_suspend_after_headers'],
   getMaxStartLineLength: ['number', 'get_max_start_line_length'],
   getMaxHeaderLength: ['number', 'get_max_header_length'],
+  getMaxBodyPayload: ['bigint', 'get_max_body_payload'],
   shouldContinueWithoutData: ['bool', 'should_continue_without_data'],
   isConnect: ['bool', 'is_connect'],
   isDebug: ['bool', 'is_debug'],
@@ -31,8 +35,6 @@ const getters = {
   getErrorCode: ['number', 'get_error_code'],
   getMethod: ['number', 'get_method'],
   getStatus: ['number', 'get_status'],
-  getVersionMajor: ['number', 'get_version_major'],
-  getVersionMinor: ['number', 'get_version_minor'],
   hasConnectionClose: ['bool', 'has_connection_close'],
   hasConnectionUpgrade: ['bool', 'has_connection_upgrade'],
   getContentLength: ['bigint', 'get_content_length'],
@@ -54,10 +56,13 @@ const setters = {
   setIsConnect: 'set_is_connect',
   setDebug: 'set_debug',
   setShouldManageUnconsumed: 'set_should_manage_unconsumed',
+  setShouldSuspendAfterHeaders: 'set_should_suspend_after_headers',
   setMaxStartLineLength: 'set_max_start_line_length',
   setMaxHeaderLength: 'set_max_header_length',
+  setMaxBodyPayload: 'set_max_body_payload',
   setShouldSkipBody: 'set_should_skip_body',
-  setActiveCallbacks: 'set_active_callbacks'
+  setActiveCallbacks: 'set_active_callbacks',
+  setActiveEvents: 'set_active_events'
 }
 
 function getCallbacks (constants) {
@@ -73,7 +78,9 @@ function generateEnums (constants) {
     let suffix = ''
     if (selector === 'CALLBACK_') {
       matching = matching.filter(c => !c.startsWith('CALLBACK_ACTIVE'))
-    } else if (selector === 'CALLBACK_ACTIVE_') {
+    } else if (selector === 'EVENT_') {
+      matching = matching.filter(c => !c.startsWith('EVENT_ACTIVE_'))
+    } else if (selector === 'CALLBACK_ACTIVE_' || selector === 'EVENT_ACTIVE_') {
       suffix = 'n'
     }
 
@@ -97,7 +104,7 @@ function generateConstants (constants) {
     .map(([k, v]) => {
       let value = v.toString()
 
-      if (k.startsWith('CALLBACK_ACTIVE_')) {
+      if (k.startsWith('CALLBACK_ACTIVE_') || k.startsWith('EVENT_ACTIVE_')) {
         value += 'n'
       }
 

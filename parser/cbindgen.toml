@@ -16,4 +16,6 @@ namespace     = "milo_parser"
     "Methods",
     "States",
     "Errors",
+    "Callbacks",
+    "Events",
   ]

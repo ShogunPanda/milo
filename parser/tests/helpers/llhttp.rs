@@ -164,7 +164,7 @@ fn on_tunnel(parser: &mut Parser, from: usize, size: usize) {
     on_state_change(parser, from, size);
   }
 
-  if parser.state == STATE_TUNNEL {
+  if size as u8 == STATE_TUNNEL {
     add_event(parser, "tunnel", from, size);
   }
 }

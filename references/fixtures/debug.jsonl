@@ -6,8 +6,8 @@
 { "pos": 6, "event": "protocol", "data": "HTTP" }
 { "pos": 11, "event": "version", "data": "1.1" }
 { "pos": 16, "event": "state", "state": "HEADER", "data": null }
-{ "pos": 18, "event": "state", "state": "BODY_DECISION", "data": null }
 { "pos": 18, "event": "headers", "type": "request", "method": "GET", "url": "/", "protocol": "HTTP", "version": "1.1", "body": null, "data": null }
+{ "pos": 18, "event": "state", "state": "BODY_DECISION", "data": null }
 { "pos": 18, "event": "complete", "data": null }
 { "pos": 18, "event": "state", "state": "START", "data": null }
 { "pos": 18, "consumed": 18, "state": "START" }
@@ -26,8 +26,8 @@
 { "pos": 36, "event": "header_value", "data": "chunked" }
 { "pos": 45, "event": "header_name", "data": "Trailer" }
 { "pos": 54, "event": "header_value", "data": "x-trailer" }
-{ "pos": 67, "event": "state", "state": "BODY_DECISION", "data": null }
 { "pos": 67, "event": "headers", "type": "response", "status": 200, "protocol": "HTTP", "version": "1.1", "body": "chunked", "data": null }
+{ "pos": 67, "event": "state", "state": "BODY_DECISION", "data": null }
 { "pos": 67, "event": "state", "state": "CHUNK_HEADER", "data": null }
 { "pos": 67, "event": "chunk_length", "data": "c" }
 { "pos": 69, "event": "state", "state": "CHUNK_EXTENSIONS", "data": null }

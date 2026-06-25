@@ -28,13 +28,15 @@ The crate exports several constants (`*` is used to denote a family prefix):
 - `METHOD_*`: An HTTP request method.
 - `CALLBACK_*`: A parser callback.
 - `CALLBACK_ACTIVE_*`: A callback activation flag.
+- `EVENT_*`: A parser event type.
+- `EVENT_ACTIVE_*`: An event activation flag.
 - `STATE_*`: A parser state.
 
 Internal generated lookup tables used by the parser are not public API.
 
 ## Enums
 
-All the enums below implement `TryFrom<usize>` and `Into<&str>` traits and have the `as_str` method.
+All the enums below implement `TryFrom<u8>` and `Into<&str>` traits and have the `as_str` method.
 
 ### `Errors`
 
@@ -47,6 +49,10 @@ An enum listing all possible HTTP methods recognized by Milo.
 ### `Callbacks`
 
 An enum listing all possible parser callbacks.
+
+### `Events`
+
+An enum listing all possible parser events.
 
 ### `States`
 
@@ -99,12 +105,14 @@ A struct representing a parser. It has the following fields:
 - `is_request` (`bool`): The configured or detected message type. Set this when `autodetect` is `false`.
 - `paused` (`bool`): If the parser is paused.
 - `manage_unconsumed` (`bool`): If the parser should automatically copy and prepend unconsumed data.
+- `suspend_after_headers` (`bool`): If parsing should stop after headers have completed. Disabled by default.
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
 - `is_connect` (`bool`): If the current request used `CONNECT` method.
 - `skip_body` (`bool`): If the parser should skip the body.
 - `debug` (`bool`): If debug tracing is enabled for this parser. It only affects tracing in debug-enabled builds.
 - `max_start_line_length` (`usize`): Maximum allowed request/status line length. By default is `8192`.
 - `max_header_length` (`usize`): Maximum allowed header length. By default is `8192`.
+- `max_body_payload` (`u64`): Maximum body payload bytes consumed in a single `parse()` call. `0` means unlimited and is the default.
 - `context` (`*mut c_void`): The context of this parser. Use is reserved to the developer.
 - `state` (`u8`): The current parser state.
 - `position` (`usize`): The current parser position in the slice in the current execution of `milo_parse`.
@@ -112,8 +120,6 @@ A struct representing a parser. It has the following fields:
 - `error_code` (`u8`): The parser error. By default is `ERROR_NONE`.
 - `method` (`u8`): The current request method.
 - `status` (`u32`): The current response status.
-- `version_major` (`u8`): The current message HTTP version major version.
-- `version_minor` (`u8`): The current message HTTP version minor version.
 - `content_length` (`u64`): The value of the `Content-Length` header.
 - `chunk_size` (`u64`): The expected length of the next chunk.
 - `remaining_content_length` (`u64`): The missing data length of the body according to the `content_length` field.
@@ -126,26 +132,130 @@ A struct representing a parser. It has the following fields:
 - `has_upgrade` (`bool`): If the current message has an `Upgrade` header.
 - `has_trailers` (`bool`): If the current message has a `Trailer` header.
 - `active_callbacks` (`u64`): Active callback bitmask. Set to one or more `CALLBACK_ACTIVE_*` flags.
+- `active_events` (`u64`): Active event bitmask. Set to one or more `EVENT_ACTIVE_*` flags.
 - `callbacks` (`ParserCallbacks`): The callbacks for the current parser.
-- `error_description` (`*const c_uchar`): The parser error description.
-- `error_description_len` (`u16`): The parser error description length.
+- `error_description` (`[u8; 255]`): The parser error description buffer. It is always NIL-terminated.
+- `error_description_len` (`u8`): The parser error description length, excluding the NIL terminator. Error descriptions are clamped to 254 bytes.
 - `unconsumed` (`*const c_uchar`): The unconsumed data from the previous execution of `parse` when `manage_unconsumed` is `true`.
 - `unconsumed_len` (`usize`): The unconsumed data length from the previous execution of `parse` when `manage_unconsumed` is `true`.
+- `events` (`*mut c_uchar`): Parser-owned event buffer.
 
 All the fields **MUST** be considered readonly, with the following exceptions:
 
 - `autodetect`
 - `is_request`
 - `manage_unconsumed`
+- `suspend_after_headers`
 - `continue_without_data`
 - `is_connect`
 - `skip_body`
 - `debug`
 - `max_start_line_length`
 - `max_header_length`
+- `max_body_payload`
 - `context`
 - `active_callbacks`
+- `active_events`
 - `callbacks`
+
+## Events
+
+Events are parser-owned records written to `Parser::events` during parsing. They are disabled by default. Enable them by setting `Parser::active_events` to one or more `EVENT_ACTIVE_*` flags.
+
+Callbacks are replayed from the same event buffer. Setting `active_callbacks` also enables event emission for those callbacks, then callbacks are invoked in event order before `parse()` returns.
+
+The event buffer is terminated by `EVENT_END`. Do not rely on the internal buffer size; always stop reading at `EVENT_END`. Event payload integers are little-endian and may be unaligned, so read multi-byte values with unaligned reads.
+
+If an active event would exceed the internal event buffer, parsing stops before consuming the data that would have produced the event. This is not a parser error and does not pause the parser. Call `parse()` again after draining the event buffer.
+
+## Body Payload Limit
+
+`max_body_payload` limits how many body payload bytes a single `parse()` invocation can consume. The default value is `0`, which means unlimited.
+
+When the limit is reached, `parse()` returns normally with `consumed < limit` and leaves the remaining input unconsumed. This is not a parser error and does not pause the parser. The next `parse()` invocation continues from the same parser state.
+
+The limit applies only to body payload bytes. Framing bytes such as chunk headers, chunk CRLFs, and trailers are not counted.
+
+## Suspend After Headers
+
+`suspend_after_headers` stops parsing after the final header terminator has been consumed and `on_headers` has been emitted. `parse()` returns normally, the parser is not paused, and the next `parse()` call continues with body decision and body parsing.
+
+### Range events
+
+Most events use this payload:
+
+```text
+u8  type
+u32 at
+u32 len
+```
+
+`type` is one of the `EVENT_*` constants. `at` and `len` are relative to the last input passed to `parse()`. `len` can be `0`.
+
+`EVENT_STATE_CHANGE` is debug-only and uses the same payload. For this event, `len` contains the new parser state id as a `u32`. Callback replay passes that value as the callback `size` argument.
+
+### Metadata events
+
+`EVENT_HEADERS` uses this payload:
+
+```text
+u8  type
+u32 at
+u16 status_or_method
+u8  should_keep_alive
+u8  should_upgrade
+u8  has_trailers
+u8  body_kind
+u64 content_length
+```
+
+`status_or_method` is the response status for responses and the request method for requests.
+
+`body_kind` values are:
+
+- `0`: `Content-Length`
+- `1`: chunked transfer encoding
+- `2`: no explicit body length
+
+### Error events
+
+`EVENT_ERROR` uses this payload:
+
+```text
+u8  type
+u32 at
+u8  error_code
+```
+
+### Reading events
+
+```rust
+use core::ptr;
+
+use milo_parser::{EVENT_DATA, EVENT_END, Parser};
+
+fn drain(parser: &Parser) {
+  let mut cursor = 0usize;
+
+  loop {
+    let event_type = unsafe { *parser.events.add(cursor) };
+
+    match event_type {
+      EVENT_END => break,
+      EVENT_DATA => {
+        let at = u32::from_le(unsafe { ptr::read_unaligned(parser.events.add(cursor + 1) as *const u32) }) as usize;
+        let len = u32::from_le(unsafe { ptr::read_unaligned(parser.events.add(cursor + 5) as *const u32) }) as usize;
+        // Use at and len.
+        cursor += 9;
+      }
+      _ => {
+        // Decode other events according to their payload type.
+        break;
+      }
+    }
+  }
+}
+```
 
 #### `Parser::new() -> Parser`
 
@@ -169,6 +279,7 @@ The following fields are not modified:
 - `autodetect`
 - `is_request`
 - `manage_unconsumed`
+- `suspend_after_headers`
 - `continue_without_data`
 - `debug`
 - `max_start_line_length`
@@ -190,6 +301,15 @@ Pauses the parser. The parser will have to be resumed via `Parser::resume`.
 #### `Parser::resume(&mut self)`
 
 Resumes the parser.
+
+#### `Parser::complete(&mut self)`
+
+Completes the current message without consuming more input.
+
+This emits normal completion events and performs the same completion transition
+used by `parse`. It is valid only while the parser is in `BODY_DECISION`,
+`TUNNEL`, `BODY_VIA_CONTENT_LENGTH`, `BODY_WITH_NO_LENGTH`, `CHUNK_HEADER`, or
+`TRAILER`. Other states fail with `ERROR_UNEXPECTED_STATE`.
 
 #### `Parser::finish(&mut self)`
 
@@ -288,6 +408,15 @@ Pauses the parser. The parser will have to be resumed via `milo_parser::milo_res
 
 Resumes the parser.
 
+### `milo_complete(parser: *mut Parser)`
+
+Completes the current message without consuming more input.
+
+This emits normal completion events and performs the same completion transition
+used by `milo_parse`. It is valid only while the parser is in `BODY_DECISION`,
+`TUNNEL`, `BODY_VIA_CONTENT_LENGTH`, `BODY_WITH_NO_LENGTH`, `CHUNK_HEADER`, or
+`TRAILER`. Other states fail with `ERROR_UNEXPECTED_STATE`.
+
 ### `milo_finish(parser: *mut Parser)`
 
 Marks the parser as finished. Any new invocation of `milo_parse` will put the parser in the error state.
@@ -299,6 +428,36 @@ Marks the parsing a failed, setting a error code and and error message.
 ### `milo_state_string(parser: *mut Parser) -> *const c_uchar`
 
 Returns the current parser's state as string.
+
+**The returned value MUST be freed using `milo_free_string`.**
+
+### `milo_method_to_string(method: u8) -> *const c_uchar`
+
+Returns a parser method as string.
+
+**The returned value MUST be freed using `milo_free_string`.**
+
+### `milo_error_to_string(error: u8) -> *const c_uchar`
+
+Returns a parser error as string.
+
+**The returned value MUST be freed using `milo_free_string`.**
+
+### `milo_callback_to_string(callback: u8) -> *const c_uchar`
+
+Returns a parser callback as string.
+
+**The returned value MUST be freed using `milo_free_string`.**
+
+### `milo_state_to_string(state: u8) -> *const c_uchar`
+
+Returns a parser state as string.
+
+**The returned value MUST be freed using `milo_free_string`.**
+
+### `milo_event_to_string(event: u8) -> *const c_uchar`
+
+Returns a parser event as string. `EVENT_END` returns `END`.
 
 **The returned value MUST be freed using `milo_free_string`.**
 

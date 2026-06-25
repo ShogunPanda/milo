@@ -29,12 +29,12 @@ const message = Buffer.from('HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc')
 // Allocate a memory in the WebAssembly space. This speeds up data copying to the WebAssembly layer.
 const ptr = milo.alloc(message.length)
 
-// Create a buffer we can use normally.
-const buffer = Buffer.from(milo.memory.buffer, ptr, message.length)
-
 // Create the parser.
 const parser = milo.create()
 milo.setActiveCallbacks(parser, milo.CALLBACK_ACTIVE_ON_DATA)
+
+// Create a buffer we can use normally.
+const buffer = Buffer.from(milo.memory.buffer, ptr, message.length)
 
 // Now perform the main parsing using milo.parse. The method returns the number of consumed characters.
 buffer.set(message, 0)

@@ -1,37 +1,6 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 
-use crate::structs::CallbackRequest;
-
-pub fn callback(definition: &CallbackRequest) -> proc_macro2::TokenStream {
-  let callback = &definition.identifier;
-
-  if callback.to_string() == "on_headers" {
-    return quote! {
-      unsafe {
-        on_headers(
-          self.ptr,
-          self.position,
-          if self.is_request { self.method as u32 } else { self.status as u32 },
-          !self.has_connection_close,
-          self.has_upgrade && self.has_connection_upgrade,
-          self.has_trailers,
-          if self.has_content_length { 0 } else if self.has_chunked_transfer_encoding { 1 } else { 2 },
-          if self.has_content_length { self.content_length as f64 } else { 0.0 },
-        )
-      };
-    };
-  }
-
-  if let Some(offset) = &definition.offset
-    && let Some(length) = &definition.length
-  {
-    quote! { unsafe { #callback(self.ptr, self.position + #offset, #length) }; }
-  } else {
-    quote! { unsafe { #callback(self.ptr, self.position, 0) }; }
-  }
-}
-
 /// Generates all parser callbacks.
 pub fn generate_callbacks(callbacks: &[String]) -> TokenStream {
   let callbacks: Vec<_> = callbacks
@@ -39,6 +8,31 @@ pub fn generate_callbacks(callbacks: &[String]) -> TokenStream {
     .filter(|x| x.as_str() != "on_headers")
     .map(|x| format_ident!("{}", x))
     .collect();
+  let replay_arms = callbacks
+    .iter()
+    .filter(|callback| callback.to_string() != "on_error")
+    .map(|callback| {
+      let callback_name = callback.to_string();
+      let event_const = format_ident!(
+        "EVENT_{}",
+        callback_name
+          .strip_prefix("on_")
+          .unwrap_or(&callback_name)
+          .to_uppercase()
+      );
+      let active_const = format_ident!("CALLBACK_ACTIVE_{}", callback_name.to_uppercase());
+
+      quote! {
+        #event_const => {
+          let at = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 1) as *const u32) }.to_le() as usize;
+          let len = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 5) as *const u32) }.to_le() as usize;
+          if self.active_callbacks & #active_const != 0 {
+            unsafe { #callback(self.ptr, at, len); }
+          }
+          cursor += 9usize;
+        }
+      }
+    });
 
   TokenStream::from(quote! {
     #[cfg(target_family = "wasm")]
@@ -66,6 +60,56 @@ pub fn generate_callbacks(callbacks: &[String]) -> TokenStream {
       std::panic::set_hook(Box::new(|panic_info| {
         debug(format!("WebAssembly panicked: {:#?}", panic_info));
       }));
+    }
+
+    #[cfg(target_family = "wasm")]
+    impl Parser {
+      #[inline]
+      fn invoke_callbacks(&mut self) {
+        let mut cursor = 0usize;
+
+        loop {
+          let event_type = unsafe { *self.events.add(cursor) };
+
+          match event_type {
+            EVENT_END => break,
+            EVENT_ERROR => {
+              let at = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 1) as *const u32) }.to_le() as usize;
+              if self.active_callbacks & CALLBACK_ACTIVE_ON_ERROR != 0 {
+                unsafe { on_error(self.ptr, at, 0); }
+              }
+              cursor += 6usize;
+            }
+            EVENT_HEADERS => {
+              let at = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 1) as *const u32) }.to_le() as usize;
+              let method_or_status = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 5) as *const u16) }.to_le() as u32;
+              let should_keep_alive = unsafe { *self.events.add(cursor + 7) } != 0;
+              let should_upgrade = unsafe { *self.events.add(cursor + 8) } != 0;
+              let has_trailers = unsafe { *self.events.add(cursor + 9) } != 0;
+              let body_kind = unsafe { *self.events.add(cursor + 10) };
+              let content_length = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 11) as *const u64) }.to_le() as f64;
+
+              if self.active_callbacks & CALLBACK_ACTIVE_ON_HEADERS != 0 {
+                unsafe {
+                  on_headers(
+                    self.ptr,
+                    at,
+                    method_or_status,
+                    should_keep_alive,
+                    should_upgrade,
+                    has_trailers,
+                    body_kind,
+                    content_length,
+                  );
+                }
+              }
+              cursor += 19usize;
+            }
+            #(#replay_arms)*
+            _ => break,
+          }
+        }
+      }
     }
   })
 }

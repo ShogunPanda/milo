@@ -67,14 +67,22 @@ export async function getBuildInfo () {
     constants[`CALLBACK_${callback.toUpperCase()}`] = i
   }
 
+  constants.EVENT_END = 0
+  for (const [i, callback] of callbacks.entries()) {
+    constants[`EVENT_${callback.replace(/^on_/, '').toUpperCase()}`] = i + 1
+  }
+
   let all = 0
   constants.CALLBACK_ACTIVE_NONE = 0
+  constants.EVENT_ACTIVE_NONE = 0
   for (const [i, callback] of callbacks.entries()) {
     const bit = 1 << i
     constants[`CALLBACK_ACTIVE_${callback.toUpperCase()}`] = bit
+    constants[`EVENT_ACTIVE_${callback.toUpperCase()}`] = bit
     all |= bit
   }
   constants.CALLBACK_ACTIVE_ALL = all
+  constants.EVENT_ACTIVE_ALL = all
 
   for (const [i, error] of errors.entries()) {
     constants[`ERROR_${error}`] = i

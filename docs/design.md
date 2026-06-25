@@ -92,7 +92,11 @@ CONNECT response behavior requires application context and is not inferred by Mi
 
 `skip_body` lets applications skip response body parsing when they have external context, such as responses to `HEAD`.
 
-`autodetect` and `is_request` control parser direction. Milo also supports managed unconsumed data, start-line and header length limits, and callback activation flags.
+`max_body_payload` limits how many body payload bytes a single parse invocation can consume. `0` means unlimited. When the limit is reached, parsing returns normally with unconsumed input left for the caller's next parse invocation. Framing bytes such as chunk headers, chunk CRLFs, and trailers are not counted.
+
+`suspend_after_headers` stops parsing after the final header terminator has been consumed and headers metadata has been emitted. The parser is not paused; the next parse invocation continues with body decision and body parsing.
+
+`autodetect` and `is_request` control parser direction. Milo also supports managed unconsumed data, start-line and header length limits, event activation flags, and callback activation flags.
 
 ## Non-Goals
 

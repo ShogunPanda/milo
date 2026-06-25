@@ -105,6 +105,7 @@ export function setup (env = {}) {
     fail: fail.bind(wasm),
     hasDebug: hasDebug.bind(wasm),
     clear: wasm.clear,
+    complete: wasm.complete,
     finish: wasm.finish,
     pause: wasm.pause,
     reset: wasm.reset,

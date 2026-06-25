@@ -12,8 +12,10 @@ type WasmUsize = u32;
 struct ParserStub {
   max_start_line_length: WasmUsize,
   max_header_length: WasmUsize,
+  max_body_payload: u64,
   autodetect: bool,
   is_request: bool,
+  suspend_after_headers: bool,
   manage_unconsumed: bool,
   continue_without_data: bool,
   is_connect: bool,
@@ -30,8 +32,6 @@ struct ParserStub {
   remaining_chunk_size: u64,
   status: u32,
   method: u8,
-  version_major: u8,
-  version_minor: u8,
   has_content_length: bool,
   has_transfer_encoding: bool,
   has_chunked_transfer_encoding: bool,
@@ -40,18 +40,22 @@ struct ParserStub {
   has_upgrade: bool,
   has_trailers: bool,
   active_callbacks: u64,
+  active_events: u64,
   ptr: WasmPointer,
-  error_description: WasmPointer,
+  error_description: [u8; 255],
   unconsumed: WasmPointer,
   unconsumed_len: WasmUsize,
-  error_description_len: u16,
+  error_description_len: u8,
+  events: WasmPointer,
 }
 
 const FIELDS: &[(&str, usize)] = &[
   ("MAX_START_LINE_LENGTH", offset_of!(ParserStub, max_start_line_length)),
   ("MAX_HEADER_LENGTH", offset_of!(ParserStub, max_header_length)),
+  ("MAX_BODY_PAYLOAD", offset_of!(ParserStub, max_body_payload)),
   ("AUTODETECT", offset_of!(ParserStub, autodetect)),
   ("IS_REQUEST", offset_of!(ParserStub, is_request)),
+  ("SUSPEND_AFTER_HEADERS", offset_of!(ParserStub, suspend_after_headers)),
   ("MANAGE_UNCONSUMED", offset_of!(ParserStub, manage_unconsumed)),
   ("CONTINUE_WITHOUT_DATA", offset_of!(ParserStub, continue_without_data)),
   ("IS_CONNECT", offset_of!(ParserStub, is_connect)),
@@ -71,8 +75,6 @@ const FIELDS: &[(&str, usize)] = &[
   ("REMAINING_CHUNK_SIZE", offset_of!(ParserStub, remaining_chunk_size)),
   ("STATUS", offset_of!(ParserStub, status)),
   ("METHOD", offset_of!(ParserStub, method)),
-  ("VERSION_MAJOR", offset_of!(ParserStub, version_major)),
-  ("VERSION_MINOR", offset_of!(ParserStub, version_minor)),
   ("HAS_CONTENT_LENGTH", offset_of!(ParserStub, has_content_length)),
   ("HAS_TRANSFER_ENCODING", offset_of!(ParserStub, has_transfer_encoding)),
   (
@@ -84,11 +86,13 @@ const FIELDS: &[(&str, usize)] = &[
   ("HAS_UPGRADE", offset_of!(ParserStub, has_upgrade)),
   ("HAS_TRAILERS", offset_of!(ParserStub, has_trailers)),
   ("ACTIVE_CALLBACKS", offset_of!(ParserStub, active_callbacks)),
+  ("ACTIVE_EVENTS", offset_of!(ParserStub, active_events)),
   ("PTR", offset_of!(ParserStub, ptr)),
   ("ERROR_DESCRIPTION", offset_of!(ParserStub, error_description)),
   ("UNCONSUMED", offset_of!(ParserStub, unconsumed)),
   ("UNCONSUMED_LEN", offset_of!(ParserStub, unconsumed_len)),
   ("ERROR_DESCRIPTION_LEN", offset_of!(ParserStub, error_description_len)),
+  ("EVENTS", offset_of!(ParserStub, events)),
 ];
 
 pub fn generate_constants() -> TokenStream {
@@ -114,5 +118,5 @@ fn main() {
     .collect::<Vec<_>>()
     .join(",");
 
-  println!("{{{constants}}}");
+  println!("{{{}}}", constants);
 }

@@ -1,3 +1,7 @@
+### 2026-06-25 / 0.8.0
+
+- feat: Added parser fields, events interface and other flags. (#21)
+
 ### 2026-06-18 / 0.7.0
 
 - feat: Added parseWithError. (#20)

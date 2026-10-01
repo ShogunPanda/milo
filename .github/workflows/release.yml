@@ -40,7 +40,7 @@ jobs:
       - name: Use supported Rust version
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: nightly
+          toolchain: nightly-2026-07-29
       - name: Use supported Node.js version
         uses: actions/setup-node@v4
         with:
@@ -128,7 +128,7 @@ jobs:
       - name: Use supported Rust version
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: nightly
+          toolchain: nightly-2026-07-29
       - name: Use supported Node.js version
         uses: actions/setup-node@v4
         with:
@@ -189,7 +189,7 @@ jobs:
       - name: Use supported Rust version
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: nightly
+          toolchain: nightly-2026-07-29
           components: rust-src
       - name: Add Rust targets
         run: rustup target add wasm32-unknown-unknown

@@ -241,10 +241,10 @@ If you want to build it locally, you need the following tools:
 - Rust toolchain - You can install it via [rustup].
 - [rust-cbindgen](https://github.com/mozilla/cbindgen)
 
-Make sure you have the `nightly` toolchain installed locally:
+Make sure you have the pinned nightly toolchain installed locally:
 
 ```bash
-rustup toolchain install nightly
+rustup toolchain install nightly-2026-07-29
 ```
 
 Make sure you have the `wasm32-unknown-unknown` target:

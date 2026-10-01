@@ -17,7 +17,7 @@ jobs:
       - name: Use supported Rust version
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: nightly
+          toolchain: nightly-2026-07-29
           components: rustfmt, clippy, rust-src
       - name: Add Rust targets
         run: rustup target add wasm32-unknown-unknown

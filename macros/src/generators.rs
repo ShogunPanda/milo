@@ -163,7 +163,11 @@ fn generate_enums(methods: &[String], errors: &[String], callbacks: &[String], s
   let errors_ref = errors;
   let callbacks_ref = callbacks;
   let events_ref: Vec<String> = core::iter::once("END".to_string())
-    .chain(callbacks_ref.iter().map(|x| x.strip_prefix("on_").unwrap_or(x).to_string()))
+    .chain(
+      callbacks_ref
+        .iter()
+        .map(|x| x.strip_prefix("on_").unwrap_or(x).to_string()),
+    )
     .collect();
   let states_ref = states;
 
@@ -186,7 +190,10 @@ fn generate_enums(methods: &[String], errors: &[String], callbacks: &[String], s
     })
     .collect();
 
-  let events: Vec<_> = events_ref.iter().map(|x| format_ident!("{}", x.to_uppercase())).collect();
+  let events: Vec<_> = events_ref
+    .iter()
+    .map(|x| format_ident!("{}", x.to_uppercase()))
+    .collect();
 
   let states: Vec<_> = states_ref
     .iter()

@@ -41,10 +41,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly-2026-07-29
-      - name: Use supported Node.js version
-        uses: actions/setup-node@v4
-        with:
-          node-version: 26
       - name: Restore cached dependencies (Cargo)
         uses: actions/cache@v3
         with:
@@ -54,11 +50,6 @@ jobs:
             parser/target
             macros/target
           key: cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
-      - name: Restore cached dependencies (PNPM)
-        uses: actions/cache@v3
-        with:
-          path: ~/.pnpm-store
-          key: release-node-${{ hashFiles('package.json') }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install makers
         uses: taiki-e/cache-cargo-install-action@v3
         with:
@@ -67,12 +58,6 @@ jobs:
         uses: taiki-e/cache-cargo-install-action@v3
         with:
           tool: cbindgen
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: latest
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
       - name: Download latest cambi
         shell: bash
         run: |
@@ -86,7 +71,8 @@ jobs:
       - name: Build C++ artifacts
         shell: bash
         run: |
-          node scripts/sync-versions.js $(cambi update "${{ inputs.version }}" -s)
+          cargo build --release --manifest-path scripts/Cargo.toml --target-dir scripts/target --bin sync-versions
+          scripts/target/release/sync-versions $(cambi update "${{ inputs.version }}" -s)
           cd parser
           makers cpp
       - name: Package C++ artifacts
@@ -129,10 +115,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly-2026-07-29
-      - name: Use supported Node.js version
-        uses: actions/setup-node@v4
-        with:
-          node-version: 26
       - name: Restore cached dependencies (Cargo)
         uses: actions/cache@v3
         with:
@@ -155,7 +137,8 @@ jobs:
       - name: Build binary
         shell: bash
         run: |
-          node scripts/sync-versions.js $(cambi update "${{ inputs.version }}" -s)
+          cargo build --release --manifest-path scripts/Cargo.toml --target-dir scripts/target --bin sync-versions
+          scripts/target/release/sync-versions $(cambi update "${{ inputs.version }}" -s)
           cd parser
           cargo build --release --bin milo-parser
       - name: Package binary
@@ -213,11 +196,6 @@ jobs:
             parser/target
             macros/target
           key: cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
-      - name: Restore cached dependencies (PNPM)
-        uses: actions/cache@v3
-        with:
-          path: ~/.pnpm-store
-          key: release-node-${{ hashFiles('package.json') }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install makers
         run: |
           ARCH=x86_64-unknown-linux-gnu
@@ -237,8 +215,6 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: latest
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
       - name: Download latest cambi
         run: |
           mkdir -p /tmp/cambi-bootstrap
@@ -257,7 +233,8 @@ jobs:
           git config --global user.email "${{ github.actor }}@users.noreply.github.com"
       - name: Prepare release
         run: |
-          node scripts/sync-versions.js $(cambi update "${{ inputs.version }}" -s)
+          cargo build --release --manifest-path scripts/Cargo.toml --target-dir scripts/target --bin sync-versions
+          scripts/target/release/sync-versions $(cambi update "${{ inputs.version }}" -s)
           cambi update -l "${{ inputs.version }}"
           (cd macros && cargo generate-lockfile)
           (cd parser && cargo generate-lockfile)

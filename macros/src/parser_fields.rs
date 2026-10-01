@@ -49,7 +49,7 @@ struct ParserStub {
   events: WasmPointer,
 }
 
-const FIELDS: &[(&str, usize)] = &[
+pub const FIELDS: &[(&str, usize)] = &[
   ("MAX_START_LINE_LENGTH", offset_of!(ParserStub, max_start_line_length)),
   ("MAX_HEADER_LENGTH", offset_of!(ParserStub, max_header_length)),
   ("MAX_BODY_PAYLOAD", offset_of!(ParserStub, max_body_payload)),

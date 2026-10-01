@@ -6,9 +6,12 @@ use milo_parser::{Parser, States, milo_has_debug};
 
 use crate::helpers::{context, output};
 
+// Shared with the Rust reference executable; not every test target uses it.
+#[allow(dead_code)]
 pub fn on_state_change(parser: &mut Parser, from: usize, size: usize) {
   let state = States::try_from(size as u8).unwrap().as_str();
 
+  // The state ID is not a payload length.
   output::append_output(
     parser,
     format!("\"pos\": {}, \"event\": \"state\", \"state\": \"{}\"", from, state),

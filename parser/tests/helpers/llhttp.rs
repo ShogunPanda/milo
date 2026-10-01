@@ -1,17 +1,12 @@
-use core::{slice, str};
 use std::collections::HashSet;
 use std::ffi::c_void;
 use std::fs::read_to_string;
-use std::str::from_utf8_unchecked;
 use std::{env, vec};
 use std::{fs::read_dir, path::Path};
 
-use milo_parser::{CALLBACK_ACTIVE_ALL, Parser, STATE_TUNNEL};
+use milo_parser::{CALLBACK_ACTIVE_ALL, Parser, STATE_TUNNEL, States};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-
-use crate::helpers::callbacks::on_state_change;
-use crate::helpers::output::extract_payload;
 
 #[derive(Debug)]
 struct Context {
@@ -116,13 +111,21 @@ fn js_from_char_code(value: u32) -> String {
 }
 
 fn add_event(parser: &mut Parser, kind: &str, from: usize, size: usize) {
-  let mut context = unsafe { Box::from_raw(parser.context as *mut Context) };
+  // SAFETY: create_parser installs a live llhttp Context, exclusively accessed
+  // by these synchronous callbacks. Borrow it without taking ownership.
+  let context = unsafe { &mut *(parser.context as *mut Context) };
 
   let mut payload = None;
   if size > 0 {
-    let (data, cleanup) = extract_payload(parser, from, size);
-
-    let payload_str = unsafe { from_utf8_unchecked(slice::from_raw_parts(data, size)).to_string() };
+    let bytes = context
+      .input
+      .as_bytes()
+      .get(from..)
+      .and_then(|remaining| remaining.get(..size))
+      .expect("Callback payload range exceeds the llhttp input");
+    // Spans are byte ranges, so a partial UTF-8 sequence must not create an
+    // invalid Rust string.
+    let payload_str = String::from_utf8_lossy(bytes).into_owned();
     payload = Some(Payload::String(payload_str.clone()));
 
     match kind {
@@ -146,8 +149,6 @@ fn add_event(parser: &mut Parser, kind: &str, from: usize, size: usize) {
       }
       _ => {}
     }
-
-    cleanup();
   }
 
   context.events.push(Event {
@@ -155,17 +156,19 @@ fn add_event(parser: &mut Parser, kind: &str, from: usize, size: usize) {
     kind: kind.to_string(),
     payload,
   });
-
-  let _ = Box::into_raw(context);
 }
 
-fn on_tunnel(parser: &mut Parser, from: usize, size: usize) {
+fn on_tunnel(parser: &mut Parser, offset: usize, state: usize) {
   if env::var_os("DEBUG_TESTS").unwrap_or("false".into()) == "true" {
-    on_state_change(parser, from, size);
+    let state = States::try_from(state as u8).unwrap().as_str();
+    // Keep diagnostics separate from the generated YAML and avoid helpers
+    // that require the generic test Context instead of the llhttp Context.
+    eprintln!("{{ \"pos\": {offset}, \"event\": \"state\", \"state\": \"{state}\", \"data\": null }}");
   }
 
-  if size as u8 == STATE_TUNNEL {
-    add_event(parser, "tunnel", from, size);
+  if state == STATE_TUNNEL as usize {
+    // The state-change callback carries a state ID, not a payload length.
+    add_event(parser, "tunnel", offset, 0);
   }
 }
 

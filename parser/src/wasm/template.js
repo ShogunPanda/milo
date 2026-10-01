@@ -119,9 +119,7 @@ export function setup (env = {}) {
 export function simple () {
   const spans = {}
 
-  const milo = setup({
-    /* REPLACE: callbacks:simple */
-  })
+  const milo = setup({/* REPLACE: callbacks:simple */})
 
   milo.spans = spans
   milo.create = simpleCreate.bind(milo, spans, milo.create)

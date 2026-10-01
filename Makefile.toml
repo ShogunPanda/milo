@@ -26,7 +26,7 @@
   dependencies = ["references:rust", "references:cpp", "references:wasm"]
 
 [tasks."llhttp:import"]
-  script = ["cd parser", "node ../scripts/import-llhttp-tests.js ${1} ."]
+  script = ["cd parser", "makers scripts:build", "../scripts/target/release/import-llhttp-tests ${1} ."]
 
 [tasks."llhttp:review"]
   script = ["cd parser", "cargo run --example llhttp -- --review ${1}"]
@@ -44,6 +44,8 @@
     "cd ../parser",
     "cargo clean",
     "cd ../references/rust",
+    "cargo clean",
+    "cd ../../scripts",
     "cargo clean",
   ]
 
@@ -65,6 +67,8 @@
     "cd ../parser",
     "cargo fmt",
     "cd ../references/rust",
+    "cargo fmt",
+    "cd ../../scripts",
     "cargo fmt",
   ]
 
@@ -90,6 +94,8 @@
     "cargo clippy",
     "cd ../references/rust",
     "cargo clippy",
+    "cd ../../scripts",
+    "cargo clippy",
   ]
 
 [tasks."lint:rust:fix"]
@@ -99,6 +105,8 @@
     "cd ../parser",
     "cargo clippy --fix --allow-dirty",
     "cd ../references/rust",
+    "cargo clippy --fix --allow-dirty",
+    "cd ../../scripts",
     "cargo clippy --fix --allow-dirty",
   ]
 

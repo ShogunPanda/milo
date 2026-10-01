@@ -253,12 +253,6 @@ Make sure you have the `wasm32-unknown-unknown` target:
 rustup target add wasm32-unknown-unknown
 ```
 
-Install npm dependencies
-
-```bash
-pnpm install
-```
-
 After all the requirements are met, you can then run:
 
 ```bash
@@ -266,6 +260,10 @@ makers
 ```
 
 The command above will produce debug and release builds for each language in the top-level `dist` folder.
+
+Build tooling is compiled from `scripts` into standalone Rust binaries. Node.js and npm dependencies are not required to build the parser or generate its C++ and WebAssembly packages.
+
+For JavaScript linting and formatting, install the development dependencies with `pnpm install`.
 
 The WebAssembly release build uses immediate-abort panics to keep the artifact smaller. Panics trap without unwinding or rich panic messages.
 

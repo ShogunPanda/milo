@@ -30,8 +30,6 @@
     "../../dist/cpp/release",
     "-o",
     "../../tmp/references/cpp/release",
-    "src/output.cc",
-    "src/utils.cc",
     "src/reference.cc",
     "../../dist/cpp/release/libmilo.a",
   ]
@@ -44,8 +42,6 @@
     "../../dist/cpp/debug",
     "-o",
     "../../tmp/references/cpp/debug",
-    "src/output.cc",
-    "src/utils.cc",
     "src/reference.cc",
     "../../dist/cpp/debug/libmilo.a",
   ]
@@ -58,8 +54,6 @@
     "../../dist/cpp/release",
     "-o",
     "../../tmp/references/cpp/readme",
-    "src/output.cc",
-    "src/utils.cc",
     "src/readme.cc",
     "../../dist/cpp/release/libmilo.a",
   ]

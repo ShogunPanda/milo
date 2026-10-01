@@ -1,9 +1,91 @@
 #include "milo.h"
 #include "stdio.h"
 #include "string.h"
+#include <cstdint>
+#include <cstdlib>
 
-#include "output.h"
-#include "utils.h"
+#define MAX_FORMAT 1000
+
+typedef uintptr_t usize_t;
+typedef unsigned char uchar_t;
+
+struct context_t {
+  uchar_t* input;
+  uchar_t* method;
+  uchar_t* url;
+  uchar_t* protocol;
+  uchar_t* version;
+};
+
+void clear_context(context_t* context) {
+  if (context->input != NULL) {
+    free(context->input);
+    context->input = NULL;
+  }
+
+  if (context->method != NULL) {
+    free(context->method);
+    context->method = NULL;
+  }
+
+  if (context->url != NULL) {
+    free(context->url);
+    context->url = NULL;
+  }
+
+  if (context->protocol != NULL) {
+    free(context->protocol);
+    context->protocol = NULL;
+  }
+
+  if (context->version != NULL) {
+    free(context->version);
+    context->version = NULL;
+  }
+}
+
+uchar_t* create_string() {
+  return reinterpret_cast<uchar_t*>(calloc(MAX_FORMAT, sizeof(uchar_t)));
+}
+
+void append_output(const milo_parser::Parser* parser, uchar_t* message, const uchar_t* data, usize_t from,
+                   usize_t size) {
+  if (data == NULL) {
+    printf("{ %s, \"data\": null }\n", message);
+  } else {
+    uchar_t* string_data = create_string();
+    strncpy(reinterpret_cast<char*>(string_data), reinterpret_cast<const char*>(data), size);
+    printf("{ %s, \"data\": \"%s\" }\n", message, string_data);
+  }
+
+  free(message);
+}
+
+void event(const milo_parser::Parser* parser, const char* name, const uchar_t* data, usize_t from, usize_t size) {
+  auto message = create_string();
+  snprintf((char*) message, MAX_FORMAT, "\"pos\": %lu, \"event\": \"%s\"", from, name);
+  append_output(parser, message, data, from, size);
+}
+
+void show_span(const milo_parser::Parser* parser, const char* name, const uchar_t* data, usize_t from, usize_t size) {
+  auto context = reinterpret_cast<context_t*>(parser->context);
+  uchar_t* string_data = create_string();
+  strncpy(reinterpret_cast<char*>(string_data), reinterpret_cast<const char*>(data), size);
+
+  if (strcmp(name, "method") == 0) {
+    context->method = string_data;
+  } else if (strcmp(name, "url") == 0) {
+    context->url = string_data;
+  } else if (strcmp(name, "protocol") == 0) {
+    context->protocol = string_data;
+  } else if (strcmp(name, "version") == 0) {
+    context->version = string_data;
+  } else {
+    free(string_data);
+  }
+
+  event(parser, name, data, from, size);
+}
 
 #define EXTRACT_PAYLOAD(name, parser, from, size)                                                                      \
   auto name = size > 0 ? reinterpret_cast<context_t*>(parser->context)->input + from : NULL;
@@ -26,8 +108,8 @@ void on_state_change(milo_parser::Parser* parser, usize_t from, usize_t size) {
   auto state = milo_parser::milo_state_to_string(static_cast<uint8_t>(size));
 
   auto message = create_string();
-  snprintf(reinterpret_cast<char*>(message), MAX_FORMAT, "\"pos\": %lu, \"event\": \"state\", \"state\": \"%s\"",
-           from, state.ptr);
+  snprintf(reinterpret_cast<char*>(message), MAX_FORMAT, "\"pos\": %lu, \"event\": \"state\", \"state\": \"%s\"", from,
+           state.ptr);
   milo_parser::milo_free_string(state);
 
   append_output(parser, message, NULL, from, 0);
@@ -138,34 +220,34 @@ void on_headers(milo_parser::Parser* parser, usize_t from, usize_t size) {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %u, \"protocol\": \"%s\", "
                "\"version\": \"%s\", \"body\": \"chunked\"",
-                from, parser->status, protocol, version);
+               from, parser->status, protocol, version);
     } else if (content_length > 0) {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %u, \"protocol\": \"%s\", "
                "\"version\": \"%s\", \"body\": %lu",
-                from, parser->status, protocol, version, content_length);
+               from, parser->status, protocol, version, content_length);
     } else {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"response\", \"status\": %u, \"protocol\": \"%s\", "
                "\"version\": \"%s\", \"body\": null",
-                from, parser->status, protocol, version);
+               from, parser->status, protocol, version);
     }
   } else {
     if (chunked) {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"request\", \"method\": \"%s\", \"url\": \"%s\", "
                "\"protocol\": \"%s\", \"version\": \"%s\", \"body\": \"chunked\"",
-                from, method, url, protocol, version);
+               from, method, url, protocol, version);
     } else if (content_length > 0) {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"request\", \"method\": \"%s\", \"url\": \"%s\", "
                "\"protocol\": \"%s\", \"version\": \"%s\", \"body\": %lu",
-                from, method, url, protocol, version, content_length);
+               from, method, url, protocol, version, content_length);
     } else {
       snprintf(reinterpret_cast<char*>(message), MAX_FORMAT,
                "\"pos\": %lu, \"event\": \"headers\", \"type\": \"request\", \"method\": \"%s\", \"url\": \"%s\", "
                "\"protocol\": \"%s\", \"version\": \"%s\", \"body\": null",
-                from, method, url, protocol, version);
+               from, method, url, protocol, version);
     }
   }
 

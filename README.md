@@ -358,6 +358,21 @@ To see the rationale behind the replacement of llhttp, check Paolo's talk at [Va
 
 To see the initial disclosure of milo, check Paolo's talk at [NodeConf EU 2023][nodeconf-talk] in November 2023 ([slides][slides]).
 
+## Building WebAssembly with Docker
+
+The repository includes a Docker image for building the WebAssembly packages without changing the working tree. Build the image from the repository root, then mount the sources read-only and choose a host directory for the generated artifacts:
+
+```sh
+docker build -t milo-wasm .
+mkdir -p /path/to/milo-wasm-output
+docker run --rm \
+  -v "$PWD:/src:ro" \
+  -v "/path/to/milo-wasm-output:/output" \
+  milo-wasm
+```
+
+The container builds both the debug and release profiles in its temporary workspace. The output directory receives the resulting `debug` and `release` packages; the mounted source tree remains read-only.
+
 ## Sponsored by
 
 [![NearForm](https://raw.githubusercontent.com/ShogunPanda/milo/main/docs/nearform.jpg)][nearform]
@@ -395,3 +410,4 @@ Licensed under the ISC license, which can be found at https://choosealicense.com
 [cargo-make]: https://github.com/sagiegurari/cargo-make
 [rustup]: https://rustup.rs/
 [Clang]: https://clang.llvm.org/
+

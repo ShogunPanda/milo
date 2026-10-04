@@ -331,7 +331,7 @@ async function main () {
   )
 
   milo.destroy(parser)
-  milo.dealloc(ptr)
+  milo.dealloc(ptr, 1000)
 }
 
 await main()

@@ -19,7 +19,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:wasm": "node --test parser/wasm/test/*.test.js",
+    "test:wasm": "node --test --test-reporter=cleaner-spec-reporter parser/wasm/test/*.test.js",
     "format": "prettier -w \"parser/wasm/**/*.js\" \"benchmarks/wasm/**/*.js\" \"references/wasm/**/*.js\" references/reference.js",
     "lint": "eslint --cache \"parser/wasm/**/*.js\" \"benchmarks/wasm/**/*.js\" \"references/wasm/**/*.js\" references/reference.js"
   },
@@ -32,5 +32,8 @@
   },
   "engines": {
     "node": ">= 22.21.0"
+  },
+  "devDependencies": {
+    "cleaner-spec-reporter": "^2.0.1"
   }
 }

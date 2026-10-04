@@ -276,9 +276,11 @@ Allocates a shared memory area with the WebAssembly instance which can be used t
 
 **The returned value MUST be destroyed later using `dealloc`.**
 
-#### `dealloc(ptr)`
+#### `dealloc(ptr, len)`
 
 Deallocates a shared memory area created with `alloc`.
+
+`len` must be the original allocation size in bytes passed to `alloc`, not the number of bytes parsed or written.
 
 #### `create`
 

@@ -18,7 +18,7 @@ function fieldMessages (value) {
 }
 
 // Cover SIMD block boundaries and scalar tails in both field scanners.
-it('issue_22__field_values_reject_controls', t => {
+it('issue-22 - field_values_reject_controls', t => {
   const { milo, parser, parse } = responseParser(t)
   milo.setActiveCallbacks(parser, 0n)
   const controls = [...Array.from({ length: 32 }, (_, byte) => byte), 0x7f].filter(byte => byte !== 9)
@@ -38,7 +38,7 @@ it('issue_22__field_values_reject_controls', t => {
 })
 
 // HTAB and every obs-text byte remain valid, including across SIMD boundaries.
-it('issue_22__field_values_allow_tab_and_obs_text', t => {
+it('issue-22 - field_values_allow_tab_and_obs_text', t => {
   const { milo, parser, parse } = responseParser(t)
   // Keep the callback configuration identical to the raw-byte Rust regression.
   milo.setActiveCallbacks(parser, 0n)
@@ -60,8 +60,30 @@ it('issue_22__field_values_allow_tab_and_obs_text', t => {
 })
 
 // Bare LF is rejected in HTTP framing.
-it('issue_22__bare_lf_rejected', t => {
+it('issue-22 - bare_lf_rejected', t => {
   const { milo, parser, parse } = responseParser(t)
   parse('HTTP/1.1 200 OK\r\nHeader: value\nContent-Length: 0\r\n\r\n')
   assert.equal(milo.getState(parser), milo.STATE_ERROR)
+})
+
+it('issue-24 - memory_deallocation', async () => {
+  const milo = setup()
+  const size = 65536
+
+  // Warm up the allocator before measuring the linear memory high-water mark.
+  for (let i = 0; i < 100; i++) {
+    const ptr = milo.alloc(size)
+    milo.dealloc(ptr, size)
+  }
+
+  const before = milo.memory.buffer.byteLength
+  for (let batch = 0; batch < 10; batch++) {
+    for (let i = 0; i < 100; i++) {
+      const ptr = milo.alloc(size)
+      milo.dealloc(ptr, size)
+    }
+
+    // WASM memory cannot shrink; freeing buffers must allow subsequent allocations to reuse it.
+    assert.equal(milo.memory.buffer.byteLength, before, `memory grew in batch ${batch + 1}`)
+  }
 })

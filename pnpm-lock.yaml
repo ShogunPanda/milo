@@ -23,6 +23,10 @@ importers:
       prettier-plugin-space-before-function-paren:
         specifier: ^0.1.0
         version: 0.1.0(prettier@3.9.9)
+    devDependencies:
+      cleaner-spec-reporter:
+        specifier: ^2.0.1
+        version: 2.0.1
 
 packages:
 
@@ -507,6 +511,10 @@ packages:
 
   caniuse-lite@1.0.30001814:
     resolution: {integrity: sha512-/Uaf1lAzr59XcMpW0o96WoEfr+VXK2OX4U9AgFoiSHsVJ4HppnIFUjtYzsyDH2+tgANaQb2/oxYGwCPapN1FpA==}
+
+  cleaner-spec-reporter@2.0.1:
+    resolution: {integrity: sha512-ayqqK85LkMwAZIRnL0WiLG8HU5gjmq9XNKpUK4F8xE1ydnJM/E6qbaYflOyhSUmxleC0wFJnzCHE8VNh5npnIA==}
+    engines: {node: '>= 22.21.0'}
 
   comment-parser@1.4.9:
     resolution: {integrity: sha512-+2AvZKjJaNq9GQljm3tr0utwrig5BL+jgJGvz5rDpGKNIp+ojcRXWUwBbh/sGIi1QCprR6PsKFakub+w1v+4hQ==}
@@ -2036,6 +2044,8 @@ snapshots:
       get-intrinsic: 1.3.0
 
   caniuse-lite@1.0.30001814: {}
+
+  cleaner-spec-reporter@2.0.1: {}
 
   comment-parser@1.4.9: {}
 

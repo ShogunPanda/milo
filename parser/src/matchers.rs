@@ -318,8 +318,9 @@ pub fn find_header_line_end(ptr: *const u8, len: usize) -> HeaderLineScanResult 
     let eq_7f = u8x16_eq(x, v_7f);
 
     // Header lines stop at CR; other control bytes are invalid except HTAB.
-    let ctrl = v128_andnot(eq_tab, lt_20);
-    let invalid = v128_andnot(eq_cr, v128_or(ctrl, eq_7f));
+    // WASM andnot(a, b) computes a & !b, unlike the x86 intrinsic.
+    let ctrl = v128_andnot(lt_20, eq_tab);
+    let invalid = v128_andnot(v128_or(ctrl, eq_7f), eq_cr);
     let found = v128_or(eq_cr, invalid);
 
     if v128_any_true(found) {
@@ -440,7 +441,8 @@ pub fn validate_token_value(ptr: *const u8, len: usize) -> bool {
     let eq_7f = u8x16_eq(x, v_7f);
 
     // Field values allow HTAB but reject the remaining C0 controls and DEL.
-    let ctrl = v128_andnot(eq_tab, lt_20);
+    // WASM andnot(a, b) computes a & !b, unlike the x86 intrinsic.
+    let ctrl = v128_andnot(lt_20, eq_tab);
     let invalid = v128_or(ctrl, eq_7f);
 
     if v128_any_true(invalid) {

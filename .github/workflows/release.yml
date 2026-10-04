@@ -258,7 +258,7 @@ jobs:
           mv /tmp/artifacts/milo-parser-bin-macos-intel/milo-parser-bin-macos-intel.tar.gz /tmp/release/
       - name: Push release commit and tag
         run: |
-          git add -f package.json CHANGELOG.md parser/Cargo.toml parser/Cargo.lock macros/Cargo.toml macros/Cargo.lock references/rust/Cargo.toml references/rust/Cargo.lock parser/src/wasm/package.json
+          git add -f package.json CHANGELOG.md parser/Cargo.toml parser/Cargo.lock macros/Cargo.toml macros/Cargo.lock references/rust/Cargo.toml references/rust/Cargo.lock parser/wasm/src/package.json
           git commit -m "chore: Updated version."
           git tag -f "v${{ inputs.version }}"
       - name: Publish macros on crates.io

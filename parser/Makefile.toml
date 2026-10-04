@@ -11,9 +11,16 @@
   dependencies = ["cpp", "wasm"]
 
 [tasks.test]
-  dependencies = ["build"]
+  dependencies = ["build", "test:rust", "test:wasm"]
+
+[tasks."test:rust"]
   command      = "cargo"
   args         = ["test"]
+
+[tasks."test:wasm"]
+  dependencies = ["wasm:release"]
+  command = "node"
+  args = ["--test", "wasm/test/*.test.js"]
 
 [tasks.cpp]
   dependencies = ["cpp:headers", "cpp:libs"]

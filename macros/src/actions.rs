@@ -88,7 +88,8 @@ pub fn event_with_metadata(input: TokenStream) -> TokenStream {
     let status_or_method = if self.is_request { self.method as u16 } else { self.status as u16 };
     let body_kind = if self.has_content_length { 0u8 } else if self.has_chunked_transfer_encoding { 1u8 } else { 2u8 };
     let should_keep_alive = (!self.has_connection_close) as u8;
-    let should_upgrade = (self.has_upgrade && self.has_connection_upgrade) as u8;
+    // Responses switch protocols only with status 101; requests can propose an upgrade.
+    let should_upgrade = (self.has_upgrade && self.has_connection_upgrade && (self.is_request || self.status == 101)) as u8;
     let has_trailers = self.has_trailers as u8;
     let content_length = if self.has_content_length { self.content_length } else { 0 };
 

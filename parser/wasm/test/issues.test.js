@@ -87,3 +87,68 @@ it('issue-24 - memory_deallocation', async () => {
     assert.equal(milo.memory.buffer.byteLength, before, `memory grew in batch ${batch + 1}`)
   }
 })
+
+it('issue-25 - headers_upgrade_metadata', () => {
+  const cases = [
+    ...[100, 101, 103, 200, 204, 301, 304, 400, 426, 500].map(status => ({
+      start: `HTTP/1.1 ${status} Test`,
+      status,
+      request: false,
+      connect: false
+    })),
+    { start: 'POST / HTTP/1.1', request: true, connect: false },
+    { start: 'CONNECT example.com:443 HTTP/1.1', request: true, connect: true },
+    { start: 'HTTP/1.1 200 Connection Established', status: 200, request: false, connect: true }
+  ]
+
+  for (const { start, status, request, connect } of cases) {
+    for (const upgrade of [false, true]) {
+      for (const callbacks of [false, true]) {
+        const label = `${start}, upgrade=${upgrade}, callbacks=${callbacks}`
+        const expected = upgrade && (request || status === 101)
+        const received = []
+        const milo = setup({
+          on_headers (parser, at, methodOrStatus, keepAlive, shouldUpgrade) {
+            received.push({ methodOrStatus, shouldUpgrade: Boolean(shouldUpgrade) })
+          }
+        })
+        const parser = milo.create()
+        const message = Buffer.from(`${start}\r\n${upgrade ? 'Connection: upgrade\r\nUpgrade: h2c\r\n' : ''}\r\n`)
+        const ptr = milo.alloc(message.length)
+        try {
+          milo.setShouldAutodetect(parser, false)
+          milo.setIsRequest(parser, request)
+          milo.setShouldSuspendAfterHeaders(parser, true)
+          milo.setActiveEvents(parser, callbacks ? 0n : milo.EVENT_ACTIVE_ON_HEADERS)
+          milo.setActiveCallbacks(parser, callbacks ? milo.CALLBACK_ACTIVE_ON_HEADERS : 0n)
+          new Uint8Array(milo.memory.buffer, ptr, message.length).set(message)
+          assert.equal(milo.parse(parser, ptr, message.length), message.length, label)
+          assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE, label)
+
+          const methodOrStatus = request ? (connect ? milo.METHOD_CONNECT : milo.METHOD_POST) : status
+          if (callbacks) {
+            assert.deepEqual(received, [{ methodOrStatus, shouldUpgrade: expected }], label)
+          } else {
+            const fields = new DataView(milo.memory.buffer)
+            const events = fields.getUint32(parser + milo.ParserFields.EVENTS, true)
+            assert.equal(fields.getUint8(events), milo.EVENT_HEADERS, label)
+            assert.equal(fields.getUint16(events + 5, true), methodOrStatus, label)
+            assert.equal(fields.getUint8(events + 8), Number(expected), label)
+          }
+
+          // Supply CONNECT response context after parsing headers, before deciding the body framing.
+          if (!request && connect) {
+            milo.setIsConnect(parser, true)
+          }
+          milo.setShouldSuspendAfterHeaders(parser, false)
+          milo.parse(parser, ptr, 0)
+          assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE, label)
+          assert.equal(milo.getState(parser) === milo.STATE_TUNNEL, connect || expected, label)
+        } finally {
+          milo.destroy(parser)
+          milo.dealloc(ptr, message.length)
+        }
+      }
+    }
+  }
+})

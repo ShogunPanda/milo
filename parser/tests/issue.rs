@@ -1,6 +1,8 @@
 mod helpers;
 
-use milo_parser::{ERROR_NONE, Parser, STATE_ERROR};
+use milo_parser::{
+  ERROR_NONE, EVENT_ACTIVE_ON_HEADERS, EVENT_HEADERS, METHOD_CONNECT, METHOD_POST, Parser, STATE_ERROR, STATE_TUNNEL,
+};
 
 use crate::helpers::{create_parser, parse};
 
@@ -81,4 +83,67 @@ fn issue_22__bare_lf_rejected() {
   parse(&mut parser, message);
 
   assert_eq!(parser.state, STATE_ERROR);
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn issue_25__headers_upgrade_metadata() {
+  let mut cases: Vec<_> = [100, 101, 103, 200, 204, 301, 304, 400, 426, 500]
+    .into_iter()
+    .map(|status| (format!("HTTP/1.1 {status} Test"), status, false, false))
+    .collect();
+  cases.extend([
+    ("POST / HTTP/1.1".into(), METHOD_POST as u16, true, false),
+    (
+      "CONNECT example.com:443 HTTP/1.1".into(),
+      METHOD_CONNECT as u16,
+      true,
+      true,
+    ),
+    ("HTTP/1.1 200 Connection Established".into(), 200, false, true),
+  ]);
+
+  for (start, method_or_status, request, connect) in cases {
+    for upgrade in [false, true] {
+      let expected = upgrade && (request || method_or_status == 101);
+      let headers = if upgrade {
+        "Connection: upgrade\r\nUpgrade: h2c\r\n"
+      } else {
+        ""
+      };
+      let message = format!("{start}\r\n{headers}\r\n");
+      let mut parser = Parser::new();
+      parser.autodetect = false;
+      parser.is_request = request;
+      parser.suspend_after_headers = true;
+      parser.active_events = EVENT_ACTIVE_ON_HEADERS;
+
+      assert_eq!(
+        parser.parse(message.as_ptr(), message.len()),
+        message.len(),
+        "{message}"
+      );
+      assert_eq!(parser.error_code, ERROR_NONE, "{message}");
+      // SAFETY: The live parser owns the event buffer, and the complete headers emit
+      // a 19-byte event.
+      let events = unsafe { std::slice::from_raw_parts(parser.events, 19) };
+      assert_eq!(events[0], EVENT_HEADERS, "{message}");
+      assert_eq!(
+        u16::from_le_bytes([events[5], events[6]]),
+        method_or_status,
+        "{message}"
+      );
+      assert_eq!(events[8], expected as u8, "{message}");
+
+      // Supply CONNECT response context after parsing headers, before deciding the
+      // body framing.
+      if !request && connect {
+        parser.is_connect = true;
+      }
+      parser.suspend_after_headers = false;
+      parser.parse(message.as_ptr(), 0);
+      assert_eq!(parser.error_code, ERROR_NONE, "{message}");
+      assert_eq!(parser.state == STATE_TUNNEL, connect || expected, "{message}");
+    }
+  }
 }

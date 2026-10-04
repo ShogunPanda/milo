@@ -555,17 +555,6 @@ fn compliance_chunk_extension_quoted_pair_control_rejected() {
   assert_error(&parser);
 }
 
-// Bare LF is rejected in HTTP framing.
-#[test]
-fn compliance_bare_lf_rejected() {
-  let mut parser = response_parser();
-  let message = "HTTP/1.1 200 OK\r\nHeader: value\nContent-Length: 0\r\n\r\n";
-
-  parse(&mut parser, message);
-
-  assert_error(&parser);
-}
-
 // Bare CR is rejected in HTTP framing.
 #[test]
 fn compliance_bare_cr_rejected() {

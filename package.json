@@ -19,8 +19,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "format": "prettier -w \"parser/**/*.js\" \"benchmarks/**/*.js\" \"references/**/*.js\"",
-    "lint": "eslint --cache \"parser/**/*.js\" \"benchmarks/**/*.js\" \"references/**/*.js\""
+    "test:wasm": "node --test parser/wasm/test/*.test.js",
+    "format": "prettier -w \"parser/wasm/**/*.js\" \"benchmarks/wasm/**/*.js\" \"references/wasm/**/*.js\" references/reference.js",
+    "lint": "eslint --cache \"parser/wasm/**/*.js\" \"benchmarks/wasm/**/*.js\" \"references/wasm/**/*.js\" references/reference.js"
   },
   "dependencies": {
     "@cowtech/eslint-config": "^11.1.3",

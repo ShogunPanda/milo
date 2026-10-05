@@ -102,6 +102,99 @@ fn field_messages(value: &[u8]) -> [Vec<u8>; 3] {
   fields.map(|(prefix, suffix)| [prefix, value, suffix].concat())
 }
 
+#[test]
+#[allow(non_snake_case)]
+fn issue_23__field_value_ows() {
+  use milo_parser::{
+    ERROR_INVALID_CONTENT_LENGTH, ERROR_UNEXPECTED_CHARACTER, EVENT_ACTIVE_ON_DATA, EVENT_ACTIVE_ON_HEADER_VALUE,
+    EVENT_ACTIVE_ON_MESSAGE_COMPLETE, EVENT_ACTIVE_ON_TRAILER_VALUE, EVENT_DATA, EVENT_END, EVENT_HEADER_VALUE,
+    EVENT_MESSAGE_COMPLETE, EVENT_TRAILER_VALUE,
+  };
+
+  let whitespace = ["", " ", "\t", "  ", " \t", "\t ", "\t\t", " \t \t "];
+  for leading in whitespace {
+    for trailing in whitespace {
+      for chunked in [false, true] {
+        for events_enabled in [false, true] {
+          let mut fields = if chunked {
+            vec![
+              ("Transfer-Encoding", "chunked"),
+              ("Connection", "upgrade"),
+              ("Upgrade", "h2c"),
+              ("Trailer", "X-End"),
+            ]
+          } else {
+            vec![("Content-Length", "2")]
+          };
+          fields.extend([("X-Test", "a \tb"), ("Custom", "value"), ("X-Empty", "")]);
+          let mut message = String::from("HTTP/1.1 200 OK\r\n");
+          for (name, value) in &fields {
+            message.push_str(&format!("{name}:{leading}{value}{trailing}\r\n"));
+          }
+          message.push_str("\r\n");
+          if chunked {
+            message.push_str(&format!(
+              "2\r\nok\r\n0\r\nX-End:{leading}done{trailing}\r\nX-Empty:{leading}{trailing}\r\n\r\n"
+            ));
+          } else {
+            message.push_str("ok");
+          }
+          let mut parser = Parser::new();
+          parser.autodetect = false;
+          if events_enabled {
+            parser.active_events = EVENT_ACTIVE_ON_HEADER_VALUE
+              | EVENT_ACTIVE_ON_TRAILER_VALUE
+              | EVENT_ACTIVE_ON_DATA
+              | EVENT_ACTIVE_ON_MESSAGE_COMPLETE;
+          }
+          assert_eq!(
+            parser.parse(message.as_ptr(), message.len()),
+            message.len(),
+            "{message:?}"
+          );
+          assert_eq!(parser.error_code, ERROR_NONE, "{message:?}");
+          if events_enabled {
+            // SAFETY: The live parser owns a 65536-byte event buffer.
+            let events = unsafe { std::slice::from_raw_parts(parser.events, 65536) };
+            let mut received = Vec::new();
+            let mut cursor = 0;
+            while events[cursor] != EVENT_END {
+              let event = events[cursor];
+              assert!(matches!(
+                event,
+                EVENT_HEADER_VALUE | EVENT_TRAILER_VALUE | EVENT_DATA | EVENT_MESSAGE_COMPLETE
+              ));
+              let at = u32::from_le_bytes(events[cursor + 1..cursor + 5].try_into().unwrap()) as usize;
+              let len = u32::from_le_bytes(events[cursor + 5..cursor + 9].try_into().unwrap()) as usize;
+              received.push((event, &message[at..at + len]));
+              cursor += 9;
+            }
+            let mut expected: Vec<_> = fields.iter().map(|(_, value)| (EVENT_HEADER_VALUE, *value)).collect();
+            expected.push((EVENT_DATA, "ok"));
+            if chunked {
+              expected.extend([(EVENT_TRAILER_VALUE, "done"), (EVENT_TRAILER_VALUE, "")]);
+            }
+            expected.push((EVENT_MESSAGE_COMPLETE, ""));
+            assert_eq!(received, expected, "{message:?}");
+          }
+        }
+      }
+    }
+  }
+
+  for value in ["", " ", "\t", " \t ", "2 2", "2\t2"] {
+    let mut parser = Parser::new();
+    let message = format!("HTTP/1.1 200 OK\r\nContent-Length:{value}\r\n\r\n");
+    parser.parse(message.as_ptr(), message.len());
+    let expected = if value.contains('2') {
+      ERROR_INVALID_CONTENT_LENGTH
+    } else {
+      ERROR_UNEXPECTED_CHARACTER
+    };
+    assert_eq!(parser.error_code, expected, "{message:?}");
+  }
+}
+
 // Cover SIMD block boundaries and scalar tails in both field scanners.
 #[test]
 #[allow(non_snake_case)]

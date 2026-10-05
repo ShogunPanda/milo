@@ -113,6 +113,97 @@ function fieldMessages (value) {
   ].map(([prefix, suffix]) => Buffer.concat([Buffer.from(prefix), value, Buffer.from(suffix)]))
 }
 
+it('issue-23 - field_value_ows', () => {
+  const whitespace = ['', ' ', '\t', '  ', ' \t', '\t ', '\t\t', ' \t \t ']
+  for (const leading of whitespace) {
+    for (const trailing of whitespace) {
+      for (const chunked of [false, true]) {
+        for (const callbacks of [false, true]) {
+          const label = JSON.stringify({ leading, trailing, chunked, callbacks })
+          const fields = chunked
+            ? [
+                ['Transfer-Encoding', 'chunked'],
+                ['Connection', 'upgrade'],
+                ['Upgrade', 'h2c'],
+                ['Trailer', 'X-End']
+              ]
+            : [['Content-Length', '2']]
+          fields.push(['X-Test', 'a \tb'], ['Custom', 'value'], ['X-Empty', ''])
+          const received = []
+          const milo = setup({
+            on_header_value (parser, at, len) {
+              received.push(['header', Buffer.from(milo.memory.buffer, ptr + at, len).toString()])
+            },
+            on_trailer_value (parser, at, len) {
+              received.push(['trailer', Buffer.from(milo.memory.buffer, ptr + at, len).toString()])
+            },
+            on_data (parser, at, len) {
+              received.push(['data', Buffer.from(milo.memory.buffer, ptr + at, len).toString()])
+            },
+            on_message_complete () {
+              received.push(['complete', ''])
+            }
+          })
+          const parser = milo.create()
+          const headers = fields.map(([name, value]) => `${name}:${leading}${value}${trailing}\r\n`).join('')
+          const body = chunked
+            ? `2\r\nok\r\n0\r\nX-End:${leading}done${trailing}\r\nX-Empty:${leading}${trailing}\r\n\r\n`
+            : 'ok'
+          const message = Buffer.from(`HTTP/1.1 200 OK\r\n${headers}\r\n${body}`)
+          const ptr = milo.alloc(message.length)
+          try {
+            milo.setShouldAutodetect(parser, false)
+            milo.setIsRequest(parser, false)
+            if (callbacks) {
+              milo.setActiveCallbacks(
+                parser,
+                milo.CALLBACK_ACTIVE_ON_HEADER_VALUE |
+                  milo.CALLBACK_ACTIVE_ON_TRAILER_VALUE |
+                  milo.CALLBACK_ACTIVE_ON_DATA |
+                  milo.CALLBACK_ACTIVE_ON_MESSAGE_COMPLETE
+              )
+            }
+            new Uint8Array(milo.memory.buffer, ptr, message.length).set(message)
+            assert.equal(milo.parse(parser, ptr, message.length), message.length, label)
+            assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE, label)
+            if (callbacks) {
+              const expected = fields.map(([, value]) => ['header', value])
+              expected.push(['data', 'ok'])
+              if (chunked) {
+                expected.push(['trailer', 'done'], ['trailer', ''])
+              }
+              expected.push(['complete', ''])
+              assert.deepEqual(received, expected, label)
+            }
+          } finally {
+            milo.destroy(parser)
+            milo.dealloc(ptr, message.length)
+          }
+        }
+      }
+    }
+  }
+
+  for (const value of ['', ' ', '\t', ' \t ', '2 2', '2\t2']) {
+    const milo = setup()
+    const parser = milo.create()
+    const message = Buffer.from(`HTTP/1.1 200 OK\r\nContent-Length:${value}\r\n\r\n`)
+    const ptr = milo.alloc(message.length)
+    try {
+      new Uint8Array(milo.memory.buffer, ptr, message.length).set(message)
+      milo.parse(parser, ptr, message.length)
+      assert.equal(
+        milo.getErrorCode(parser),
+        value.includes('2') ? milo.ERROR_INVALID_CONTENT_LENGTH : milo.ERROR_UNEXPECTED_CHARACTER,
+        JSON.stringify(value)
+      )
+    } finally {
+      milo.destroy(parser)
+      milo.dealloc(ptr, message.length)
+    }
+  }
+})
+
 // Cover SIMD block boundaries and scalar tails in both field scanners.
 it('issue-22 - field_values_reject_controls', t => {
   const { milo, parser, parse } = responseParser(t)

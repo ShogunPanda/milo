@@ -1,3 +1,12 @@
+### 2026-10-05 / 0.9.0
+
+- fix: Correctly drop memory. (#36)
+- fix: Fixed OWS stripping. (#35)
+- fix: Fixed events buffer handling. (#34)
+- fix: Upgrade only on requests or 101 responses. (#33)
+- fix: Fixed dealloc. (#32)
+- fix: Reversed WASM arguments. (#31)
+
 ### 2026-06-25 / 0.8.0
 
 - feat: Added parser fields, events interface and other flags. (#21)

@@ -324,6 +324,8 @@ Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
+After a parser error, subsequent calls return `0`, emit no events or callbacks, and do not copy or retain new input. The original error and any previously retained input remain available until reset or destruction. Call `milo_reset()` before reusing the parser.
+
 ### `void milo_set_active_events(Parser *parser, uint64_t value)`
 
 Sets the active event bitmask on the parser.

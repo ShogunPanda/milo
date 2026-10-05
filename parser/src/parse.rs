@@ -29,9 +29,16 @@ impl Parser {
     let mut failed = false;
     let active_events = self.active_events | self.active_callbacks;
 
-    // If the self.is paused, this is a no-op
-    if self.paused {
+    // Error states cannot resume without reset. Do not aggregate or retain new
+    // input on retries, which would otherwise grow the pending buffer forever.
+    if self.state == STATE_ERROR {
+      self.position = 0;
+    }
+
+    // Paused and failed parsers consume nothing and produce an empty event batch.
+    if self.paused || self.state == STATE_ERROR {
       if active_events != 0 {
+        // SAFETY: The live parser owns the event buffer and its first byte.
         unsafe {
           *self.events = EVENT_END;
         }
@@ -1444,23 +1451,14 @@ impl Parser {
     self.parsed += consumed as u64;
 
     if self.manage_unconsumed {
-      unsafe {
-        // Drop any previous retained data
-        if unconsumed_len > 0 {
-          let _ = from_raw_parts(self.unconsumed, unconsumed_len);
-        }
+      self.clear_unconsumed();
 
-        // If less bytes were consumed than requested, copy the unconsumed portion in
-        // the self.for the next iteration
-        if consumed < limit {
-          let (ptr, len, _) = data.to_vec().into_raw_parts();
-
-          self.unconsumed = ptr;
-          self.unconsumed_len = len;
-        } else {
-          self.unconsumed = ptr::null();
-          self.unconsumed_len = 0;
-        }
+      // Use a boxed slice so the length also determines the allocation layout
+      // when releasing retained input; Vec capacity is not stored in the ABI.
+      if consumed < limit {
+        let retained = data.to_vec().into_boxed_slice();
+        self.unconsumed_len = retained.len();
+        self.unconsumed = Box::into_raw(retained) as *const c_uchar;
       }
     }
 

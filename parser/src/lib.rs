@@ -215,7 +215,8 @@ impl Parser {
     at: usize,
     len: usize,
   ) -> bool {
-    if *event_cursor + 9usize >= EVENTS_BUFFER_SIZE {
+    // Reserve six bytes for a later error event and one for the terminator.
+    if *event_cursor + EVENT_RANGE_SIZE + EVENT_ERROR_RESERVE > EVENTS_BUFFER_SIZE {
       return false;
     }
 
@@ -224,13 +225,13 @@ impl Parser {
       core::ptr::write_unaligned(self.events.add(*event_cursor + 1) as *mut u32, (at as u32).to_le());
       core::ptr::write_unaligned(self.events.add(*event_cursor + 5) as *mut u32, (len as u32).to_le());
     }
-    *event_cursor += 9usize;
+    *event_cursor += EVENT_RANGE_SIZE;
     true
   }
 
   #[inline(always)]
   pub(crate) fn try_emit_event_error(&mut self, event_cursor: &mut usize) -> bool {
-    if *event_cursor + 6usize >= EVENTS_BUFFER_SIZE {
+    if *event_cursor + EVENT_ERROR_SIZE + EVENT_END_SIZE > EVENTS_BUFFER_SIZE {
       return false;
     }
 
@@ -242,7 +243,7 @@ impl Parser {
       );
       *self.events.add(*event_cursor + 5) = self.error_code;
     }
-    *event_cursor += 6usize;
+    *event_cursor += EVENT_ERROR_SIZE;
     true
   }
 
@@ -282,11 +283,23 @@ impl Parser {
     }
   }
 
-  /// Marks the parsing a failed, setting a error code and and error message.
-  ///
-  /// It always returns zero for internal use.
+  /// Marks parsing as failed and starts a standalone error event batch.
   #[inline(always)]
   pub fn fail(&mut self, code: u8, description: &str) {
+    self.set_error(code, description);
+    let mut event_cursor = 0usize;
+    if (self.active_events | self.active_callbacks) & EVENT_ACTIVE_ON_ERROR != 0 {
+      self.try_emit_event_error(&mut event_cursor);
+    }
+    // SAFETY: The cursor follows at most one error event in the owned event buffer.
+    unsafe {
+      *self.events.add(event_cursor) = EVENT_END;
+    }
+  }
+
+  /// Records an error without changing the current event batch.
+  #[inline(always)]
+  pub(crate) fn set_error(&mut self, code: u8, description: &str) {
     let bytes = description.as_bytes();
     let len = bytes.len().min(254);
 
@@ -295,14 +308,6 @@ impl Parser {
     self.error_description[..len].copy_from_slice(&bytes[..len]);
     self.error_description[len] = 0;
     self.error_description_len = len as u8;
-    let active_events = self.active_events | self.active_callbacks;
-    let mut event_cursor = 0usize;
-    if active_events & EVENT_ACTIVE_ON_ERROR != 0 {
-      self.try_emit_event_error(&mut event_cursor);
-    }
-    unsafe {
-      *self.events.add(event_cursor) = EVENT_END;
-    }
   }
 
   /// Returns the current parser's state as string.

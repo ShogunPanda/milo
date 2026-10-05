@@ -279,6 +279,64 @@ it('basic_event_buffer_full_stops_parsing', t => {
   assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
 })
 
+it('basic_event_buffer_full_resumes_completion', () => {
+  for (const close of [false, true]) {
+    const received = []
+    const milo = setup({
+      on_header_value () {},
+      on_headers () {},
+      on_data (parser, at, len) {
+        received.push(['data', len])
+      },
+      on_body () {
+        received.push(['body'])
+      },
+      on_message_complete () {
+        received.push(['complete'])
+      },
+      on_reset () {
+        received.push(['reset'])
+      },
+      on_finish () {
+        received.push(['finish'])
+      }
+    })
+    const parser = milo.create()
+    const message = Buffer.from(
+      'HTTP/1.1 200 OK\r\n' +
+        'X: a\r\n'.repeat(7276) +
+        (close ? 'Connection: close\r\n' : '') +
+        'Content-Length: 2\r\n\r\nok'
+    )
+    const ptr = milo.alloc(message.length)
+    try {
+      milo.setActiveCallbacks(
+        parser,
+        milo.CALLBACK_ACTIVE_ON_HEADER_VALUE |
+          milo.CALLBACK_ACTIVE_ON_HEADERS |
+          milo.CALLBACK_ACTIVE_ON_DATA |
+          milo.CALLBACK_ACTIVE_ON_BODY |
+          milo.CALLBACK_ACTIVE_ON_MESSAGE_COMPLETE |
+          milo.CALLBACK_ACTIVE_ON_RESET |
+          milo.CALLBACK_ACTIVE_ON_FINISH
+      )
+      new Uint8Array(milo.memory.buffer, ptr, message.length).set(message)
+      const consumed = milo.parse(parser, ptr, message.length)
+      assert.equal(consumed, message.length - 2)
+      assert.equal(milo.getRemainingContentLength(parser), 2n)
+      assert.equal(milo.getState(parser), milo.STATE_BODY_VIA_CONTENT_LENGTH)
+      assert.deepEqual(received, [])
+      assert.equal(milo.parse(parser, ptr + consumed, message.length - consumed), 2)
+      assert.deepEqual(received, [['data', 2], ['body'], ['complete'], ['reset'], ...(close ? [['finish']] : [])])
+      assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
+      assert.equal(milo.getState(parser), close ? milo.STATE_FINISH : milo.STATE_START)
+    } finally {
+      milo.destroy(parser)
+      milo.dealloc(ptr, message.length)
+    }
+  }
+})
+
 it('basic_sample_multiple_responses', t => {
   const { milo, parser, parse } = createParser(t, setup)
   parse(

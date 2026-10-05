@@ -2,6 +2,102 @@ import assert from 'node:assert/strict'
 import { it } from 'node:test'
 import { createParser, setup } from './helpers.js'
 
+it('issue-26 - preserve_events_before_error', () => {
+  const suffix = 'HTTP/9.9 garbage\r\n\r\n'
+  for (const chunked of [false, true]) {
+    for (const split of [false, true]) {
+      for (const errors of [false, true]) {
+        for (const callbacks of [false, true]) {
+          // The largest case must suspend before completion and resume in a fresh batch.
+          for (const padding of [0, 7276, 7277]) {
+            const label = JSON.stringify({ chunked, split, errors, callbacks, padding })
+            const received = []
+            const milo = setup({
+              on_headers () {
+                received.push('headers')
+              },
+              on_message_complete () {
+                received.push('complete')
+              },
+              on_error () {
+                received.push('error')
+              },
+              on_header_value () {
+                received.push('value')
+              }
+            })
+            const parser = milo.create()
+            const response =
+              'HTTP/1.1 200 OK\r\n' +
+              'X: a\r\n'.repeat(padding) +
+              (chunked ? 'Transfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n' : 'Content-Length: 2\r\n\r\nok')
+            try {
+              milo.setShouldAutodetect(parser, false)
+              milo.setIsRequest(parser, false)
+              const mask =
+                milo.EVENT_ACTIVE_ON_HEADERS |
+                milo.EVENT_ACTIVE_ON_MESSAGE_COMPLETE |
+                milo.EVENT_ACTIVE_ON_HEADER_VALUE |
+                (errors ? milo.EVENT_ACTIVE_ON_ERROR : 0n)
+              milo.setActiveEvents(parser, callbacks ? 0n : mask)
+              milo.setActiveCallbacks(parser, callbacks ? mask : 0n)
+              for (const input of split ? [response, suffix] : [response + suffix]) {
+                const bytes = Buffer.from(input)
+                const ptr = milo.alloc(bytes.length)
+                try {
+                  new Uint8Array(milo.memory.buffer, ptr, bytes.length).set(bytes)
+                  let offset = 0
+                  while (offset < bytes.length && milo.getState(parser) !== milo.STATE_ERROR) {
+                    const consumed = milo.parse(parser, ptr + offset, bytes.length - offset)
+                    if (!callbacks) {
+                      const view = new DataView(milo.memory.buffer)
+                      let cursor = view.getUint32(parser + milo.ParserFields.EVENTS, true)
+                      const end = cursor + 65536
+                      while (view.getUint8(cursor) !== milo.EVENT_END) {
+                        const type = view.getUint8(cursor)
+                        if (type === milo.EVENT_HEADERS) {
+                          received.push('headers')
+                          cursor += 19
+                        } else if (type === milo.EVENT_ERROR) {
+                          received.push('error')
+                          assert.equal(view.getUint8(cursor + 5), milo.ERROR_UNSUPPORTED_HTTP_VERSION, label)
+                          cursor += 6
+                        } else {
+                          assert.ok(type === milo.EVENT_MESSAGE_COMPLETE || type === milo.EVENT_HEADER_VALUE, label)
+                          received.push(type === milo.EVENT_MESSAGE_COMPLETE ? 'complete' : 'value')
+                          cursor += 9
+                        }
+                        assert.ok(cursor < end, label)
+                      }
+                    }
+                    assert.ok(consumed > 0 || milo.getState(parser) === milo.STATE_ERROR, label)
+                    offset += consumed
+                  }
+                } finally {
+                  milo.dealloc(ptr, bytes.length)
+                }
+              }
+              assert.deepEqual(
+                received,
+                [...Array(padding + 1).fill('value'), 'headers', 'complete', ...(errors ? ['error'] : [])],
+                label
+              )
+              assert.equal(milo.getState(parser), milo.STATE_ERROR, label)
+              assert.equal(milo.getErrorCode(parser), milo.ERROR_UNSUPPORTED_HTTP_VERSION, label)
+              const count = received.length
+              assert.equal(milo.parse(parser, parser, 0), 0, label)
+              assert.equal(received.length, count, label)
+              assert.equal(milo.getState(parser), milo.STATE_ERROR, label)
+            } finally {
+              milo.destroy(parser)
+            }
+          }
+        }
+      }
+    }
+  }
+})
+
 function responseParser (t) {
   const context = createParser(t, setup)
   context.milo.setShouldAutodetect(context.parser, false)

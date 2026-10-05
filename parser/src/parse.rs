@@ -26,6 +26,7 @@ impl Parser {
   /// It returns the number of consumed characters.
   pub fn parse(&mut self, input: *const c_uchar, limit: usize) -> usize {
     let mut event_cursor = 0usize;
+    let mut failed = false;
     let active_events = self.active_events | self.active_callbacks;
 
     // If the self.is paused, this is a no-op
@@ -949,6 +950,10 @@ impl Parser {
               self.remaining_content_length -= to_consume;
               advance!(to_consume_usize);
             } else {
+              // Suspend before emitting or consuming any part of the final body segment.
+              if event_cursor + EVENT_BODY_COMPLETION_SIZE + EVENT_ERROR_RESERVE > EVENTS_BUFFER_SIZE {
+                suspend!();
+              }
               event_with_range!(on_data, 0, to_consume_usize);
               event_with_range!(on_body, to_consume_usize, 0);
 
@@ -1293,6 +1298,10 @@ impl Parser {
 
                 // No more trailers or no trailers at all, message completed
                 if cr == 0 {
+                  // Keep the trailer notification and completion in the same batch.
+                  if event_cursor + EVENT_TRAILER_COMPLETION_SIZE + EVENT_ERROR_RESERVE > EVENTS_BUFFER_SIZE {
+                    suspend!();
+                  }
                   event_with_range!(on_trailers, 2, 0);
                   self.continue_without_data = true;
                   if !self.complete_message(
@@ -1470,6 +1479,11 @@ impl Parser {
       }
     }
 
+    // Append only errors raised by this call, after all preceding events.
+    if failed && active_events & EVENT_ACTIVE_ON_ERROR != 0 {
+      self.try_emit_event_error(&mut event_cursor);
+    }
+
     if has_active_events {
       unsafe {
         *self.events.add(event_cursor) = EVENT_END;
@@ -1533,6 +1547,10 @@ impl Parser {
     has_finish_event: bool,
     event_cursor: &mut usize,
   ) -> bool {
+    // Never publish a partial completion group that would be replayed on retry.
+    if *event_cursor + EVENT_COMPLETION_SIZE + EVENT_ERROR_RESERVE > EVENTS_BUFFER_SIZE {
+      return false;
+    }
     if has_complete_events {
       if (active_events & EVENT_ACTIVE_ON_MESSAGE_COMPLETE != 0
         && !self.try_emit_event_range(event_cursor, EVENT_MESSAGE_COMPLETE, self.position + offset, 0))

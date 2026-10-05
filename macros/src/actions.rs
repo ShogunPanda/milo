@@ -13,7 +13,7 @@ pub fn event_with_range(input: TokenStream) -> TokenStream {
   let bitmask = format_ident!("EVENT_ACTIVE_{}", definition.identifier.to_string().to_uppercase());
   let offset = definition.offset.as_ref().expect("event_with_range requires offset");
   let length = definition.length.as_ref().expect("event_with_range requires length");
-  let needed = quote! { 9usize };
+  let needed = quote! { EVENT_RANGE_SIZE };
   let emit = quote! {
     let at = (self.position + #offset) as u32;
     let len = (#length) as u32;
@@ -32,7 +32,8 @@ pub fn event_with_range(input: TokenStream) -> TokenStream {
 
   TokenStream::from(quote! {
     if active_events & #bitmask != 0 {
-      if event_cursor + #needed < EVENTS_BUFFER_SIZE {
+      // Reserve space for a later error event and the batch terminator.
+      if event_cursor + #needed + EVENT_ERROR_RESERVE <= EVENTS_BUFFER_SIZE {
         #emit
         event_cursor += #needed;
       } else {
@@ -49,7 +50,7 @@ pub fn event_with_error(input: TokenStream) -> TokenStream {
   let callback_const = format_ident!("CALLBACK_{}", callback.to_string().to_uppercase());
   let event_type = quote! { #callback_const + 1 };
   let bitmask = format_ident!("EVENT_ACTIVE_{}", definition.identifier.to_string().to_uppercase());
-  let needed = quote! { 6usize };
+  let needed = quote! { EVENT_ERROR_SIZE };
   let emit = quote! {
     let at = self.position as u32;
     unsafe {
@@ -64,7 +65,7 @@ pub fn event_with_error(input: TokenStream) -> TokenStream {
 
   TokenStream::from(quote! {
     if active_events & #bitmask != 0 {
-      if event_cursor + #needed < EVENTS_BUFFER_SIZE {
+      if event_cursor + #needed + EVENT_END_SIZE <= EVENTS_BUFFER_SIZE {
         #emit
         event_cursor += #needed;
       } else {
@@ -82,7 +83,7 @@ pub fn event_with_metadata(input: TokenStream) -> TokenStream {
   let event_type = quote! { #callback_const + 1 };
   let bitmask = format_ident!("EVENT_ACTIVE_{}", definition.identifier.to_string().to_uppercase());
   let offset = definition.offset.unwrap_or_else(|| syn::parse_quote! { 0 });
-  let needed = quote! { 19usize };
+  let needed = quote! { EVENT_METADATA_SIZE };
   let emit = quote! {
     let at = (self.position + #offset) as u32;
     let status_or_method = if self.is_request { self.method as u16 } else { self.status as u16 };
@@ -116,7 +117,8 @@ pub fn event_with_metadata(input: TokenStream) -> TokenStream {
 
   TokenStream::from(quote! {
     if active_events & #bitmask != 0 {
-      if event_cursor + #needed < EVENTS_BUFFER_SIZE {
+      // Reserve space for a later error event and the batch terminator.
+      if event_cursor + #needed + EVENT_ERROR_RESERVE <= EVENTS_BUFFER_SIZE {
         #emit
         event_cursor += #needed;
       } else {
@@ -163,7 +165,8 @@ pub fn fail(input: TokenStream) -> TokenStream {
   let message = definition.message;
 
   TokenStream::from(quote! {
-    self.fail(#error, #message);
+    self.set_error(#error, #message);
+    failed = true;
     break 'parser;
   })
 }

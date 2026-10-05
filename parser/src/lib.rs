@@ -173,20 +173,28 @@ impl Parser {
     self.error_description[0] = 0;
     self.error_description_len = 0;
 
-    if self.unconsumed_len > 0 {
-      unsafe {
-        let _ = slice::from_raw_parts(self.unconsumed, self.unconsumed_len);
-      }
-
-      self.unconsumed = ptr::null();
-      self.unconsumed_len = 0;
-    }
+    self.clear_unconsumed();
 
     self.clear();
     self.skip_body = false;
     unsafe {
       *self.events = EVENT_END;
     }
+  }
+
+  pub(crate) fn clear_unconsumed(&mut self) {
+    if self.unconsumed_len > 0 {
+      // SAFETY: Retained input is allocated as a boxed slice with exactly this
+      // length, and the parser owns it until replacement, reset, or destruction.
+      unsafe {
+        drop(Box::from_raw(ptr::slice_from_raw_parts_mut(
+          self.unconsumed as *mut c_uchar,
+          self.unconsumed_len,
+        )));
+      }
+    }
+    self.unconsumed = ptr::null();
+    self.unconsumed_len = 0;
   }
 
   /// Clears all values about the message in the parser.
@@ -333,6 +341,7 @@ impl Parser {
 
 impl Drop for Parser {
   fn drop(&mut self) {
+    self.clear_unconsumed();
     if !self.events.is_null() {
       unsafe {
         let _ = Box::from_raw(self.events as *mut [u8; 65536]);

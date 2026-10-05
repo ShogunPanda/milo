@@ -267,6 +267,8 @@ Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
+After a parser error, subsequent calls return `0`, emit no events or callbacks, and do not copy or retain new input. The original error and any previously retained input remain available until reset or destruction. Call `reset()` before reusing the parser.
+
 #### `Parser::reset(&mut self, keep_parsed: bool)`
 
 Resets a parser. The second parameters specifies if to also reset the

@@ -2,6 +2,61 @@ import assert from 'node:assert/strict'
 import { it } from 'node:test'
 import { createParser, setup } from './helpers.js'
 
+it('issue-16 - error_retries_do_not_accumulate_input', () => {
+  for (const managed of [false, true]) {
+    for (const callbacks of [false, true]) {
+      let errors = 0
+      const milo = setup({
+        on_error () {
+          errors++
+        }
+      })
+      const parser = milo.create()
+      const invalid = Buffer.from('GET / HTTP/1.1\r\nX-Test: \0')
+      const valid = Buffer.from('GET / HTTP/1.1\r\n\r\n')
+      const ptr = milo.alloc(invalid.length)
+      try {
+        milo.setShouldManageUnconsumed(parser, managed)
+        milo.setActiveCallbacks(parser, callbacks ? milo.CALLBACK_ACTIVE_ON_ERROR : 0n)
+        milo.setActiveEvents(parser, callbacks ? 0n : milo.EVENT_ACTIVE_ON_ERROR)
+        new Uint8Array(milo.memory.buffer, ptr, invalid.length).set(invalid)
+        milo.parse(parser, ptr, invalid.length)
+        assert.equal(milo.getState(parser), milo.STATE_ERROR)
+        const code = milo.getErrorCode(parser)
+        const description = milo.getErrorDescription(parser)
+        const parsed = milo.getParsed(parser)
+        const view = new DataView(milo.memory.buffer)
+        const retained = view.getUint32(parser + milo.ParserFields.UNCONSUMED, true)
+        const retainedLength = view.getUint32(parser + milo.ParserFields.UNCONSUMED_LEN, true)
+        const events = view.getUint32(parser + milo.ParserFields.EVENTS, true)
+        assert.equal(view.getUint8(events), milo.EVENT_ERROR)
+        const memorySize = milo.memory.buffer.byteLength
+        for (let i = 0; i < 1024; i++) {
+          // Alternate empty retries with new malformed input on the failed parser.
+          assert.equal(milo.parse(parser, ptr, i % 2 ? invalid.length : 0), 0)
+          assert.equal(milo.getState(parser), milo.STATE_ERROR)
+          assert.equal(milo.getErrorCode(parser), code)
+          assert.equal(milo.getErrorDescription(parser), description)
+          assert.equal(milo.getParsed(parser), parsed)
+          assert.equal(milo.getPosition(parser), 0)
+          assert.equal(milo.memory.buffer.byteLength, memorySize)
+          assert.equal(view.getUint32(parser + milo.ParserFields.UNCONSUMED, true), retained)
+          assert.equal(view.getUint32(parser + milo.ParserFields.UNCONSUMED_LEN, true), retainedLength)
+          assert.equal(view.getUint8(events), milo.EVENT_END)
+          assert.equal(errors, callbacks ? 1 : 0)
+        }
+        milo.reset(parser, false)
+        new Uint8Array(milo.memory.buffer, ptr, valid.length).set(valid)
+        assert.equal(milo.parse(parser, ptr, valid.length), valid.length)
+        assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
+      } finally {
+        milo.dealloc(ptr, invalid.length)
+        milo.destroy(parser)
+      }
+    }
+  }
+})
+
 it('issue-26 - preserve_events_before_error', () => {
   const suffix = 'HTTP/9.9 garbage\r\n\r\n'
   for (const chunked of [false, true]) {

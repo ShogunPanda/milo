@@ -117,7 +117,8 @@ pub fn strip_ows_fast(data: &[u8], start_ref: &mut usize, end_ref: &mut usize, a
   let start = *start_ref;
   let end = *end_ref;
 
-  if start < end && data[start] == b' ' && !is_ws(data[end - 1]) {
+  // The single-space shortcut is valid only when no further leading OWS follows.
+  if start + 1 < end && data[start] == b' ' && !is_ws(data[start + 1]) && !is_ws(data[end - 1]) {
     *start_ref = start + 1;
     return true;
   }

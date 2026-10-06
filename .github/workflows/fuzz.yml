@@ -1,0 +1,136 @@
+name: Fuzz
+
+on:
+  # Sustained nightly fuzzing; also runnable by hand via workflow_dispatch.
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+  # Short smoke run on pushes to main.
+  push:
+    branches: [main]
+  # Run on pull requests only when the `fuzz` label is applied (see the `if:` on
+  # each job below). This keeps normal PRs fast while still allowing opt-in.
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    branches: [main]
+
+jobs:
+  # Fast regression battery for the smuggling invariants. Always part of a fuzz
+  # run so a finding is caught before spending fuzzer time.
+  conformance:
+    name: Smuggling conformance
+    if: ${{ !github.event.pull_request || contains(github.event.pull_request.labels.*.name, 'fuzz') }}
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly-2026-07-29
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            parser/fuzz/target
+          key: fuzz-cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run smuggling conformance tests (fuzz crate)
+        working-directory: parser/fuzz
+        run: cargo test --test conformance
+      - name: Run smuggling regression tests (parser crate)
+        working-directory: parser
+        run: cargo test --test smuggling
+
+  # The actual fuzzing. Each target runs for a bounded wall-clock time. On a
+  # push/PR this is a short smoke; on schedule/workflow_dispatch it runs longer.
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    if: ${{ !github.event.pull_request || contains(github.event.pull_request.labels.*.name, 'fuzz') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [bytes, http, smuggling]
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly-2026-07-29
+          components: rust-src
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            parser/fuzz/target
+          key: fuzz-cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install cargo-fuzz
+        uses: taiki-e/cache-cargo-install-action@v3
+        with:
+          tool: cargo-fuzz
+      - name: Determine run duration
+        id: duration
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=900" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=120" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Seed corpus
+        run: |
+          mkdir -p parser/fuzz/corpus/${{ matrix.target }}
+          cp -n parser/fuzz/corpus/seeds/* parser/fuzz/corpus/${{ matrix.target }}/ || true
+      - name: Fuzz ${{ matrix.target }}
+        working-directory: parser
+        run: >-
+          cargo fuzz run ${{ matrix.target }}
+          -- -max_total_time=${{ steps.duration.outputs.value }}
+          -max_len=16384
+          -artifact_prefix=${{ github.workspace }}/artifacts/${{ matrix.target }}/
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-${{ matrix.target }}-artifacts
+          path: artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore
+      - name: Upload corpus snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-${{ matrix.target }}-corpus
+          path: parser/fuzz/corpus/${{ matrix.target }}/
+          if-no-files-found: ignore
+
+  # Miri run over the parser's unsafe code (the memory-safety oracle that ASan
+  # cannot cover). Ran on the smuggling regression suite for a bounded, focused
+  # check.
+  miri:
+    name: Miri (unsafe parser)
+    if: ${{ !github.event.pull_request || contains(github.event.pull_request.labels.*.name, 'fuzz') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly-2026-07-29
+          components: miri, rust-src
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            parser/target
+            macros/target
+          key: miri-cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Miri test (smuggling + memory)
+        working-directory: parser
+        run: cargo +nightly miri test --test smuggling --test issues

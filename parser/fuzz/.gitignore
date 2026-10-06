@@ -1,0 +1,9 @@
+# cargo-fuzz build and runtime outputs.
+target/
+artifacts/
+coverage/
+
+# Auto-grown corpus; commit only the curated seed inputs under corpus/seeds/.
+corpus/*
+!corpus/seeds/
+!corpus/seeds/**

@@ -62,3 +62,21 @@
 [tasks."wasm:module"]
   dependencies = ["scripts:build"]
   script       = ["mkdir -p ../dist/wasm", "rm -rf ../dist/wasm/${CONFIGURATION}", "mkdir -p ../dist/wasm/${CONFIGURATION}/binary", "RUSTFLAGS=\"${RUSTFLAGS_BASE} -C target-feature=+simd128\" cargo build --locked --lib ${CARGO_BUILD_OPTIONS} --target wasm32-unknown-unknown ${CARGO_OPTIONS}", "cp -a target/wasm32-unknown-unknown/release/milo_parser.wasm ../dist/wasm/${CONFIGURATION}/binary/simd.wasm", "wasm-opt -O3 --enable-bulk-memory-opt --enable-simd -o ../dist/wasm/${CONFIGURATION}/binary/simd.wasm ../dist/wasm/${CONFIGURATION}/binary/simd.wasm", "RUSTFLAGS=\"${RUSTFLAGS_BASE}\" cargo build --locked --lib ${CARGO_BUILD_OPTIONS} --target wasm32-unknown-unknown ${CARGO_OPTIONS}", "cp -a target/wasm32-unknown-unknown/release/milo_parser.wasm ../dist/wasm/${CONFIGURATION}/binary/no-simd.wasm", "wasm-opt -O3 --enable-bulk-memory-opt -o ../dist/wasm/${CONFIGURATION}/binary/no-simd.wasm ../dist/wasm/${CONFIGURATION}/binary/no-simd.wasm", "../scripts/target/release/postbuild-wasm ${CONFIGURATION}"]
+
+# Fuzzing. These require `cargo-fuzz` (`cargo install cargo-fuzz`) and the pinned
+# nightly toolchain. They are not part of the default build/test flow. See
+# parser/fuzz/README.md and PLAN.md.
+[tasks.fuzz]
+  dependencies = ["fuzz:bytes", "fuzz:http", "fuzz:smuggling"]
+
+[tasks."fuzz:bytes"]
+  script = ["cd fuzz && cargo fuzz run bytes -- -max_total_time=300 -max_len=65536"]
+
+[tasks."fuzz:http"]
+  script = ["cd fuzz && cargo fuzz run http -- -max_total_time=300 -max_len=65536"]
+
+[tasks."fuzz:smuggling"]
+  script = ["cd fuzz && cargo fuzz run smuggling -- -max_total_time=300 -max_len=65536"]
+
+[tasks."fuzz:conformance"]
+  script = ["cd fuzz && cargo test --test conformance"]

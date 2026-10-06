@@ -582,7 +582,7 @@ parser/fuzz/corpus/           # growing corpus (commit only curated seeds)
   plateaus (use `cargo fuzz coverage`); pay attention to the body/chunk/trailer
   and error branches.
 - A **corpus growth** trend that flattens indicates state-machine saturation.
-- Each confirmed bug gets a regression test and a `PLAN.md`/CHANGELOG note.
+- Each confirmed bug gets a regression test and a note in this document / the CHANGELOG.
 
 ---
 
@@ -615,7 +615,7 @@ parser/fuzz/corpus/           # growing corpus (commit only curated seeds)
 - **Phase 4 — Multi-target & memory.** Add C ABI fuzz driver (Valgrind), WASM
   fuzzing (Jazzer.js), and a Miri conformance test.
 - **Phase 5 — CI & hardening.** Nightly workflow with artifact upload, crash
-  triage runbooks, and a CHANGELOG/`PLAN.md` record of all findings.
+  triage runbooks, and a CHANGELOG/this-document record of all findings.
 
 ---
 

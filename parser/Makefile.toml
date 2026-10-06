@@ -65,7 +65,7 @@
 
 # Fuzzing. These require `cargo-fuzz` (`cargo install cargo-fuzz`) and the pinned
 # nightly toolchain. They are not part of the default build/test flow. See
-# parser/fuzz/README.md and PLAN.md.
+# parser/fuzz/README.md and docs/internal/fuzzing.md.
 [tasks.fuzz]
   dependencies = ["fuzz:bytes", "fuzz:http", "fuzz:smuggling"]
 

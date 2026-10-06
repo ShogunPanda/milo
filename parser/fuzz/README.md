@@ -4,7 +4,7 @@ Coverage-guided fuzzing for the `milo-parser` HTTP/1.1 parser. The primary goal
 is finding memory-safety and parser bug classes, with a dedicated oracle for
 **HTTP request smuggling** primitives.
 
-See [`PLAN.md`](../../PLAN.md) at the repository root for the full rationale,
+See [`fuzzing.md`](../../docs/internal/fuzzing.md) for the full rationale,
 targets, and CI/triage strategy.
 
 ## Layout

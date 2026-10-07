@@ -70,3 +70,30 @@ jobs:
         run: makers test
       - name: References
         run: makers references
+
+  # Verifies the fuzz harnesses compile and the smuggling conformance suite
+  # passes on every PR/push (fast; sustained fuzzing lives in fuzz.yml).
+  fuzz-build:
+    name: Fuzz Harness check
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly-2026-07-29
+          components: rust-src
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            parser/fuzz/target
+          key: fuzz-cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Check fuzz targets compile
+        working-directory: parser/fuzz
+        run: cargo check --all-targets
+      - name: Run smuggling conformance tests
+        working-directory: parser/fuzz
+        run: cargo test --test conformance

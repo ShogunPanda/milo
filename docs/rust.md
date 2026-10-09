@@ -5,7 +5,7 @@
 All callbacks in Milo have the following signature (`Callback`):
 
 ```rust
-type Callback = fn (&mut Parser, usize, usize)
+type Callback = extern "C" fn (&mut Parser, usize, usize)
 ```
 
 where the parameters have the following meaning:
@@ -15,6 +15,8 @@ where the parameters have the following meaning:
 3. The data length. Can be `0`.
 
 If length is `0`, it means the callback has no payload associated.
+
+Callbacks must not panic or otherwise unwind across the C ABI boundary.
 
 Callbacks are dispatched only when the corresponding `CALLBACK_ACTIVE_*` flag is set in the parser `active_callbacks` field.
 

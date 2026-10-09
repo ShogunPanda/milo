@@ -51,7 +51,7 @@ pub fn generate_callbacks(callbacks: &[String]) -> TokenStream {
 
   TokenStream::from(quote! {
     #[cfg(not(target_family = "wasm"))]
-    fn noop_internal(_parser: &mut Parser, _at: usize, _len: usize) {}
+    extern "C" fn noop_internal(_parser: &mut Parser, _at: usize, _len: usize) {}
 
     #[cfg(not(target_family = "wasm"))]
     #[repr(C)]

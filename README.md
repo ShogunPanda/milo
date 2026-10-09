@@ -129,6 +129,15 @@ use core::slice;
 
 use milo_parser::{Parser, CALLBACK_ACTIVE_ON_DATA};
 
+extern "C" fn on_data(parser: &mut Parser, from: usize, size: usize) {
+  let message = unsafe {
+    std::str::from_utf8_unchecked(slice::from_raw_parts(parser.context.add(from) as *const u8, size))
+  };
+
+  // Use the callback data.
+  println!("Pos={} Body: {}", from, message);
+}
+
 fn main() {
   // Create the parser.
   let mut parser = Parser::new();
@@ -149,13 +158,7 @@ fn main() {
   // method.
   //
   // If the current callback has no payload, both values are set to 0.
-  parser.callbacks.on_data = |p: &mut Parser, from: usize, size: usize| {
-    let message =
-      unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(p.context.add(from) as *const u8, size)) };
-
-    // Use the callback data.
-    println!("Pos={} Body: {}", from, message);
-  };
+  parser.callbacks.on_data = on_data;
 
   // Toggle on the callbacks you want to receive
   parser.active_callbacks |= CALLBACK_ACTIVE_ON_DATA;

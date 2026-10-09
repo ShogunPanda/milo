@@ -52,25 +52,25 @@ fn read_payload(p: &Parser, from: usize, size: usize) -> Vec<u8> {
   ctx.input.get(from..from + size).unwrap_or_default().to_vec()
 }
 
-fn on_message_start(p: &mut Parser, _from: usize, _size: usize) {
+extern "C" fn on_message_start(p: &mut Parser, _from: usize, _size: usize) {
   let ctx = unsafe { &mut *(p.context as *mut SmugContext) };
   ctx.current = MessageFraming::default();
   ctx.current_header_name.clear();
 }
 
-fn on_headers(p: &mut Parser, _from: usize, _size: usize) {
+extern "C" fn on_headers(p: &mut Parser, _from: usize, _size: usize) {
   let ctx = unsafe { &mut *(p.context as *mut SmugContext) };
   ctx.current.has_content_length = p.has_content_length;
   ctx.current.has_transfer_encoding = p.has_transfer_encoding;
   ctx.current.has_chunked_transfer_encoding = p.has_chunked_transfer_encoding;
 }
 
-fn on_header_name(p: &mut Parser, from: usize, size: usize) {
+extern "C" fn on_header_name(p: &mut Parser, from: usize, size: usize) {
   let ctx = unsafe { &mut *(p.context as *mut SmugContext) };
   ctx.current_header_name = read_payload(p, from, size);
 }
 
-fn on_header_value(p: &mut Parser, from: usize, size: usize) {
+extern "C" fn on_header_value(p: &mut Parser, from: usize, size: usize) {
   let ctx = unsafe { &mut *(p.context as *mut SmugContext) };
   let value = read_payload(p, from, size);
   let name = ctx.current_header_name.clone();
@@ -82,7 +82,7 @@ fn on_header_value(p: &mut Parser, from: usize, size: usize) {
   }
 }
 
-fn on_message_complete(p: &mut Parser, _from: usize, _size: usize) {
+extern "C" fn on_message_complete(p: &mut Parser, _from: usize, _size: usize) {
   let ctx = unsafe { &mut *(p.context as *mut SmugContext) };
   ctx.current.consumed = p.position;
   ctx.messages.push(ctx.current.clone());

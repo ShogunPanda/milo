@@ -90,11 +90,16 @@ pub fn finish(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).finish(
 /// Marks the parser as failed.
 #[unsafe(no_mangle)]
 pub fn fail(parser: *mut c_void, code: u8, description_ptr: *const c_uchar, description_len: usize) {
+  let description = if description_len == 0 {
+    ""
+  } else if description_ptr.is_null() {
+    "Invalid error description pointer"
+  } else {
+    let bytes = unsafe { slice::from_raw_parts(description_ptr, description_len) };
+    std::str::from_utf8(bytes).unwrap_or("Invalid UTF-8 error description")
+  };
   unsafe {
-    (*(parser as *mut Parser)).fail(
-      code,
-      std::str::from_utf8_unchecked(slice::from_raw_parts(description_ptr, description_len)),
-    );
+    (*(parser as *mut Parser)).fail(code, description);
   }
 }
 

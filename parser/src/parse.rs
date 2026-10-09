@@ -1453,9 +1453,12 @@ impl Parser {
     if self.manage_unconsumed {
       self.clear_unconsumed();
 
+      // Tunnel bytes belong to the upgraded protocol and must remain with the
+      // caller rather than being retained by the HTTP parser.
+      //
       // Use a boxed slice so the length also determines the allocation layout
       // when releasing retained input; Vec capacity is not stored in the ABI.
-      if consumed < limit {
+      if self.state != STATE_TUNNEL && consumed < limit {
         let retained = data.to_vec().into_boxed_slice();
         self.unconsumed_len = retained.len();
         self.unconsumed = Box::into_raw(retained) as *const c_uchar;
@@ -1528,6 +1531,8 @@ impl Parser {
       &mut event_cursor,
     ) {
       self.paused = true;
+    } else if self.state == STATE_TUNNEL {
+      self.clear_unconsumed();
     }
 
     unsafe {

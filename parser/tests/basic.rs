@@ -4,9 +4,9 @@ mod helpers;
 use std::ffi::c_uchar;
 
 use milo_parser::{
-  CALLBACK_ACTIVE_ON_HEADERS, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER, ERROR_UNEXPECTED_STATE,
+  CALLBACK_ACTIVE_ON_HEADERS, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER, ERROR_UNEXPECTED_STATE, Parser,
   EVENT_ACTIVE_ON_HEADER_NAME, EVENT_ACTIVE_ON_HEADER_VALUE, STATE_BODY_DECISION, STATE_ERROR, STATE_FINISH,
-  STATE_HEADER, STATE_START,
+  STATE_HEADER, STATE_START, STATE_TUNNEL,
 };
 
 use crate::helpers::{context, create_parser, http, parse};
@@ -383,6 +383,43 @@ fn basic_complete_after_suspend_after_headers() {
   parser.complete();
   assert_eq!(parser.state, STATE_START);
   assert_eq!(parser.error_code, ERROR_NONE);
+}
+
+#[test]
+fn basic_managed_input_does_not_retain_tunnel_data() {
+  let mut parser = Parser::new();
+  parser.autodetect = false;
+  parser.is_request = true;
+  parser.manage_unconsumed = true;
+  let headers = b"CONNECT example.com:443 HTTP/1.1\r\n\r\n";
+  let mut message = headers.to_vec();
+  message.extend_from_slice(b"opaque tunnel data");
+
+  assert_eq!(parser.parse(message.as_ptr(), message.len()), headers.len());
+  assert_eq!(parser.state, STATE_TUNNEL);
+  assert!(parser.unconsumed.is_null());
+  assert_eq!(parser.unconsumed_len, 0);
+
+  let payload = b"more tunnel data";
+  assert_eq!(parser.parse(payload.as_ptr(), payload.len()), 0);
+  assert!(parser.unconsumed.is_null());
+  assert_eq!(parser.unconsumed_len, 0);
+
+  let mut parser = Parser::new();
+  parser.autodetect = false;
+  parser.is_request = true;
+  parser.manage_unconsumed = true;
+  parser.suspend_after_headers = true;
+  let headers = b"GET / HTTP/1.1\r\nConnection: upgrade\r\nUpgrade: websocket\r\n\r\n";
+  let mut message = headers.to_vec();
+  message.extend_from_slice(b"opaque tunnel data");
+
+  assert_eq!(parser.parse(message.as_ptr(), message.len()), headers.len());
+  assert!(parser.unconsumed_len > 0);
+  parser.complete();
+  assert_eq!(parser.state, STATE_TUNNEL);
+  assert!(parser.unconsumed.is_null());
+  assert_eq!(parser.unconsumed_len, 0);
 }
 
 #[test]

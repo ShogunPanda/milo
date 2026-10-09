@@ -94,6 +94,131 @@ pub fn validate_quoted_string(data: &[u8], start: usize, end: usize) -> bool {
   true
 }
 
+/// Validates a Transfer-Encoding field value and reports whether its final
+/// coding is `chunked`. List separators inside quoted parameter values are not
+/// treated as coding separators.
+#[inline(always)]
+pub fn validate_transfer_encoding(data: &[u8], start: usize, end: usize) -> Option<bool> {
+  let mut i = start;
+  let mut has_chunked = false;
+
+  while i < end {
+    while i < end && is_ws(data[i]) {
+      i += 1;
+    }
+
+    let coding_start = i;
+    while i < end && TOKEN_TABLE[data[i] as usize] {
+      i += 1;
+    }
+    if coding_start == i {
+      return None;
+    }
+
+    let is_chunked = data[coding_start..i].eq_ignore_ascii_case(b"chunked");
+    let mut has_parameters = false;
+
+    while i < end && is_ws(data[i]) {
+      i += 1;
+    }
+
+    while i < end && data[i] == b';' {
+      has_parameters = true;
+      i += 1;
+
+      while i < end && is_ws(data[i]) {
+        i += 1;
+      }
+
+      let parameter_name_start = i;
+      while i < end && TOKEN_TABLE[data[i] as usize] {
+        i += 1;
+      }
+      if parameter_name_start == i {
+        return None;
+      }
+
+      while i < end && is_ws(data[i]) {
+        i += 1;
+      }
+      if i == end || data[i] != b'=' {
+        return None;
+      }
+      i += 1;
+
+      while i < end && is_ws(data[i]) {
+        i += 1;
+      }
+      if i == end {
+        return None;
+      }
+
+      if data[i] == b'"' {
+        i += 1;
+        let value_start = i;
+        loop {
+          if i == end {
+            return None;
+          }
+
+          match data[i] {
+            b'"' => break,
+            b'\\' => {
+              i += 1;
+              if i == end {
+                return None;
+              }
+            }
+            _ => {}
+          }
+          i += 1;
+        }
+
+        if !validate_quoted_string(data, value_start, i) {
+          return None;
+        }
+        i += 1;
+      } else {
+        let value_start = i;
+        while i < end && TOKEN_TABLE[data[i] as usize] {
+          i += 1;
+        }
+        if value_start == i {
+          return None;
+        }
+      }
+
+      while i < end && is_ws(data[i]) {
+        i += 1;
+      }
+    }
+
+    if is_chunked {
+      if has_chunked || has_parameters {
+        return None;
+      }
+      has_chunked = true;
+    }
+
+    if i == end {
+      return Some(has_chunked);
+    }
+    if data[i] != b',' || has_chunked {
+      return None;
+    }
+
+    i += 1;
+    while i < end && is_ws(data[i]) {
+      i += 1;
+    }
+    if i == end {
+      return None;
+    }
+  }
+
+  None
+}
+
 #[inline(always)]
 pub fn validate_url(data: &[u8], start: usize, end: usize) -> bool {
   if start == end {

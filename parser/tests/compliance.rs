@@ -588,6 +588,87 @@ fn compliance_chunked_must_be_final() {
   assert_error(&parser);
 }
 
+// Transfer-coding names use HTTP token syntax.
+#[test]
+fn compliance_transfer_encoding_rejects_invalid_coding_name() {
+  let mut parser = response_parser();
+  let message = wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: bad@coding, chunked\r\n\r\n0\r\n\r\n");
+
+  parse(&mut parser, &message);
+
+  assert_error(&parser);
+  assert!(!parser.has_transfer_encoding);
+  assert!(!parser.has_chunked_transfer_encoding);
+}
+
+// Transfer-Encoding list members cannot be empty.
+#[test]
+fn compliance_transfer_encoding_rejects_empty_list_members() {
+  for value in [", chunked", "gzip,, chunked", "gzip, chunked,"] {
+    let mut parser = response_parser();
+    let message = wire(&format!(
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: {value}\r\n\r\n0\r\n\r\n"
+    ));
+
+    parse(&mut parser, &message);
+
+    assert_error(&parser);
+  }
+}
+
+// Transfer parameters require token names and token or quoted-string values.
+#[test]
+fn compliance_transfer_encoding_rejects_invalid_parameters() {
+  for value in [
+    "gzip; level, chunked",
+    "gzip; =9, chunked",
+    "gzip; level=, chunked",
+    "gzip; level=bad@value, chunked",
+    "gzip; level=\"unterminated, chunked",
+    "gzip; level=\"bad\u{1}\", chunked",
+    "chunked; level=9",
+  ] {
+    let mut parser = response_parser();
+    let message = wire(&format!(
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: {value}\r\n\r\n0\r\n\r\n"
+    ));
+
+    parse(&mut parser, &message);
+
+    assert_error(&parser);
+  }
+}
+
+// Valid non-chunked parameters are preserved, including quoted commas, before
+// final chunked.
+#[test]
+fn compliance_transfer_encoding_accepts_parameters_before_chunked() {
+  let mut parser = response_parser();
+  let message = wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip; level = 9; note=\"a,b\", ChUnKeD\r\n\r\n0\r\n\r\n");
+
+  parse(&mut parser, &message);
+
+  assert_ok(&parser);
+  assert!(parser.has_transfer_encoding);
+  assert!(parser.has_chunked_transfer_encoding);
+}
+
+// Chunked can occur only once, even across multiple field lines.
+#[test]
+fn compliance_transfer_encoding_rejects_duplicate_chunked() {
+  for headers in [
+    "Transfer-Encoding: gzip, chunked, chunked\r\n",
+    "Transfer-Encoding: gzip, chunked\r\nTransfer-Encoding: chunked\r\n",
+  ] {
+    let mut parser = response_parser();
+    let message = wire(&format!("HTTP/1.1 200 OK\r\n{headers}\r\n0\r\n\r\n"));
+
+    parse(&mut parser, &message);
+
+    assert_error(&parser);
+  }
+}
+
 // Content-Length cannot be combined with Transfer-Encoding.
 #[test]
 fn compliance_content_length_transfer_encoding_conflict() {

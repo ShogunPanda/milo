@@ -44,6 +44,21 @@ function hasDebug () {
   return this.milo_has_debug() !== 0
 }
 
+function wrapOnHeaders (callback) {
+  return (parser, at, methodOrStatus, keepAlive, shouldUpgrade, hasTrailers, bodyKind, contentLength) => {
+    callback(
+      parser,
+      at,
+      methodOrStatus,
+      keepAlive !== 0,
+      shouldUpgrade !== 0,
+      hasTrailers !== 0,
+      bodyKind,
+      BigInt.asUintN(64, contentLength)
+    )
+  }
+}
+
 /* REPLACE: enums */
 
 /* REPLACE: getters */
@@ -75,6 +90,10 @@ export function setup (env = {}) {
     }
 
     logger = log.bind(context, logOption)
+  }
+
+  if (instanceEnvironment.on_headers) {
+    instanceEnvironment.on_headers = wrapOnHeaders(instanceEnvironment.on_headers)
   }
 
   // Create the WASM instance

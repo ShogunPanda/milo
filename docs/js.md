@@ -4,7 +4,7 @@
 
 ### Callbacks handling
 
-All callbacks in Milo have the following signature (TypeScript syntax):
+Range callbacks in Milo have the following signature (TypeScript syntax):
 
 ```typescript
 (parser: number, offset: number, length: number) => void
@@ -17,6 +17,23 @@ where the parameters have the following meaning:
 3. The data length. Can be `0`.
 
 If length is `0`, it means the callback has no payload associated.
+
+`on_headers` instead receives parsed message metadata:
+
+```typescript
+(
+  parser: number,
+  offset: number,
+  methodOrStatus: number,
+  shouldKeepAlive: boolean,
+  shouldUpgrade: boolean,
+  hasTrailers: boolean,
+  bodyKind: number,
+  contentLength: bigint
+) => void
+```
+
+`contentLength` is a BigInt so every accepted `Content-Length` value remains exact.
 
 Callbacks are dispatched only when enabled with `setActiveCallbacks`.
 

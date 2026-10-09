@@ -330,6 +330,39 @@ it('issue-24 - memory_deallocation', async () => {
   }
 })
 
+for (const contentLength of [9007199254740993n, 9999999999999999999n]) {
+  it(`headers_content_length_metadata_preserves_${contentLength}`, () => {
+    let received
+    const milo = setup({
+      on_headers (parser, at, methodOrStatus, keepAlive, shouldUpgrade, hasTrailers, bodyKind, value) {
+        received = { keepAlive, shouldUpgrade, hasTrailers, bodyKind, contentLength: value }
+      }
+    })
+    const parser = milo.create()
+    const message = Buffer.from(`HTTP/1.1 200 OK\r\nContent-Length: ${contentLength}\r\n\r\n`)
+    const ptr = milo.alloc(message.length)
+
+    try {
+      milo.setShouldAutodetect(parser, false)
+      milo.setShouldSuspendAfterHeaders(parser, true)
+      milo.setActiveCallbacks(parser, milo.CALLBACK_ACTIVE_ON_HEADERS)
+      new Uint8Array(milo.memory.buffer, ptr, message.length).set(message)
+
+      assert.equal(milo.parse(parser, ptr, message.length), message.length)
+      assert.deepEqual(received, {
+        keepAlive: true,
+        shouldUpgrade: false,
+        hasTrailers: false,
+        bodyKind: 0,
+        contentLength
+      })
+    } finally {
+      milo.destroy(parser)
+      milo.dealloc(ptr, message.length)
+    }
+  })
+}
+
 it('issue-25 - headers_upgrade_metadata', () => {
   const cases = [
     ...[100, 101, 103, 200, 204, 301, 304, 400, 426, 500].map(status => ({

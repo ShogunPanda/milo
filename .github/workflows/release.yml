@@ -161,6 +161,7 @@ jobs:
       - build-libraries
       - build-binaries
     permissions:
+      attestations: write
       id-token: write
       contents: write
     steps:
@@ -256,11 +257,20 @@ jobs:
           mv /tmp/artifacts/milo-parser-bin-linux/milo-parser-bin-linux.tar.gz /tmp/release/
           mv /tmp/artifacts/milo-parser-bin-macos-arm/milo-parser-bin-macos-arm.tar.gz /tmp/release/
           mv /tmp/artifacts/milo-parser-bin-macos-intel/milo-parser-bin-macos-intel.tar.gz /tmp/release/
+          (cd /tmp/release && sha256sum *.tar.gz > SHA256SUMS)
+      - name: Attest native release assets
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: '/tmp/release/*.tar.gz'
       - name: Push release commit and tag
         run: |
+          if git rev-parse --verify --quiet "refs/tags/v${{ inputs.version }}"; then
+            echo "Release tag v${{ inputs.version }} already exists" >&2
+            exit 1
+          fi
           git add -f package.json CHANGELOG.md parser/Cargo.toml parser/Cargo.lock macros/Cargo.toml macros/Cargo.lock references/rust/Cargo.toml references/rust/Cargo.lock parser/wasm/src/package.json
           git commit -m "chore: Updated version."
-          git tag -f "v${{ inputs.version }}"
+          git tag "v${{ inputs.version }}"
       - name: Publish macros on crates.io
         run: cargo publish
         working-directory: macros
@@ -280,7 +290,7 @@ jobs:
       - name: Publish on GitHub
         run: |
           cambi release -n > /tmp/release-notes.txt
-          git push origin && git push origin -f --tags
+          git push origin && git push origin --tags
           gh release create "v${{ inputs.version }}" -t "${{ inputs.version }}" ${{ github.event.inputs.prerelease == 'true' && '--prerelease' || '' }} -F /tmp/release-notes.txt /tmp/release/*
         env:
           GH_TOKEN: ${{ github.token }}

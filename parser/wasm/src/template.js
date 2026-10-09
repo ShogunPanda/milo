@@ -31,13 +31,16 @@ function parse (parser, data, limit) {
 }
 
 function fail (parser, code, description) {
-  const len = description.length
+  const bytes = textEncoder.encode(description)
+  const len = bytes.byteLength
   const ptr = this.alloc(len)
-  const buffer = new Uint8Array(this.memory.buffer, ptr, len)
-  textEncoder.encodeInto(description, buffer)
 
-  this.fail(parser, code, ptr, len)
-  this.dealloc(ptr, len)
+  try {
+    new Uint8Array(this.memory.buffer, ptr, len).set(bytes)
+    this.fail(parser, code, ptr, len)
+  } finally {
+    this.dealloc(ptr, len)
+  }
 }
 
 function hasDebug () {

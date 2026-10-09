@@ -1,8 +1,6 @@
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
-use core::ptr;
-use core::str;
-use core::{slice, slice::from_raw_parts};
+use core::{slice, str};
 use std::ffi::{CString, c_char, c_uchar};
 
 use crate::parse;
@@ -16,23 +14,19 @@ pub struct CStringWithLength {
 
 impl CStringWithLength {
   fn new(value: &str) -> CStringWithLength {
-    let cstring = CString::new(value).unwrap();
+    let bytes = value.as_bytes();
+    let len = bytes.iter().position(|byte| *byte == 0).unwrap_or(bytes.len());
+    let cstring = CString::new(&bytes[..len]).expect("bytes before the first NUL cannot contain a NUL");
 
     CStringWithLength {
       ptr: cstring.into_raw() as *const c_uchar,
-      len: value.len(),
+      len,
     }
   }
 }
 
 impl From<&str> for CStringWithLength {
   fn from(value: &str) -> Self { CStringWithLength::new(value) }
-}
-
-impl From<CStringWithLength> for &str {
-  fn from(value: CStringWithLength) -> Self {
-    unsafe { str::from_utf8_unchecked(slice::from_raw_parts(value.ptr, value.len)) }
-  }
 }
 
 /// Returns if debug informations are available in this build.
@@ -148,7 +142,15 @@ pub extern "C" fn milo_finish(parser: *mut Parser) { unsafe { (*parser).finish()
 /// Marks the parsing a failed, setting a error code and and error message.
 #[unsafe(no_mangle)]
 pub extern "C" fn milo_fail(parser: *mut Parser, code: u8, description: CStringWithLength) {
-  unsafe { (*parser).fail(code, description.into()) };
+  let description = if description.len == 0 {
+    ""
+  } else if description.ptr.is_null() {
+    "Invalid error description pointer"
+  } else {
+    let bytes = unsafe { slice::from_raw_parts(description.ptr, description.len) };
+    str::from_utf8(bytes).unwrap_or("Invalid UTF-8 error description")
+  };
+  unsafe { (*parser).fail(code, description) };
 }
 
 /// Returns the current parser's state as string.

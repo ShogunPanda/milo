@@ -397,6 +397,35 @@ fn basic_complete_rejects_invalid_state() {
 }
 
 #[test]
+fn basic_control_methods_dispatch_callbacks() {
+  let mut parser = create_parser();
+  parser.fail(ERROR_UNEXPECTED_CHARACTER, "explicit failure");
+  let context = unsafe { &*(parser.context as *const context::Context) };
+  assert!(context.output.contains("\"event\": error"));
+
+  let mut parser = create_parser();
+  parser.suspend_after_headers = true;
+  let message = "POST / HTTP/1.1\r\nContent-Length: 1\r\n\r\nx";
+  assert_eq!(parse(&mut parser, message), message.len() - 1);
+  let context = unsafe { &mut *(parser.context as *mut context::Context) };
+  context.output.clear();
+  parser.complete();
+  let context = unsafe { &*(parser.context as *const context::Context) };
+  assert!(context.output.contains("\"event\": \"complete\""));
+
+  let mut parser = create_parser();
+  parser.autodetect = false;
+  parser.is_request = false;
+  let message = "HTTP/1.1 200 OK\r\n\r\nbody";
+  assert_eq!(parse(&mut parser, message), message.len());
+  let context = unsafe { &mut *(parser.context as *mut context::Context) };
+  context.output.clear();
+  parser.finish();
+  let context = unsafe { &*(parser.context as *const context::Context) };
+  assert!(context.output.contains("\"event\": \"complete\""));
+}
+
+#[test]
 fn basic_event_buffer_full_stops_parsing() {
   let mut parser = milo_parser::Parser::new();
   parser.autodetect = false;

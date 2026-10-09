@@ -254,6 +254,34 @@ it('basic_complete_after_suspend_after_headers', t => {
   assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
 })
 
+it('basic_managed_input_does_not_retain_tunnel_data', t => {
+  const { milo, parser, parse } = createParser(t, setup)
+  milo.setShouldManageUnconsumed(parser, true)
+  const headers = 'CONNECT example.com:443 HTTP/1.1\r\n\r\n'
+
+  assert.equal(parse(`${headers}opaque tunnel data`), headers.length)
+  assert.equal(milo.getState(parser), milo.STATE_TUNNEL)
+  let view = new DataView(milo.memory.buffer)
+  assert.equal(view.getUint32(parser + milo.PARSER_FIELD_UNCONSUMED_LEN, true), 0)
+
+  assert.equal(parse('more tunnel data'), 0)
+  view = new DataView(milo.memory.buffer)
+  assert.equal(view.getUint32(parser + milo.PARSER_FIELD_UNCONSUMED_LEN, true), 0)
+
+  const suspended = createParser(t, setup)
+  suspended.milo.setShouldManageUnconsumed(suspended.parser, true)
+  suspended.milo.setShouldSuspendAfterHeaders(suspended.parser, true)
+  const upgradeHeaders = 'GET / HTTP/1.1\r\nConnection: upgrade\r\nUpgrade: websocket\r\n\r\n'
+  assert.equal(suspended.parse(`${upgradeHeaders}opaque tunnel data`), upgradeHeaders.length)
+  view = new DataView(suspended.milo.memory.buffer)
+  assert.ok(view.getUint32(suspended.parser + suspended.milo.PARSER_FIELD_UNCONSUMED_LEN, true) > 0)
+
+  suspended.milo.complete(suspended.parser)
+  assert.equal(suspended.milo.getState(suspended.parser), suspended.milo.STATE_TUNNEL)
+  view = new DataView(suspended.milo.memory.buffer)
+  assert.equal(view.getUint32(suspended.parser + suspended.milo.PARSER_FIELD_UNCONSUMED_LEN, true), 0)
+})
+
 it('basic_complete_rejects_invalid_state', t => {
   const { milo, parser } = createParser(t, setup)
   milo.complete(parser)

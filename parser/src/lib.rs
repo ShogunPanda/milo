@@ -280,8 +280,11 @@ impl Parser {
           *self.events.add(event_cursor) = EVENT_END;
         }
 
-        // Set the state to be finished
+        // Set the state before callbacks observe the completed parser.
         self.state = STATE_FINISH;
+        if self.active_callbacks != 0 {
+          self.invoke_callbacks();
+        }
       }
       STATE_ERROR => (),
       // In another other state, this is an error
@@ -302,6 +305,9 @@ impl Parser {
     // SAFETY: The cursor follows at most one error event in the owned event buffer.
     unsafe {
       *self.events.add(event_cursor) = EVENT_END;
+    }
+    if self.active_callbacks != 0 {
+      self.invoke_callbacks();
     }
   }
 

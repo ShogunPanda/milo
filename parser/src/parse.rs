@@ -1533,6 +1533,9 @@ impl Parser {
     unsafe {
       *self.events.add(event_cursor) = EVENT_END;
     }
+    if self.active_callbacks != 0 {
+      self.invoke_callbacks();
+    }
   }
 
   // RFC 9110 section 6.4.1 - Message completed.

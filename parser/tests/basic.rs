@@ -4,7 +4,7 @@ mod helpers;
 use std::ffi::c_uchar;
 
 use milo_parser::{
-  CALLBACK_ACTIVE_ON_HEADERS, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER, ERROR_UNEXPECTED_STATE,
+  CALLBACK_ACTIVE_ON_HEADERS, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER, ERROR_UNEXPECTED_EOF, ERROR_UNEXPECTED_STATE,
   EVENT_ACTIVE_ON_HEADER_NAME, EVENT_ACTIVE_ON_HEADER_VALUE, STATE_BODY_DECISION, STATE_ERROR, STATE_FINISH,
   STATE_HEADER, STATE_START,
 };
@@ -678,6 +678,22 @@ fn basic_finish_logic() {
   assert_eq!(parser.state, STATE_HEADER);
   parser.finish();
   assert_eq!(parser.state, STATE_ERROR);
+
+  parser.reset(false);
+  let partial_request = b"G";
+  assert_eq!(parser.parse(partial_request.as_ptr(), partial_request.len()), 0);
+  parser.finish();
+  assert_eq!(parser.state, STATE_ERROR);
+  assert_eq!(parser.error_code, ERROR_UNEXPECTED_EOF);
+
+  parser.reset(false);
+  parser.autodetect = false;
+  parser.is_request = false;
+  let partial_response = b"HTTP";
+  assert_eq!(parser.parse(partial_response.as_ptr(), partial_response.len()), 0);
+  parser.finish();
+  assert_eq!(parser.state, STATE_ERROR);
+  assert_eq!(parser.error_code, ERROR_UNEXPECTED_EOF);
 }
 
 #[test]

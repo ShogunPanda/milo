@@ -265,8 +265,8 @@ impl Parser {
   /// put the parser in the error state.
   pub fn finish(&mut self) {
     match self.state {
-      // If the parser is one of the initial states, simply jump to finish
-      STATE_START | STATE_REQUEST_LINE | STATE_STATUS_LINE | STATE_FINISH => {
+      // An untouched or already finished parser can finish cleanly.
+      STATE_START | STATE_FINISH => {
         self.state = STATE_FINISH;
       }
       STATE_BODY_WITH_NO_LENGTH => {

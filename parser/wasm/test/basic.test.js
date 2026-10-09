@@ -491,6 +491,20 @@ it('basic_finish_logic', t => {
   assert.equal(milo.getState(parser), milo.STATE_HEADER)
   milo.finish(parser)
   assert.equal(milo.getState(parser), milo.STATE_ERROR)
+
+  milo.reset(parser, false)
+  assert.equal(parse('G'), 0)
+  milo.finish(parser)
+  assert.equal(milo.getState(parser), milo.STATE_ERROR)
+  assert.equal(milo.getErrorCode(parser), milo.ERROR_UNEXPECTED_EOF)
+
+  milo.reset(parser, false)
+  milo.setShouldAutodetect(parser, false)
+  milo.setIsRequest(parser, false)
+  assert.equal(parse('HTTP'), 0)
+  milo.finish(parser)
+  assert.equal(milo.getState(parser), milo.STATE_ERROR)
+  assert.equal(milo.getErrorCode(parser), milo.ERROR_UNEXPECTED_EOF)
 })
 
 it('basic_empty_fields', t => {

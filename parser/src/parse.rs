@@ -584,75 +584,28 @@ impl Parser {
                         fail!(UNEXPECTED_CHARACTER, "Expected Transfer-Encoding header value");
                       }
 
-                      self.has_transfer_encoding = true;
-
-                      if &data[header_value_start..header_value_end] == b"chunked" {
-                        // If this is true, it means the Transfer-Encoding header was specified more
-                        // than once. This is the second repetition and therefore, the previous one is
-                        // no longer the last one, making it invalid.
-                        if self.has_chunked_transfer_encoding {
-                          fail!(
-                            INVALID_TRANSFER_ENCODING,
-                            "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can \
-                             be provided only once"
-                          );
-                        }
-
-                        self.has_chunked_transfer_encoding = true;
-                      } else {
-                        let mut token_start = header_value_start;
-                        loop {
-                          while token_start < header_value_end && is_ws(data[token_start]) {
-                            token_start += 1;
+                      let header_has_chunked =
+                        match validate_transfer_encoding(data, header_value_start, header_value_end) {
+                          Some(has_chunked) => has_chunked,
+                          None => {
+                            fail!(INVALID_TRANSFER_ENCODING, "Invalid Transfer-Encoding header value");
                           }
+                        };
 
-                          if token_start == header_value_end {
-                            break;
-                          }
-
-                          let token_end_raw = match find_char(data, token_start, header_value_end, b',') {
-                            Some(comma) => comma,
-                            None => header_value_end,
-                          };
-                          let mut token_end = token_end_raw;
-
-                          if !strip_ows_fast(data, &mut token_start, &mut token_end, false) {
-                            fail!(UNEXPECTED_CHARACTER, "Expected Transfer-Encoding header value");
-                          }
-
-                          self.has_transfer_encoding = true;
-
-                          if let case_insensitive_string!("chunked") = data[token_start..token_end] {
-                            // If this is true, it means the Transfer-Encoding header was specified more
-                            // than once. This is the second repetition and therefore, the previous one is
-                            // no longer the last one, making it invalid.
-                            if self.has_chunked_transfer_encoding {
-                              fail!(
-                                INVALID_TRANSFER_ENCODING,
-                                "The value \"chunked\" in the Transfer-Encoding header must be the last provided and \
-                                 can be provided only once"
-                              );
-                            }
-
-                            self.has_chunked_transfer_encoding = true;
-                          } else {
-                            if self.has_chunked_transfer_encoding {
-                              // Any other value when chunked was already specified is invalid as the previous
-                              // chunked would not be the last one anymore
-                              fail!(
-                                INVALID_TRANSFER_ENCODING,
-                                "The value \"chunked\" in the Transfer-Encoding header must be the last provided"
-                              );
-                            }
-                          }
-
-                          if token_end_raw == header_value_end {
-                            break;
-                          } else {
-                            token_start = token_end_raw + 1;
-                          }
-                        }
+                      // A later field value would make a previously observed chunked coding
+                      // non-final.
+                      if self.has_chunked_transfer_encoding {
+                        fail!(
+                          INVALID_TRANSFER_ENCODING,
+                          "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can be \
+                           provided only once"
+                        );
                       }
+
+                      // Do not update framing state until every coding and parameter in this field
+                      // value has been validated.
+                      self.has_transfer_encoding = true;
+                      self.has_chunked_transfer_encoding = header_has_chunked;
                     }
                     // RFC 9112 section 9.6
                     (10, case_insensitive_string!("connection")) => {

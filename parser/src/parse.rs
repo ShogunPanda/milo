@@ -177,6 +177,10 @@ impl Parser {
                 event_with_range!(on_message_start, 0, 0);
               }
               move_to!(status_line);
+            } else if data == b"\r" || (data.len() < 5 && b"HTTP".starts_with(data)) {
+              // Keep autodetection undecided until a fragmented response prefix or
+              // leading CRLF can be distinguished from a request.
+              suspend!();
             } else if data.len() >= 5 && data[4] == b'/' && data.starts_with(b"HTTP") {
               self.is_request = false;
               if has_response_start_events {

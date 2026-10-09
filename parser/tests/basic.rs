@@ -188,6 +188,39 @@ fn basic_incomplete_string_automanaged_2() {
 }
 
 #[test]
+fn basic_autodetect_fragmented_response() {
+  for split in 1..=4 {
+    let mut parser = create_parser();
+    parser.manage_unconsumed = true;
+    let message = http(r#"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"#);
+
+    let mut context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
+    context.input = message.clone();
+    let _ = Box::into_raw(context);
+
+    assert_eq!(parser.parse(message[..split].as_ptr(), split), 0);
+    assert_eq!(
+      parser.parse(message[split..].as_ptr(), message.len() - split),
+      message.len()
+    );
+    assert!(!parser.is_request);
+    assert_ne!(parser.state, STATE_ERROR);
+  }
+
+  let mut parser = create_parser();
+  parser.manage_unconsumed = true;
+  let message = http(r#"\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"#);
+  let mut context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
+  context.input = message.clone();
+  let _ = Box::into_raw(context);
+
+  assert_eq!(parser.parse(message[..1].as_ptr(), 1), 0);
+  assert_eq!(parser.parse(message[1..].as_ptr(), message.len() - 1), message.len());
+  assert!(!parser.is_request);
+  assert_ne!(parser.state, STATE_ERROR);
+}
+
+#[test]
 fn basic_sample_multiple_requests() {
   let mut parser = create_parser();
 

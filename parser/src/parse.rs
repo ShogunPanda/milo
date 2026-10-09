@@ -836,7 +836,10 @@ impl Parser {
                 UNEXPECTED_TRAILERS,
                 "Trailers are not allowed when not using chunked transfer encoding"
               );
-            } else if self.is_request && (method == METHOD_GET || method == METHOD_HEAD) && self.content_length > 0 {
+            } else if self.is_request
+              && (method == METHOD_GET || method == METHOD_HEAD)
+              && (self.content_length > 0 || self.has_transfer_encoding)
+            {
               fail!(UNEXPECTED_CONTENT, "Unexpected content for the request (GET or HEAD)");
             }
 

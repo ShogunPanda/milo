@@ -57,6 +57,16 @@ fn rejects_transfer_encoding_not_ending_in_chunked() {
   }
 }
 
+#[test]
+fn rejects_chunked_get_and_head_requests() {
+  for input in [
+    &b"GET / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n"[..],
+    &b"HEAD / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nx\r\n0\r\n\r\n"[..],
+  ] {
+    assert_ne!(error_code(input, true), ERROR_NONE, "chunked GET/HEAD must be rejected: {input:?}");
+  }
+}
+
 // --- Well-formed messages must still be accepted. ---
 
 #[test]

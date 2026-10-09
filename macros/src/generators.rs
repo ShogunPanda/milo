@@ -127,7 +127,7 @@ fn generate_constants(methods: &[String], errors: &[String], callbacks: &[String
     pub type StateHandler = fn (parser: &mut Parser, data: &[c_uchar], available: usize);
 
     #[unsafe(no_mangle)]
-    pub type Callback = fn (&mut Parser, usize, usize);
+    pub type Callback = extern "C" fn (&mut Parser, usize, usize);
 
     #(#methods_consts)*
     #(#errors_consts)*

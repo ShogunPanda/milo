@@ -79,17 +79,17 @@ struct Ctx {
   name: Vec<u8>,
 }
 
-fn on_headers(p: &mut Parser, _from: usize, _size: usize) {
+extern "C" fn on_headers(p: &mut Parser, _from: usize, _size: usize) {
   let c = unsafe { &mut *(p.context as *mut Ctx) };
   c.cur = (p.has_content_length, p.has_transfer_encoding, p.has_chunked_transfer_encoding, c.cur.3.clone());
 }
 
-fn on_header_name(p: &mut Parser, from: usize, size: usize) {
+extern "C" fn on_header_name(p: &mut Parser, from: usize, size: usize) {
   let c = unsafe { &mut *(p.context as *mut Ctx) };
   c.name = c.input.get(from..from + size).unwrap_or_default().to_vec();
 }
 
-fn on_header_value(p: &mut Parser, from: usize, size: usize) {
+extern "C" fn on_header_value(p: &mut Parser, from: usize, size: usize) {
   let c = unsafe { &mut *(p.context as *mut Ctx) };
   let value = c.input.get(from..from + size).unwrap_or_default();
   if c.name.eq_ignore_ascii_case(b"content-length") {

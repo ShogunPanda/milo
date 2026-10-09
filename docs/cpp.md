@@ -30,6 +30,8 @@ where the parameters have the following meaning:
 
 If length is `0`, it means the callback has no payload associated.
 
+Callbacks must not throw exceptions or otherwise unwind across Milo's C ABI boundary.
+
 Callbacks are dispatched only when the corresponding `CALLBACK_ACTIVE_*` flag is set in the parser `active_callbacks` field.
 
 Callbacks are disabled by default.

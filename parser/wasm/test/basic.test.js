@@ -106,6 +106,30 @@ it('basic_incomplete_string_automanaged_2', t => {
   assert.equal(milo.getParsed(parser), BigInt(message.length))
 })
 
+for (const split of [1, 2, 3, 4]) {
+  it(`basic_autodetect_fragmented_response_${split}`, t => {
+    const { milo, parser, parse } = createParser(t, setup)
+    milo.setShouldManageUnconsumed(parser, true)
+    const message = 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n'
+
+    assert.equal(parse(message.slice(0, split)), 0)
+    assert.equal(parse(message.slice(split)), message.length)
+    assert.equal(milo.isRequest(parser), false)
+    assert.notEqual(milo.getState(parser), milo.STATE_ERROR)
+  })
+}
+
+it('basic_autodetect_fragmented_leading_crlf', t => {
+  const { milo, parser, parse } = createParser(t, setup)
+  milo.setShouldManageUnconsumed(parser, true)
+  const message = '\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n'
+
+  assert.equal(parse(message.slice(0, 1)), 0)
+  assert.equal(parse(message.slice(1)), message.length)
+  assert.equal(milo.isRequest(parser), false)
+  assert.notEqual(milo.getState(parser), milo.STATE_ERROR)
+})
+
 it('basic_sample_multiple_requests', t => {
   const { milo, parser, parse } = createParser(t, setup)
   parse(

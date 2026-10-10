@@ -23,26 +23,23 @@ jobs:
         include:
           - name: Linux x64
             os: ubuntu-latest
-            cambi: cambi-linux
             artifact: milo-parser-lib-linux
           - name: macOS arm64
             os: macos-latest
-            cambi: cambi-macos-arm
             artifact: milo-parser-lib-macos-arm
           - name: macOS x64
             os: macos-15-intel
-            cambi: cambi-macos-intel
             artifact: milo-parser-lib-macos-intel
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Use supported Rust version
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
           toolchain: nightly-2026-07-29
       - name: Restore cached dependencies (Cargo)
-        uses: actions/cache@v3
+        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3
         with:
           path: |
             ~/.cargo/registry
@@ -51,28 +48,16 @@ jobs:
             macros/target
           key: cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
       - name: Install makers
-        uses: taiki-e/cache-cargo-install-action@v3
+        uses: taiki-e/cache-cargo-install-action@9ee83daaa7b96a6fab930949ecf1122bba04a389 # v3.0.8
         with:
-          tool: cargo-make
+          tool: cargo-make@0.37.24
       - name: Install cbindgen
-        uses: taiki-e/cache-cargo-install-action@v3
+        uses: taiki-e/cache-cargo-install-action@9ee83daaa7b96a6fab930949ecf1122bba04a389 # v3.0.8
         with:
-          tool: cbindgen
-      - name: Download latest cambi
-        shell: bash
-        run: |
-          mkdir -p /tmp/cambi-bootstrap
-          gh release download --repo ShogunPanda/cambi --pattern "${{ matrix.cambi }}" --dir /tmp/cambi-bootstrap
-          chmod +x "/tmp/cambi-bootstrap/${{ matrix.cambi }}"
-          ln -sf "/tmp/cambi-bootstrap/${{ matrix.cambi }}" /tmp/cambi-bootstrap/cambi
-          echo "/tmp/cambi-bootstrap" >> "$GITHUB_PATH"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          tool: cbindgen@0.29.4
       - name: Build C++ artifacts
         shell: bash
         run: |
-          cargo build --release --manifest-path scripts/Cargo.toml --target-dir scripts/target --bin sync-versions
-          scripts/target/release/sync-versions $(cambi update "${{ inputs.version }}" -s)
           cd parser
           makers cpp
       - name: Package C++ artifacts
@@ -83,7 +68,7 @@ jobs:
           cp dist/cpp/release/libmilo.a /tmp/${{ matrix.artifact }}/libmilo.a
           tar -C /tmp -czf /tmp/${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
       - name: Upload C++ artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.artifact }}
           path: /tmp/${{ matrix.artifact }}.tar.gz
@@ -97,26 +82,23 @@ jobs:
         include:
           - name: Linux x64
             os: ubuntu-latest
-            cambi: cambi-linux
             artifact: milo-parser-bin-linux
           - name: macOS arm64
             os: macos-latest
-            cambi: cambi-macos-arm
             artifact: milo-parser-bin-macos-arm
           - name: macOS x64
             os: macos-15-intel
-            cambi: cambi-macos-intel
             artifact: milo-parser-bin-macos-intel
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Use supported Rust version
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
           toolchain: nightly-2026-07-29
       - name: Restore cached dependencies (Cargo)
-        uses: actions/cache@v3
+        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3
         with:
           path: |
             ~/.cargo/registry
@@ -124,23 +106,10 @@ jobs:
             parser/target
             macros/target
           key: cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
-      - name: Download latest cambi
-        shell: bash
-        run: |
-          mkdir -p /tmp/cambi-bootstrap
-          gh release download --repo ShogunPanda/cambi --pattern "${{ matrix.cambi }}" --dir /tmp/cambi-bootstrap
-          chmod +x "/tmp/cambi-bootstrap/${{ matrix.cambi }}"
-          ln -sf "/tmp/cambi-bootstrap/${{ matrix.cambi }}" /tmp/cambi-bootstrap/cambi
-          echo "/tmp/cambi-bootstrap" >> "$GITHUB_PATH"
-        env:
-          GH_TOKEN: ${{ github.token }}
       - name: Build binary
         shell: bash
-        run: |
-          cargo build --release --manifest-path scripts/Cargo.toml --target-dir scripts/target --bin sync-versions
-          scripts/target/release/sync-versions $(cambi update "${{ inputs.version }}" -s)
-          cd parser
-          cargo build --release --bin milo-parser
+        working-directory: parser
+        run: cargo build --locked --release --bin milo-parser
       - name: Package binary
         shell: bash
         run: |
@@ -148,10 +117,58 @@ jobs:
           cp parser/target/release/milo-parser /tmp/${{ matrix.artifact }}/milo-parser
           tar -C /tmp -czf /tmp/${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.artifact }}
           path: /tmp/${{ matrix.artifact }}.tar.gz
+
+  build-wasm:
+    name: Build WASM packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Use supported Rust version
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: nightly-2026-07-29
+          components: rust-src
+      - name: Add Rust targets
+        run: rustup target add wasm32-unknown-unknown
+      - name: Install Binaryen
+        run: |
+          curl --fail --location --silent --show-error \
+            --output /tmp/binaryen.tar.gz \
+            https://github.com/WebAssembly/binaryen/releases/download/version_123/binaryen-version_123-x86_64-linux.tar.gz
+          echo "e959f2170af4c20c552e9de3a0253704d6a9d2766e8fdb88e4d6ac4bae9388fe  /tmp/binaryen.tar.gz" | sha256sum --check --strict
+          tar -xzf /tmp/binaryen.tar.gz -C /tmp
+          echo "/tmp/binaryen-version_123/bin" >> "$GITHUB_PATH"
+          /tmp/binaryen-version_123/bin/wasm-opt --version
+      - name: Restore cached dependencies (Cargo)
+        uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            parser/target
+            macros/target
+          key: cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install makers
+        uses: taiki-e/cache-cargo-install-action@9ee83daaa7b96a6fab930949ecf1122bba04a389 # v3.0.8
+        with:
+          tool: cargo-make@0.37.24
+      - name: Build WASM packages
+        working-directory: parser
+        run: makers wasm
+      - name: Upload WASM packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: milo-parser-wasm
+          path: |
+            dist/wasm/release/package
+            dist/wasm/release/package-cjs
 
   release:
     name: Release
@@ -160,93 +177,53 @@ jobs:
     needs:
       - build-libraries
       - build-binaries
+      - build-wasm
     permissions:
       id-token: write
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - name: Use supported Rust version
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
           toolchain: nightly-2026-07-29
-          components: rust-src
-      - name: Add Rust targets
-        run: rustup target add wasm32-unknown-unknown
       - name: Use supported Node.js version
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 26
+          node-version: 26.11.1
           registry-url: 'https://registry.npmjs.org'
-      - name: Install Binaryen
-        run: |
-          curl -sSL -o binaryen.tar.gz https://github.com/WebAssembly/binaryen/releases/download/version_123/binaryen-version_123-x86_64-linux.tar.gz
-          tar -xzf binaryen.tar.gz
-          echo "$PWD/binaryen-version_123/bin" >> "$GITHUB_PATH"
-          "$PWD/binaryen-version_123/bin/wasm-opt" --version
-      - name: Restore cached dependencies (Cargo)
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            parser/target
-            macros/target
-          key: cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
-      - name: Install makers
-        run: |
-          ARCH=x86_64-unknown-linux-gnu
-          MAKERS_VERSION=$(curl -sSL https://api.github.com/repos/sagiegurari/cargo-make/releases/latest | yq .tag_name | sed "s#v##")
-          curl -sSL -o /tmp/makers.zip "https://github.com/sagiegurari/cargo-make/releases/latest/download/cargo-make-v$MAKERS_VERSION-$ARCH.zip"
-          unzip -d /tmp /tmp/makers.zip
-          echo "/tmp/cargo-make-v$MAKERS_VERSION-$ARCH" >> "$GITHUB_PATH"
-      - name: Install makers
-        uses: taiki-e/cache-cargo-install-action@v3
-        with:
-          tool: cargo-make
-      - name: Install cbindgen
-        uses: taiki-e/cache-cargo-install-action@v3
-        with:
-          tool: cbindgen
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
-          version: latest
-      - name: Download latest cambi
+          version: 12.10.1
+      - name: Validate checked-in release metadata
+        shell: bash
         run: |
-          mkdir -p /tmp/cambi-bootstrap
-          gh release download --repo ShogunPanda/cambi --pattern cambi-linux --dir /tmp/cambi-bootstrap
-          chmod +x /tmp/cambi-bootstrap/cambi-linux
-          ln -sf /tmp/cambi-bootstrap/cambi-linux /tmp/cambi-bootstrap/cambi
-          echo "/tmp/cambi-bootstrap" >> "$GITHUB_PATH"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          set -euo pipefail
+          expected="${{ inputs.version }}"
+          test "$(node -p "JSON.parse(require('fs').readFileSync('package.json')).version")" = "$expected"
+          test "$(node -p "JSON.parse(require('fs').readFileSync('parser/wasm/src/package.json')).version")" = "$expected"
+          for manifest in macros/Cargo.toml parser/Cargo.toml references/rust/Cargo.toml; do
+            actual=$(awk '$1 == "version" && $2 == "=" { gsub(/"/, "", $3); print $3; exit }' "$manifest")
+            test "$actual" = "$expected"
+            cargo metadata --locked --no-deps --format-version 1 --manifest-path "$manifest" >/dev/null
+          done
+          grep -Fq "/ $expected" CHANGELOG.md
       - name: Setup cargo OIDC
-        uses: rust-lang/crates-io-auth-action@v1
+        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
         id: auth
-      - name: Configure git
-        run: |
-          git config --global user.name "${{ github.actor }}"
-          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
-      - name: Prepare release
-        run: |
-          cargo build --release --manifest-path scripts/Cargo.toml --target-dir scripts/target --bin sync-versions
-          scripts/target/release/sync-versions $(cambi update "${{ inputs.version }}" -s)
-          cambi update -l "${{ inputs.version }}"
-          (cd macros && cargo generate-lockfile)
-          (cd parser && cargo generate-lockfile)
-          (cd references/rust && cargo generate-lockfile)
-      - name: Build WASM package
-        run: |
-          cd parser
-          makers wasm
-      - name: Download C++ artifacts
-        uses: actions/download-artifact@v4
+      - name: Download release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: /tmp/artifacts
+      - name: Restore WASM packages
+        run: |
+          mkdir -p dist/wasm/release
+          cp -a /tmp/artifacts/milo-parser-wasm/. dist/wasm/release/
       - name: Prepare GitHub release assets
         run: |
           mkdir -p /tmp/release
@@ -256,18 +233,15 @@ jobs:
           mv /tmp/artifacts/milo-parser-bin-linux/milo-parser-bin-linux.tar.gz /tmp/release/
           mv /tmp/artifacts/milo-parser-bin-macos-arm/milo-parser-bin-macos-arm.tar.gz /tmp/release/
           mv /tmp/artifacts/milo-parser-bin-macos-intel/milo-parser-bin-macos-intel.tar.gz /tmp/release/
-      - name: Push release commit and tag
-        run: |
-          git add -f package.json CHANGELOG.md parser/Cargo.toml parser/Cargo.lock macros/Cargo.toml macros/Cargo.lock references/rust/Cargo.toml references/rust/Cargo.lock parser/wasm/src/package.json
-          git commit -m "chore: Updated version."
-          git tag -f "v${{ inputs.version }}"
+      - name: Create release tag
+        run: git tag -f "v${{ inputs.version }}"
       - name: Publish macros on crates.io
-        run: cargo publish
+        run: cargo publish --locked --no-verify
         working-directory: macros
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
       - name: Publish parser on crates.io
-        run: cargo publish
+        run: cargo publish --locked --no-verify
         working-directory: parser
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
@@ -279,8 +253,12 @@ jobs:
         working-directory: dist/wasm/release/package-cjs
       - name: Publish on GitHub
         run: |
-          cambi release -n > /tmp/release-notes.txt
-          git push origin && git push origin -f --tags
+          awk -v heading="/ ${{ inputs.version }}" '
+            /^### / { if (found) exit; found = index($0, heading) > 0; next }
+            found { print }
+          ' CHANGELOG.md > /tmp/release-notes.txt
+          test -s /tmp/release-notes.txt
+          git push origin -f --tags
           gh release create "v${{ inputs.version }}" -t "${{ inputs.version }}" ${{ github.event.inputs.prerelease == 'true' && '--prerelease' || '' }} -F /tmp/release-notes.txt /tmp/release/*
         env:
           GH_TOKEN: ${{ github.token }}

@@ -63,5 +63,5 @@ pub fn parse(parser: &mut Parser, content: &str) -> usize {
   context.input = String::from(content);
   let _ = Box::into_raw(context);
 
-  parser.parse(content.as_ptr(), content.len())
+  parser.parse(content.as_ref())
 }

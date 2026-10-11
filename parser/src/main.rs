@@ -238,7 +238,7 @@ fn run() -> Result<bool, RunError> {
   let input = read_input(&options).map_err(|e| RunError::Io(e.to_string()))?;
   let mut parser = create_parser(options.mode);
 
-  parser.parse(input.as_ptr(), input.len());
+  parser.parse(input.as_ref());
 
   if parser.state != STATE_ERROR {
     parser.finish();

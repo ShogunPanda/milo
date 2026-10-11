@@ -1,8 +1,7 @@
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 use core::ptr;
-use core::str;
-use core::{slice, slice::from_raw_parts};
+use core::slice;
 use std::ffi::{CString, c_char, c_uchar};
 
 use crate::parse;
@@ -29,19 +28,16 @@ impl From<&str> for CStringWithLength {
   fn from(value: &str) -> Self { CStringWithLength::new(value) }
 }
 
-impl From<CStringWithLength> for &str {
-  fn from(value: CStringWithLength) -> Self {
-    unsafe { str::from_utf8_unchecked(slice::from_raw_parts(value.ptr, value.len)) }
-  }
-}
-
 /// Returns if debug informations are available in this build.
 #[unsafe(no_mangle)]
 pub extern "C" fn milo_has_debug() -> bool { cfg!(any(debug_assertions, feature = "debug")) }
 
 /// Returns if debug tracing is enabled for this parser.
+///
+/// # Safety
+/// `parser` must point to a live parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_is_debug(parser: *const Parser) -> bool { unsafe { (*parser).debug } }
+pub unsafe extern "C" fn milo_is_debug(parser: *const Parser) -> bool { unsafe { (*parser).debug } }
 
 /// A callback that simply returns `0`.
 ///
@@ -52,8 +48,11 @@ pub extern "C" fn milo_noop(_parser: &mut Parser, _at: usize, _len: usize) {}
 
 /// Cleans up memory used by a string previously returned by one of the milo's C
 /// public interface.
+///
+/// # Safety
+/// `s` must have been returned by Milo and must not have been freed already.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_free_string(s: CStringWithLength) {
+pub unsafe extern "C" fn milo_free_string(s: CStringWithLength) {
   unsafe {
     let _ = CString::from_raw(s.ptr as *mut c_char);
   }
@@ -64,8 +63,21 @@ pub extern "C" fn milo_free_string(s: CStringWithLength) {
 pub extern "C" fn milo_create() -> *mut Parser { Box::into_raw(Box::new(Parser::new())) }
 
 /// Destroys a parser.
+///
+/// # Safety
+/// `parser` must be null or a live pointer returned by [`milo_create`], and it
+/// must not be used after this call.
+///
+/// Calling raw FFI helpers requires an explicit unsafe block:
+///
+/// ```compile_fail
+/// use milo_parser::{milo_create, milo_destroy};
+///
+/// let parser = milo_create();
+/// milo_destroy(parser);
+/// ```
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_destroy(parser: *mut Parser) {
+pub unsafe extern "C" fn milo_destroy(parser: *mut Parser) {
   if parser.is_null() {
     return;
   }
@@ -75,31 +87,51 @@ pub extern "C" fn milo_destroy(parser: *mut Parser) {
   }
 }
 
-/// Parses a slice of characters. It returns the number of consumed characters.
+/// Parses a byte range. It returns the number of consumed bytes.
+///
+/// # Safety
+/// `parser` must point to a live parser. `data` must be readable for `limit`
+/// bytes, except that it may be null when `limit` is zero.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_parse(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize {
-  unsafe { (*parser).parse(data, limit) }
+pub unsafe extern "C" fn milo_parse(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize {
+  let input = if limit == 0 {
+    &[]
+  } else {
+    // SAFETY: Required by this function's contract.
+    unsafe { slice::from_raw_parts(data, limit) }
+  };
+  // SAFETY: Required by this function's contract.
+  unsafe { (*parser).parse(input) }
 }
 
 /// Sets the parser event bitmask.
+///
+/// # Safety
+/// `parser` must point to a live parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_set_active_events(parser: *mut Parser, value: u64) {
+pub unsafe extern "C" fn milo_set_active_events(parser: *mut Parser, value: u64) {
   unsafe {
     (*parser).active_events = value;
   }
 }
 
 /// Sets the maximum body payload consumed by a single parse invocation.
+///
+/// # Safety
+/// `parser` must point to a live parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_set_max_body_payload(parser: *mut Parser, value: u64) {
+pub unsafe extern "C" fn milo_set_max_body_payload(parser: *mut Parser, value: u64) {
   unsafe {
     (*parser).max_body_payload = value;
   }
 }
 
 /// Sets whether parsing should stop after headers have completed.
+///
+/// # Safety
+/// `parser` must point to a live parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_set_suspend_after_headers(parser: *mut Parser, value: bool) {
+pub unsafe extern "C" fn milo_set_suspend_after_headers(parser: *mut Parser, value: bool) {
   unsafe {
     (*parser).suspend_after_headers = value;
   }
@@ -119,43 +151,75 @@ pub extern "C" fn milo_set_suspend_after_headers(parser: *mut Parser, value: boo
 ///   * continue_without_data
 ///   * debug
 ///   * context
+///
+/// # Safety
+/// `parser` must point to a live parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_reset(parser: *mut Parser, keep_parsed: bool) { unsafe { (*parser).reset(keep_parsed) } }
+pub unsafe extern "C" fn milo_reset(parser: *mut Parser, keep_parsed: bool) { unsafe { (*parser).reset(keep_parsed) } }
 
 /// Clears all values about the message in the parser.
 ///
 /// The autodetect and is_request fields are not cleared.
+///
+/// # Safety
+/// `parser` must point to a live parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_clear(parser: *mut Parser) { unsafe { (*parser).clear() } }
+pub unsafe extern "C" fn milo_clear(parser: *mut Parser) { unsafe { (*parser).clear() } }
 
 /// Pauses the parser. It will have to be resumed via `milo_resume`.
+///
+/// # Safety
+/// `parser` must point to a live parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_pause(parser: *mut Parser) { unsafe { (*parser).pause() } }
+pub unsafe extern "C" fn milo_pause(parser: *mut Parser) { unsafe { (*parser).pause() } }
 
 /// Resumes the parser.
+///
+/// # Safety
+/// `parser` must point to a live parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_resume(parser: *mut Parser) { unsafe { (*parser).resume() } }
+pub unsafe extern "C" fn milo_resume(parser: *mut Parser) { unsafe { (*parser).resume() } }
 
 /// Completes the current message without consuming more input.
+///
+/// # Safety
+/// `parser` must point to a live parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_complete(parser: *mut Parser) { unsafe { (*parser).complete() } }
+pub unsafe extern "C" fn milo_complete(parser: *mut Parser) { unsafe { (*parser).complete() } }
 
 /// Marks the parser as finished. Any new data received via `milo_parse` will
 /// put the parser in the error state.
+///
+/// # Safety
+/// `parser` must point to a live parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_finish(parser: *mut Parser) { unsafe { (*parser).finish() } }
+pub unsafe extern "C" fn milo_finish(parser: *mut Parser) { unsafe { (*parser).finish() } }
 
 /// Marks the parsing a failed, setting a error code and and error message.
+///
+/// # Safety
+/// `parser` must point to a live parser. `description.ptr` must be readable for
+/// `description.len` bytes and contain UTF-8, unless the length is zero.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_fail(parser: *mut Parser, code: u8, description: CStringWithLength) {
-  unsafe { (*parser).fail(code, description.into()) };
+pub unsafe extern "C" fn milo_fail(parser: *mut Parser, code: u8, description: CStringWithLength) {
+  let description = if description.len == 0 {
+    ""
+  } else {
+    // SAFETY: The caller guarantees that the pointer is valid and that the
+    // description contains UTF-8 for the duration of this call.
+    unsafe { core::str::from_utf8_unchecked(slice::from_raw_parts(description.ptr, description.len)) }
+  };
+  unsafe { (*parser).fail(code, description) };
 }
 
 /// Returns the current parser's state as string.
 ///
 /// The returned value must be freed using `free_string`.
+///
+/// # Safety
+/// `parser` must point to a live parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_state_string(parser: *mut Parser) -> CStringWithLength {
+pub unsafe extern "C" fn milo_state_string(parser: *mut Parser) -> CStringWithLength {
   unsafe { (*parser).state_str().into() }
 }
 
@@ -206,15 +270,21 @@ pub extern "C" fn milo_event_to_string(event: u8) -> CStringWithLength {
 /// Returns the current parser's error state as string.
 ///
 /// The returned value must be freed using `free_string`.
+///
+/// # Safety
+/// `parser` must point to a live parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_error_code_string(parser: *mut Parser) -> CStringWithLength {
+pub unsafe extern "C" fn milo_error_code_string(parser: *mut Parser) -> CStringWithLength {
   unsafe { (*parser).error_code_str().into() }
 }
 
 /// Returns the current parser's error descrition.
 ///
 /// The returned value must be freed using `free_string`.
+///
+/// # Safety
+/// `parser` must point to a live parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_error_description_string(parser: *mut Parser) -> CStringWithLength {
+pub unsafe extern "C" fn milo_error_description_string(parser: *mut Parser) -> CStringWithLength {
   unsafe { (*parser).error_description_str().into() }
 }

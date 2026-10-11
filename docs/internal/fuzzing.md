@@ -42,8 +42,8 @@ harnesses.
 ## 1. Attack Surface & Threat Model
 
 ### In scope
-- `Parser::parse(&mut self, input: *const c_uchar, limit: usize) -> usize` — the
-  core byte-level entry point (Rust).
+- `Parser::parse(&mut self, input: &[u8]) -> usize` — the core byte-level entry
+  point (Rust).
 - C ABI surface in `parser/src/native.rs`: `milo_create`, `milo_parse`,
   `milo_destroy`, `milo_reset`, `milo_finish`, `milo_complete`,
   `milo_set_active_events`, `milo_set_max_body_payload`,
@@ -252,12 +252,12 @@ use milo_parser::{CALLBACK_ACTIVE_ALL, Parser};
 const MAX_FEED: usize = 64 * 1024;
 
 fuzz_target!(|data: &[u8]| {
-  let limit = data.len().min(MAX_FEED);
+  let data = &data[..data.len().min(MAX_FEED)];
 
   // (a) autodetect mode, all events on.
   let mut p = Parser::new();
   p.active_events = CALLBACK_ACTIVE_ALL;
-  let _ = p.parse(data.as_ptr(), limit);
+  let _ = p.parse(data);
 
   // (b) forced request / response, with unconsumed management so the retained
   // buffer and cross-call aggregation paths are exercised.
@@ -269,10 +269,10 @@ fuzz_target!(|data: &[u8]| {
     p.manage_unconsumed = true;
     if data.len() > 1 {
       let (a, b) = data.split_at(data.len() / 2);
-      let _ = p.parse(a.as_ptr(), a.len());
-      let _ = p.parse(b.as_ptr(), b.len()); // prepends retained bytes
+      let _ = p.parse(a);
+      let _ = p.parse(b); // prepends retained bytes
     } else {
-      let _ = p.parse(data.as_ptr(), limit);
+      let _ = p.parse(data);
     }
   }
 
@@ -281,7 +281,7 @@ fuzz_target!(|data: &[u8]| {
   p.active_events = CALLBACK_ACTIVE_ALL;
   p.skip_body = true;
   p.suspend_after_headers = true;
-  let _ = p.parse(data.as_ptr(), limit);
+  let _ = p.parse(data);
 });
 ```
 
@@ -357,10 +357,10 @@ impl FuzzMessage {
 }
 
 fn run(bytes: &[u8]) {
-  let limit = bytes.len().min(64 * 1024);
+  let bytes = &bytes[..bytes.len().min(64 * 1024)];
   let mut p = Parser::new();
   p.active_events = CALLBACK_ACTIVE_ALL;
-  let _ = p.parse(bytes.as_ptr(), limit);
+  let _ = p.parse(bytes);
 }
 
 fuzz_target!(|data: &[u8]| {

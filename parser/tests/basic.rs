@@ -12,21 +12,18 @@ use milo_parser::{
 use crate::helpers::{context, create_parser, http, parse};
 
 #[test]
-fn basic_error_description_is_clamped_and_terminated() {
+fn basic_error_description_is_clamped_and_reset() {
   let mut parser = create_parser();
   let description = "a".repeat(300);
 
   parser.fail(ERROR_UNEXPECTED_CHARACTER, &description);
 
-  assert_eq!(parser.error_description_len, 254);
-  assert_eq!(parser.error_description[254], 0);
   assert_eq!(parser.error_description_str().len(), 254);
   assert!(parser.error_description_str().bytes().all(|byte| byte == b'a'));
 
   parser.reset(false);
 
-  assert_eq!(parser.error_description_len, 0);
-  assert_eq!(parser.error_description[0], 0);
+  assert_eq!(parser.error_description_str(), "");
 }
 
 #[test]
@@ -128,17 +125,17 @@ fn basic_incomplete_string_automanaged_1() {
   context.input = message.clone();
   let _ = Box::into_raw(context);
 
-  let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
+  let consumed1 = parser.parse(sample1.as_ref());
   assert_eq!(consumed1, 0);
-  let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
+  let consumed2 = parser.parse(sample2.as_ref());
   assert_eq!(consumed2, 16);
-  let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
+  let consumed3 = parser.parse(sample3.as_ref());
   assert_eq!(consumed3, 0);
-  let consumed4 = parser.parse(sample4.as_ptr(), sample4.len());
+  let consumed4 = parser.parse(sample4.as_ref());
   assert_eq!(consumed4, 0);
-  let consumed5 = parser.parse(sample5.as_ptr(), sample5.len());
+  let consumed5 = parser.parse(sample5.as_ref());
   assert_eq!(consumed5, 0);
-  let consumed6 = parser.parse(sample6.as_ptr(), sample6.len());
+  let consumed6 = parser.parse(sample6.as_ref());
   assert_eq!(consumed6, sample3.len() + sample4.len() + sample5.len() + sample6.len());
 
   assert_ne!(parser.state, STATE_ERROR);
@@ -147,17 +144,17 @@ fn basic_incomplete_string_automanaged_1() {
   // Verify the field is not reset
   parser.reset(true);
 
-  let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
+  let consumed1 = parser.parse(sample1.as_ref());
   assert_eq!(consumed1, 0);
-  let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
+  let consumed2 = parser.parse(sample2.as_ref());
   assert_eq!(consumed2, 16);
-  let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
+  let consumed3 = parser.parse(sample3.as_ref());
   assert_eq!(consumed3, 0);
-  let consumed4 = parser.parse(sample4.as_ptr(), sample4.len());
+  let consumed4 = parser.parse(sample4.as_ref());
   assert_eq!(consumed4, 0);
-  let consumed5 = parser.parse(sample5.as_ptr(), sample5.len());
+  let consumed5 = parser.parse(sample5.as_ref());
   assert_eq!(consumed5, 0);
-  let consumed6 = parser.parse(sample6.as_ptr(), sample6.len());
+  let consumed6 = parser.parse(sample6.as_ref());
   assert_eq!(consumed6, sample3.len() + sample4.len() + sample5.len() + sample6.len());
 
   assert_ne!(parser.state, STATE_ERROR);
@@ -180,8 +177,8 @@ fn basic_incomplete_string_automanaged_2() {
   let sample1 = &message[0..2].to_string(); // GE
   let sample2 = &message[2..].to_string(); // T / HTTP/1.1\r\nHost: foo\r\n\r\n
 
-  parser.parse(sample1.as_ptr(), sample1.len());
-  parser.parse(sample2.as_ptr(), sample2.len());
+  parser.parse(sample1.as_ref());
+  parser.parse(sample2.as_ref());
 
   assert_ne!(parser.state, STATE_ERROR);
   assert_eq!(parser.parsed, message.len() as u64);
@@ -255,7 +252,7 @@ fn basic_max_body_payload_content_length() {
   assert_eq!(parser.remaining_content_length, 3);
   assert!(!parser.paused);
 
-  let consumed = parser.parse(unsafe { message.as_ptr().add(body_start + 3) }, 3);
+  let consumed = parser.parse(&message.as_bytes()[body_start + 3..body_start + 6]);
   assert_eq!(consumed, 3);
   assert_eq!(parser.remaining_content_length, 0);
 }
@@ -276,7 +273,7 @@ fn basic_max_body_payload_chunked() {
   assert!(!parser.paused);
 
   let remaining = &message[chunk_data_start + 3..];
-  let consumed = parser.parse(remaining.as_ptr(), remaining.len());
+  let consumed = parser.parse(remaining.as_ref());
   assert_eq!(consumed, remaining.len());
   assert_eq!(parser.remaining_chunk_size, 0);
 }
@@ -295,7 +292,7 @@ fn basic_max_body_payload_no_length() {
   assert_eq!(consumed, body_start + 3);
   assert!(!parser.paused);
 
-  let consumed = parser.parse(unsafe { message.as_ptr().add(body_start + 3) }, 3);
+  let consumed = parser.parse(&message.as_bytes()[body_start + 3..body_start + 6]);
   assert_eq!(consumed, 3);
 }
 
@@ -325,7 +322,7 @@ fn basic_suspend_after_headers_content_length() {
   assert_eq!(parser.state, STATE_BODY_DECISION);
   assert!(!parser.paused);
 
-  let consumed = parser.parse(unsafe { message.as_ptr().add(body_start) }, message.len() - body_start);
+  let consumed = parser.parse(&message.as_bytes()[body_start..]);
   assert_eq!(consumed, message.len() - body_start);
   assert_eq!(parser.state, STATE_START);
 }
@@ -342,7 +339,7 @@ fn basic_suspend_after_headers_emits_headers_once() {
   let consumed = parse(&mut parser, &message);
   assert_eq!(consumed, body_start);
 
-  let consumed = parser.parse(unsafe { message.as_ptr().add(body_start) }, message.len() - body_start);
+  let consumed = parser.parse(&message.as_bytes()[body_start..]);
   assert_eq!(consumed, message.len() - body_start);
 
   let context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
@@ -363,7 +360,7 @@ fn basic_suspend_after_headers_zero_body_completes_on_empty_parse() {
   assert_eq!(consumed, message.len());
   assert_eq!(parser.state, STATE_BODY_DECISION);
 
-  let consumed = parser.parse(message.as_ptr(), 0);
+  let consumed = parser.parse(&[]);
   assert_eq!(consumed, 0);
   assert_eq!(parser.state, STATE_START);
 }
@@ -409,7 +406,7 @@ fn basic_event_buffer_full_stops_parsing() {
   }
   message.push_str("\r\n");
 
-  let consumed = parser.parse(message.as_ptr(), message.len());
+  let consumed = parser.parse(message.as_ref());
   assert!(consumed < message.len());
   assert!(!parser.paused);
   assert_eq!(parser.error_code, ERROR_NONE);

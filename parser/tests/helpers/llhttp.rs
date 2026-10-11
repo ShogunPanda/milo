@@ -424,7 +424,7 @@ pub fn run_test(section: &str, path: &str) -> Result {
   }
 
   // Perform the parsing
-  let len = parser.parse(input.as_ptr(), input.len());
+  let len = parser.parse(input.as_ref());
 
   // Compare output
   let mut context = unsafe { Box::from_raw(parser.context as *mut Context) };

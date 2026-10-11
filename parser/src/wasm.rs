@@ -17,8 +17,10 @@ pub fn alloc(len: usize) -> *mut c_void {
   ptr as *mut c_void
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn dealloc(ptr: *mut c_void, len: usize) {
+pub unsafe fn dealloc(ptr: *mut c_void, len: usize) {
   if ptr.is_null() {
     return;
   }
@@ -42,8 +44,11 @@ pub fn create() -> *mut c_void {
 }
 
 /// Destroys a parser.
+///
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn destroy(parser: *mut c_void) {
+pub unsafe fn destroy(parser: *mut c_void) {
   if parser.is_null() {
     return;
   }
@@ -55,46 +60,77 @@ pub fn destroy(parser: *mut c_void) {
 
 /// Resets a parser. The second parameters specifies if to also reset the
 /// parsed counter.
+///
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn reset(parser: *mut c_void, keep_parsed: bool) { unsafe { (*(parser as *mut Parser)).reset(keep_parsed) } }
+pub unsafe fn reset(parser: *mut c_void, keep_parsed: bool) { unsafe { (*(parser as *mut Parser)).reset(keep_parsed) } }
 
 /// Clears all values in the parser.
 ///
 /// Persisted fields, unconsumed data and the position are not cleared.
+///
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn clear(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).clear() } }
+pub unsafe fn clear(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).clear() } }
 
-// Parses a slice of characters. It returns the number of consumed characters.
+// Parses a byte range. It returns the number of consumed bytes.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn parse(parser: *mut c_void, data: *const c_uchar, limit: usize) -> usize {
-  unsafe { (*(parser as *mut Parser)).parse(data, limit) }
+pub unsafe fn parse(parser: *mut c_void, data: *const c_uchar, limit: usize) -> usize {
+  let input = if limit == 0 {
+    &[]
+  } else {
+    // SAFETY: WebAssembly callers provide an in-bounds linear-memory range.
+    unsafe { slice::from_raw_parts(data, limit) }
+  };
+  unsafe { (*(parser as *mut Parser)).parse(input) }
 }
 
 /// Pauses the parser. It will have to be resumed via `resume`.
+///
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn pause(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).pause() } }
+pub unsafe fn pause(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).pause() } }
 
 /// Resumes the parser.
+///
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn resume(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).resume() } }
+pub unsafe fn resume(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).resume() } }
 
 /// Completes the current message without consuming more input.
+///
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn complete(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).complete() } }
+pub unsafe fn complete(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).complete() } }
 
 /// Marks the parser as finished. Any new data received via `parse` will
 /// put the parser in the error state.
+///
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn finish(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).finish() } }
+pub unsafe fn finish(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).finish() } }
 
 /// Marks the parser as failed.
+///
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn fail(parser: *mut c_void, code: u8, description_ptr: *const c_uchar, description_len: usize) {
+pub unsafe fn fail(parser: *mut c_void, code: u8, description_ptr: *const c_uchar, description_len: usize) {
+  let description = if description_len == 0 {
+    ""
+  } else {
+    unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(description_ptr, description_len)) }
+  };
   unsafe {
-    (*(parser as *mut Parser)).fail(
-      code,
-      std::str::from_utf8_unchecked(slice::from_raw_parts(description_ptr, description_len)),
-    );
+    (*(parser as *mut Parser)).fail(code, description);
   }
 }
 
@@ -122,147 +158,214 @@ pub fn fail(parser: *mut c_void, code: u8, description_ptr: *const c_uchar, desc
 
 // Getters
 // Get the parser autodetect property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn is_autodetect(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).autodetect } }
+pub unsafe fn is_autodetect(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).autodetect } }
 
 // Get the parser is_request property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn is_request(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).is_request } }
+pub unsafe fn is_request(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).is_request } }
 
 // Get the parser debug property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn is_debug(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).debug } }
+pub unsafe fn is_debug(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).debug } }
 
 // Get the parser paused property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn is_paused(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).paused } }
+pub unsafe fn is_paused(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).paused } }
 
 // Get the parser manage_unconsumed property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn should_manage_unconsumed(parser: *const c_void) -> bool {
+pub unsafe fn should_manage_unconsumed(parser: *const c_void) -> bool {
   unsafe { (*(parser as *const Parser)).manage_unconsumed }
 }
 
 // Get the parser suspend_after_headers property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn should_suspend_after_headers(parser: *const c_void) -> bool {
+pub unsafe fn should_suspend_after_headers(parser: *const c_void) -> bool {
   unsafe { (*(parser as *const Parser)).suspend_after_headers }
 }
 
 // Get the parser max_start_line_length property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_max_start_line_length(parser: *const c_void) -> usize {
+pub unsafe fn get_max_start_line_length(parser: *const c_void) -> usize {
   unsafe { (*(parser as *const Parser)).max_start_line_length }
 }
 
 // Get the parser max_header_length property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_max_header_length(parser: *const c_void) -> usize {
+pub unsafe fn get_max_header_length(parser: *const c_void) -> usize {
   unsafe { (*(parser as *const Parser)).max_header_length }
 }
 
 // Get the parser max_body_payload property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_max_body_payload(parser: *const c_void) -> u64 { unsafe { (*(parser as *const Parser)).max_body_payload } }
+pub unsafe fn get_max_body_payload(parser: *const c_void) -> u64 {
+  unsafe { (*(parser as *const Parser)).max_body_payload }
+}
 
 // Get the parser continue_without_data property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn should_continue_without_data(parser: *const c_void) -> bool {
+pub unsafe fn should_continue_without_data(parser: *const c_void) -> bool {
   unsafe { (*(parser as *const Parser)).continue_without_data }
 }
 
 // Get the parser is_connect property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn is_connect(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).is_connect } }
+pub unsafe fn is_connect(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).is_connect } }
 
 // Get the parser skip_body property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn should_skip_body(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).skip_body } }
+pub unsafe fn should_skip_body(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).skip_body } }
 
 // Get the parser state property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_state(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Parser)).state } }
+pub unsafe fn get_state(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Parser)).state } }
 
 // Get the parser position property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_position(parser: *const c_void) -> usize { unsafe { (*(parser as *const Parser)).position } }
+pub unsafe fn get_position(parser: *const c_void) -> usize { unsafe { (*(parser as *const Parser)).position } }
 
 // Get the parser parsed property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_parsed(parser: *const c_void) -> u64 { unsafe { (*(parser as *const Parser)).parsed } }
+pub unsafe fn get_parsed(parser: *const c_void) -> u64 { unsafe { (*(parser as *const Parser)).parsed } }
 
 // Get the parser error_code property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_error_code(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Parser)).error_code } }
+pub unsafe fn get_error_code(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Parser)).error_code } }
 
 // Get the parser method property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_method(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Parser)).method } }
+pub unsafe fn get_method(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Parser)).method } }
 
 // Get the parser status property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_status(parser: *const c_void) -> u32 { unsafe { (*(parser as *const Parser)).status } }
+pub unsafe fn get_status(parser: *const c_void) -> u32 { unsafe { (*(parser as *const Parser)).status } }
 
 // Get the parser has_connection_close property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn has_connection_close(parser: *const c_void) -> bool {
+pub unsafe fn has_connection_close(parser: *const c_void) -> bool {
   unsafe { (*(parser as *const Parser)).has_connection_close }
 }
 
 // Get the parser has_connection_upgrade property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn has_connection_upgrade(parser: *const c_void) -> bool {
+pub unsafe fn has_connection_upgrade(parser: *const c_void) -> bool {
   unsafe { (*(parser as *const Parser)).has_connection_upgrade }
 }
 
 // Get the parser content_length property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_content_length(parser: *const c_void) -> u64 { unsafe { (*(parser as *const Parser)).content_length } }
+pub unsafe fn get_content_length(parser: *const c_void) -> u64 {
+  unsafe { (*(parser as *const Parser)).content_length }
+}
 
 // Get the parser chunk_size property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_chunk_size(parser: *const c_void) -> u64 { unsafe { (*(parser as *const Parser)).chunk_size } }
+pub unsafe fn get_chunk_size(parser: *const c_void) -> u64 { unsafe { (*(parser as *const Parser)).chunk_size } }
 
 // Get the parser remaining_content_length property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_remaining_content_length(parser: *const c_void) -> u64 {
+pub unsafe fn get_remaining_content_length(parser: *const c_void) -> u64 {
   unsafe { (*(parser as *const Parser)).remaining_content_length }
 }
 
 // Get the parser remaining_chunk_size property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_remaining_chunk_size(parser: *const c_void) -> u64 {
+pub unsafe fn get_remaining_chunk_size(parser: *const c_void) -> u64 {
   unsafe { (*(parser as *const Parser)).remaining_chunk_size }
 }
 
 // Get the parser has_content_length property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn has_content_length(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).has_content_length } }
+pub unsafe fn has_content_length(parser: *const c_void) -> bool {
+  unsafe { (*(parser as *const Parser)).has_content_length }
+}
 
 // Get the parser has_transfer_encoding property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn has_transfer_encoding(parser: *const c_void) -> bool {
+pub unsafe fn has_transfer_encoding(parser: *const c_void) -> bool {
   unsafe { (*(parser as *const Parser)).has_transfer_encoding }
 }
 
 // Get the parser has_chunked_transfer_encoding property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn has_chunked_transfer_encoding(parser: *const c_void) -> bool {
+pub unsafe fn has_chunked_transfer_encoding(parser: *const c_void) -> bool {
   unsafe { (*(parser as *const Parser)).has_chunked_transfer_encoding }
 }
 
 // Get the parser has_upgrade property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn has_upgrade(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).has_upgrade } }
+pub unsafe fn has_upgrade(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).has_upgrade } }
 
 // Get the parser has_trailers property.
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn has_trailers(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).has_trailers } }
+pub unsafe fn has_trailers(parser: *const c_void) -> bool { unsafe { (*(parser as *const Parser)).has_trailers } }
 
 /// Gets the parser callback error description, if any. This is meant for
 /// internal use.
+///
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn get_error_description_raw(parser: *mut c_void) -> u64 {
+pub unsafe fn get_error_description_raw(parser: *mut c_void) -> u64 {
   let parser = unsafe { &(*(parser as *const Parser)) };
 
   let ptr = parser.error_description.as_ptr() as u64;
@@ -271,92 +374,118 @@ pub fn get_error_description_raw(parser: *mut c_void) -> u64 {
   (ptr << 32) + len
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn set_should_autodetect(parser: *mut c_void, value: bool) {
+pub unsafe fn set_should_autodetect(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).autodetect = value;
   }
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn set_is_request(parser: *mut c_void, value: bool) {
+pub unsafe fn set_is_request(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).is_request = value;
   }
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn set_should_manage_unconsumed(parser: *mut c_void, value: bool) {
+pub unsafe fn set_should_manage_unconsumed(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).manage_unconsumed = value;
   }
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn set_should_suspend_after_headers(parser: *mut c_void, value: bool) {
+pub unsafe fn set_should_suspend_after_headers(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).suspend_after_headers = value;
   }
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn set_max_start_line_length(parser: *mut c_void, value: usize) {
+pub unsafe fn set_max_start_line_length(parser: *mut c_void, value: usize) {
   unsafe {
     (*(parser as *mut Parser)).max_start_line_length = value;
   }
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn set_max_header_length(parser: *mut c_void, value: usize) {
+pub unsafe fn set_max_header_length(parser: *mut c_void, value: usize) {
   unsafe {
     (*(parser as *mut Parser)).max_header_length = value;
   }
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn set_max_body_payload(parser: *mut c_void, value: u64) {
+pub unsafe fn set_max_body_payload(parser: *mut c_void, value: u64) {
   unsafe {
     (*(parser as *mut Parser)).max_body_payload = value;
   }
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn set_should_continue_without_data(parser: *mut c_void, value: bool) {
+pub unsafe fn set_should_continue_without_data(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).continue_without_data = value;
   }
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn set_should_skip_body(parser: *mut c_void, value: bool) {
+pub unsafe fn set_should_skip_body(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).skip_body = value;
   }
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn set_is_connect(parser: *mut c_void, value: bool) {
+pub unsafe fn set_is_connect(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).is_connect = value;
   }
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn set_debug(parser: *mut c_void, value: bool) {
+pub unsafe fn set_debug(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).debug = value;
   }
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn set_active_callbacks(parser: *mut c_void, value: u64) {
+pub unsafe fn set_active_callbacks(parser: *mut c_void, value: u64) {
   unsafe {
     (*(parser as *mut Parser)).active_callbacks = value;
   }
 }
 
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub fn set_active_events(parser: *mut c_void, value: u64) {
+pub unsafe fn set_active_events(parser: *mut c_void, value: u64) {
   unsafe {
     (*(parser as *mut Parser)).active_events = value;
   }

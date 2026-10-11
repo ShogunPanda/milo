@@ -65,13 +65,13 @@ pub struct Parser {
   pub ptr: *mut c_void,
 
   // Complex data types - We need to split them in order to be exportable to C++
-  pub error_description: [u8; 255],
-  pub unconsumed: *const c_uchar,
-  pub unconsumed_len: usize,
-  pub error_description_len: u8,
+  error_description: [u8; 255],
+  unconsumed: *const c_uchar,
+  unconsumed_len: usize,
+  error_description_len: u8,
 
   // Event buffer. Keep this at the end of the struct for external readers.
-  pub events: *mut c_uchar,
+  events: *mut c_uchar,
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -253,6 +253,34 @@ impl Parser {
     }
     *event_cursor += EVENT_ERROR_SIZE;
     true
+  }
+
+  /// Returns the current event batch.
+  ///
+  /// Records are terminated by [`EVENT_END`]. Parser-owned storage cannot be
+  /// replaced through the safe Rust API:
+  ///
+  /// ```compile_fail
+  /// use milo_parser::Parser;
+  ///
+  /// let mut parser = Parser::new();
+  /// parser.events = core::ptr::null_mut();
+  /// ```
+  pub fn events(&self) -> &[u8; EVENTS_BUFFER_SIZE] {
+    // SAFETY: `events` is allocated by `new` with this exact array type, cannot
+    // be replaced by safe Rust, and remains valid for the parser's lifetime.
+    unsafe { &*(self.events as *const [u8; EVENTS_BUFFER_SIZE]) }
+  }
+
+  /// Returns input retained for the next managed parse call.
+  pub fn unconsumed(&self) -> &[u8] {
+    if self.unconsumed_len == 0 {
+      &[]
+    } else {
+      // SAFETY: The parser owns this allocation and safe Rust cannot replace
+      // its pointer or length.
+      unsafe { slice::from_raw_parts(self.unconsumed, self.unconsumed_len) }
+    }
   }
 
   /// Pauses the parser. It will have to be resumed via `resume`.

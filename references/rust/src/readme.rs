@@ -34,5 +34,5 @@ fn main() {
 
   // Now perform the main parsing using milo.parse. The method returns the number
   // of consumed characters.
-  parser.parse(message.as_ptr(), message.len());
+  parser.parse(message.as_bytes());
 }

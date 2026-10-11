@@ -16,7 +16,7 @@ fn error_code(data: &[u8], is_request: bool) -> u8 {
   let mut p = Parser::new();
   p.autodetect = false;
   p.is_request = is_request;
-  let _ = p.parse(data.as_ptr(), data.len());
+  let _ = p.parse(data.as_ref());
   p.error_code
 }
 
@@ -25,7 +25,7 @@ fn accepted(data: &[u8], is_request: bool) -> bool {
   let mut p = Parser::new();
   p.autodetect = false;
   p.is_request = is_request;
-  let _ = p.parse(data.as_ptr(), data.len());
+  let _ = p.parse(data.as_ref());
   p.state != STATE_ERROR
 }
 
@@ -118,7 +118,7 @@ fn callback_framing_collection() {
   p.callbacks.on_header_name = on_header_name;
   p.callbacks.on_header_value = on_header_value;
   p.callbacks.on_message_complete = on_message_complete;
-  let _ = p.parse(input.as_ptr(), input.len());
+  let _ = p.parse(input.as_ref());
 
   let ctx = unsafe { Box::from_raw(p.context as *mut Ctx) };
   assert_eq!(ctx.completed.len(), 1, "one completed message expected");

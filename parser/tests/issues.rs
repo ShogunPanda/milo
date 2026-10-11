@@ -63,16 +63,16 @@ fn issue_16__repeated_input_has_bounded_memory() {
       for _ in 0..1024 {
         let mut parser = Parser::new();
         parser.manage_unconsumed = managed;
-        parser.parse(input.as_ptr(), input.len());
+        parser.parse(input.as_ref());
 
         // Empty retries must not leak copies of a pending line or repeat errors.
-        let retained_len = parser.unconsumed_len;
+        let retained_len = parser.unconsumed().len();
         let parsed = parser.parsed;
         let state = parser.state;
         let live = LIVE_BYTES.get();
         for _ in 0..16 {
-          assert_eq!(parser.parse(b"".as_ptr(), 0), 0);
-          assert_eq!(parser.unconsumed_len, retained_len);
+          assert_eq!(parser.parse(b""), 0);
+          assert_eq!(parser.unconsumed().len(), retained_len);
           assert_eq!(parser.parsed, parsed);
           assert_eq!(parser.state, state);
           assert_eq!(LIVE_BYTES.get(), live);
@@ -81,8 +81,8 @@ fn issue_16__repeated_input_has_bounded_memory() {
         parser.finish();
         parser.reset(false);
         assert_eq!(parser.error_code, ERROR_NONE);
-        assert!(parser.unconsumed.is_null());
-        parser.parse(input.as_ptr(), input.len());
+        assert!(parser.unconsumed().is_empty());
+        parser.parse(input.as_ref());
         drop(parser);
         assert_eq!(LIVE_BYTES.get(), baseline, "input={input:?}, managed={managed}");
       }
@@ -98,23 +98,23 @@ fn issue_16__error_retries_do_not_accumulate_input() {
     let mut parser = Parser::new();
     parser.manage_unconsumed = managed;
     let invalid = b"GET / HTTP/1.1\r\nX-Test: \0";
-    parser.parse(invalid.as_ptr(), invalid.len());
+    parser.parse(invalid.as_ref());
     assert_eq!(parser.state, STATE_ERROR);
     let code = parser.error_code;
     let description = parser.error_description_str().to_string();
-    let retained = parser.unconsumed;
-    let retained_len = parser.unconsumed_len;
+    let retained = parser.unconsumed().as_ptr();
+    let retained_len = parser.unconsumed().len();
     let parsed = parser.parsed;
 
     TRACK_MEMORY.set(true);
     let baseline = LIVE_BYTES.get();
     for _ in 0..1024 {
-      assert_eq!(parser.parse(invalid.as_ptr(), invalid.len()), 0);
+      assert_eq!(parser.parse(invalid.as_ref()), 0);
       assert_eq!(parser.state, STATE_ERROR);
       assert_eq!(parser.error_code, code);
       assert_eq!(parser.error_description_str(), description);
-      assert_eq!(parser.unconsumed_len, retained_len);
-      assert_eq!(parser.unconsumed, retained);
+      assert_eq!(parser.unconsumed().len(), retained_len);
+      assert_eq!(parser.unconsumed().as_ptr(), retained);
       assert_eq!(parser.parsed, parsed);
       assert_eq!(parser.position, 0);
       assert_eq!(LIVE_BYTES.get(), baseline);
@@ -123,7 +123,7 @@ fn issue_16__error_retries_do_not_accumulate_input() {
 
     parser.reset(false);
     let valid = b"GET / HTTP/1.1\r\n\r\n";
-    assert_eq!(parser.parse(valid.as_ptr(), valid.len()), valid.len());
+    assert_eq!(parser.parse(valid.as_ref()), valid.len());
     assert_eq!(parser.error_code, ERROR_NONE);
   }
 }
@@ -134,29 +134,29 @@ fn issue_16__release_retained_input() {
   let mut parser = Parser::new();
   parser.manage_unconsumed = true;
   let prefix = b"GET / HTTP/1.1\r\nX-Test: ";
-  assert_eq!(parser.parse(prefix.as_ptr(), prefix.len()), 16);
-  assert_eq!(parser.unconsumed_len, 8);
+  assert_eq!(parser.parse(prefix.as_ref()), 16);
+  assert_eq!(parser.unconsumed().len(), 8);
 
   // Replacing an incomplete header must free the previous allocation, even
   // when no new input arrives.
   for input in [b"a".as_slice(), b"", b"b"] {
-    let previous_len = parser.unconsumed_len;
+    let previous_len = parser.unconsumed().len();
     FREED_SIZE.store(0, Ordering::SeqCst);
-    WATCHED_POINTER.store(parser.unconsumed as usize, Ordering::SeqCst);
-    assert_eq!(parser.parse(input.as_ptr(), input.len()), 0);
+    WATCHED_POINTER.store(parser.unconsumed().as_ptr() as usize, Ordering::SeqCst);
+    assert_eq!(parser.parse(input.as_ref()), 0);
     assert_eq!(WATCHED_POINTER.load(Ordering::SeqCst), 0);
     assert_eq!(FREED_SIZE.load(Ordering::SeqCst), previous_len);
-    assert_eq!(parser.unconsumed_len, previous_len + input.len());
+    assert_eq!(parser.unconsumed().len(), previous_len + input.len());
   }
 
-  let previous_len = parser.unconsumed_len;
-  WATCHED_POINTER.store(parser.unconsumed as usize, Ordering::SeqCst);
+  let previous_len = parser.unconsumed().len();
+  WATCHED_POINTER.store(parser.unconsumed().as_ptr() as usize, Ordering::SeqCst);
   let suffix = b"\r\n\r\n";
-  assert_eq!(parser.parse(suffix.as_ptr(), suffix.len()), previous_len + suffix.len());
+  assert_eq!(parser.parse(suffix.as_ref()), previous_len + suffix.len());
   assert_eq!(WATCHED_POINTER.load(Ordering::SeqCst), 0);
   assert_eq!(FREED_SIZE.load(Ordering::SeqCst), previous_len);
-  assert!(parser.unconsumed.is_null());
-  assert_eq!(parser.unconsumed_len, 0);
+  assert!(parser.unconsumed().is_empty());
+  assert_eq!(parser.unconsumed().len(), 0);
   assert_eq!(parser.error_code, ERROR_NONE);
 
   // Reset and destruction must also release pending input, including after
@@ -164,19 +164,19 @@ fn issue_16__release_retained_input() {
   for input in [prefix.as_slice(), b"GET / HTTP/1.1\r\nX-Test: \0"] {
     for reset in [false, true] {
       parser.reset(false);
-      parser.parse(input.as_ptr(), input.len());
-      assert!(parser.unconsumed_len > 0);
+      parser.parse(input.as_ref());
+      assert!(!parser.unconsumed().is_empty());
       if input.ends_with(b"\0") {
         assert_eq!(parser.state, STATE_ERROR);
       }
-      let previous_len = parser.unconsumed_len;
-      WATCHED_POINTER.store(parser.unconsumed as usize, Ordering::SeqCst);
+      let previous_len = parser.unconsumed().len();
+      WATCHED_POINTER.store(parser.unconsumed().as_ptr() as usize, Ordering::SeqCst);
       // Disabling retention must not lose ownership of an existing buffer.
       parser.manage_unconsumed = false;
       if reset {
         parser.reset(false);
-        assert!(parser.unconsumed.is_null());
-        assert_eq!(parser.unconsumed_len, 0);
+        assert!(parser.unconsumed().is_empty());
+        assert_eq!(parser.unconsumed().len(), 0);
       } else {
         drop(parser);
         parser = Parser::new();

@@ -134,11 +134,8 @@ A struct representing a parser. It has the following fields:
 - `active_callbacks` (`u64`): Active callback bitmask. Set to one or more `CALLBACK_ACTIVE_*` flags.
 - `active_events` (`u64`): Active event bitmask. Set to one or more `EVENT_ACTIVE_*` flags.
 - `callbacks` (`ParserCallbacks`): The callbacks for the current parser.
-- `error_description` (`[u8; 255]`): The parser error description buffer. It is always NIL-terminated.
-- `error_description_len` (`u8`): The parser error description length, excluding the NIL terminator. Error descriptions are clamped to 254 bytes.
-- `unconsumed` (`*const c_uchar`): The unconsumed data from the previous execution of `parse` when `manage_unconsumed` is `true`.
-- `unconsumed_len` (`usize`): The unconsumed data length from the previous execution of `parse` when `manage_unconsumed` is `true`.
-- `events` (`*mut c_uchar`): Parser-owned event buffer.
+
+Parser-owned buffers are private. Use `Parser::error_description_str()` to inspect the current error description, `Parser::unconsumed()` to inspect retained input, and `Parser::events()` to inspect the current event batch.
 
 All the fields **MUST** be considered readonly, with the following exceptions:
 
@@ -160,7 +157,7 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 
 ## Events
 
-Events are parser-owned records written to `Parser::events` during parsing. They are disabled by default. Enable them by setting `Parser::active_events` to one or more `EVENT_ACTIVE_*` flags.
+Events are parser-owned records returned by `Parser::events()` after parsing. They are disabled by default. Enable them by setting `Parser::active_events` to one or more `EVENT_ACTIVE_*` flags.
 
 Callbacks are replayed from the same event buffer. Setting `active_callbacks` also enables event emission for those callbacks, then callbacks are invoked in event order before `parse()` returns.
 
@@ -230,21 +227,18 @@ u8  error_code
 ### Reading events
 
 ```rust
-use core::ptr;
-
 use milo_parser::{EVENT_DATA, EVENT_END, Parser};
 
 fn drain(parser: &Parser) {
+  let events = parser.events();
   let mut cursor = 0usize;
 
   loop {
-    let event_type = unsafe { *parser.events.add(cursor) };
-
-    match event_type {
+    match events[cursor] {
       EVENT_END => break,
       EVENT_DATA => {
-        let at = u32::from_le(unsafe { ptr::read_unaligned(parser.events.add(cursor + 1) as *const u32) }) as usize;
-        let len = u32::from_le(unsafe { ptr::read_unaligned(parser.events.add(cursor + 5) as *const u32) }) as usize;
+        let at = u32::from_le_bytes(events[cursor + 1..cursor + 5].try_into().unwrap()) as usize;
+        let len = u32::from_le_bytes(events[cursor + 5..cursor + 9].try_into().unwrap()) as usize;
         // Use at and len.
         cursor += 9;
       }
@@ -261,11 +255,9 @@ fn drain(parser: &Parser) {
 
 Creates a new parser.
 
-#### `Parser::parse(&mut self, data: *const c_uchar, limit: usize) -> usize`
+#### `Parser::parse(&mut self, data: &[u8]) -> usize`
 
-Parses `data` up to `limit` characters.
-
-It returns the number of consumed characters.
+Parses `data` and returns the number of consumed bytes.
 
 After a parser error, subsequent calls return `0`, emit no events or callbacks, and do not copy or retain new input. The original error and any previously retained input remain available until reset or destruction. Call `reset()` before reusing the parser.
 
@@ -352,7 +344,7 @@ Use this callback as pointer when you want to remove a callback from the parser.
 
 The following functions are defined to allow Rust to work in a C++ or WebAssembly environment.
 
-While you can use these functions within Rust, it makes little sense as they only call the corresponding method of the parser passed as first argument.
+Prefer the safe `Parser` methods in Rust. FFI functions that dereference or take ownership through raw pointers are `unsafe`; callers must provide live parser pointers, valid input ranges, and uniquely owned values where required by each function's safety contract.
 
 ### `CStringWithLength`
 

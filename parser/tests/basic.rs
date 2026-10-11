@@ -416,6 +416,35 @@ fn basic_event_buffer_full_stops_parsing() {
 }
 
 #[test]
+fn basic_event_buffer_suspension_preserves_header_atomicity() {
+  for framing in [
+    "Content-Length: 1\r\n\r\nx",
+    "Transfer-Encoding: chunked\r\n\r\n0\r\n\r\n",
+  ] {
+    let mut parser = milo_parser::Parser::new();
+    parser.autodetect = false;
+    parser.is_request = true;
+    parser.active_events = EVENT_ACTIVE_ON_HEADER_NAME | EVENT_ACTIVE_ON_HEADER_VALUE;
+
+    // Two range events use 18 bytes per header. This fills the 64 KiB event
+    // buffer so the next name fits but its value does not.
+    let message = format!("POST / HTTP/1.1\r\n{}{}", "X:a\r\n".repeat(3640), framing);
+    let consumed = parser.parse(message.as_ptr(), message.len());
+
+    assert!(consumed < message.len());
+    assert!(!parser.has_content_length);
+    assert!(!parser.has_transfer_encoding);
+    assert!(!parser.has_chunked_transfer_encoding);
+    assert_eq!(parser.error_code, ERROR_NONE);
+
+    let remaining = &message.as_bytes()[consumed..];
+    assert_eq!(parser.parse(remaining.as_ptr(), remaining.len()), remaining.len());
+    assert_eq!(parser.state, STATE_START);
+    assert_eq!(parser.error_code, ERROR_NONE);
+  }
+}
+
+#[test]
 fn basic_sample_multiple_responses() {
   let mut parser = create_parser();
 

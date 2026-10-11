@@ -485,6 +485,16 @@ impl Parser {
                   }
                 }
 
+                // Reserve the whole header's event batch before validating or
+                // committing any semantic effects. Otherwise a full event buffer
+                // can suspend between the name and value events after state such
+                // as Content-Length has already been updated.
+                let header_events_size =
+                  (has_header_name_event as usize + has_header_value_event as usize) * EVENT_RANGE_SIZE;
+                if event_cursor + header_events_size + EVENT_ERROR_RESERVE > EVENTS_BUFFER_SIZE {
+                  suspend!();
+                }
+
                 // RFC 9112 section.4
                 // RFC 9110 section 5.5 and 5.6
                 let header_name_start = 0;

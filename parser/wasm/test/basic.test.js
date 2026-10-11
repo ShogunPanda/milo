@@ -279,6 +279,32 @@ it('basic_event_buffer_full_stops_parsing', t => {
   assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
 })
 
+it('basic_event_buffer_suspension_preserves_header_atomicity', t => {
+  for (const framing of ['Content-Length: 1\r\n\r\nx', 'Transfer-Encoding: chunked\r\n\r\n0\r\n\r\n']) {
+    const { milo, parser, parse } = createParser(t, setup)
+    milo.setShouldAutodetect(parser, false)
+    milo.setIsRequest(parser, true)
+    milo.setActiveCallbacks(parser, 0n)
+    milo.setActiveEvents(parser, milo.EVENT_ACTIVE_ON_HEADER_NAME | milo.EVENT_ACTIVE_ON_HEADER_VALUE)
+
+    // Two range events use 18 bytes per header. This fills the 64 KiB event
+    // buffer so the next name fits but its value does not.
+    const message = `POST / HTTP/1.1\r\n${'X:a\r\n'.repeat(3640)}${framing}`
+    const consumed = parse(message)
+
+    assert.ok(consumed < message.length)
+    assert.equal(milo.hasContentLength(parser), false)
+    assert.equal(milo.hasTransferEncoding(parser), false)
+    assert.equal(milo.hasChunkedTransferEncoding(parser), false)
+    assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
+
+    const remaining = message.slice(consumed)
+    assert.equal(parse(remaining), remaining.length)
+    assert.equal(milo.getState(parser), milo.STATE_START)
+    assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
+  }
+})
+
 it('basic_event_buffer_full_resumes_completion', () => {
   for (const close of [false, true]) {
     const received = []

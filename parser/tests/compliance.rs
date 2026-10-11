@@ -196,7 +196,29 @@ fn compliance_head_body_rejected() {
   assert_error(&parser);
 }
 
-// Methods other than GET and HEAD can carry valid body framing.
+// CONNECT switches immediately to tunnel mode, so any request-body framing
+// would make intermediaries disagree about where the tunnel data begins.
+#[test]
+fn compliance_connect_content_length_rejected() {
+  let mut parser = request_parser();
+  let message = wire("CONNECT example.com:443 HTTP/1.1\r\nContent-Length: 0\r\n\r\n");
+
+  parse(&mut parser, &message);
+
+  assert_error(&parser);
+}
+
+#[test]
+fn compliance_connect_transfer_encoding_rejected() {
+  let mut parser = request_parser();
+  let message = wire("CONNECT example.com:443 HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n");
+
+  parse(&mut parser, &message);
+
+  assert_error(&parser);
+}
+
+// Methods other than GET, HEAD, and CONNECT can carry valid body framing.
 #[test]
 fn compliance_post_body_accepted() {
   let mut parser = request_parser();

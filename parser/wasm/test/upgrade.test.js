@@ -7,13 +7,12 @@ it('upgrade_connect_request', t => {
   const message1 = http(String.raw`
     CONNECT example.com HTTP/1.1\r\n
     Host: example.com\r\n
-    Content-Length: 3\r\n
     \r\n
     abc\r\n\r\n
   `)
   const message2 = 'abc\r\n\r\n'
 
-  assert.equal(parse(message1), 70)
+  assert.equal(parse(message1), 51)
   assert.equal(milo.getState(parser), milo.STATE_TUNNEL)
   assert.equal(parse(message2), 0)
   assert.equal(milo.getState(parser), milo.STATE_TUNNEL)

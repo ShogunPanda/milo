@@ -11,7 +11,6 @@ fn upgrade_connect_request() {
     r#"
         CONNECT example.com HTTP/1.1\r\n
         Host: example.com\r\n
-        Content-Length: 3\r\n
         \r\n
         abc\r\n\r\n
       "#,
@@ -24,7 +23,7 @@ fn upgrade_connect_request() {
   );
 
   let consumed1 = parse(&mut parser, &message1);
-  assert_eq!(consumed1, 70);
+  assert_eq!(consumed1, 51);
   assert_eq!(parser.state, STATE_TUNNEL);
 
   let consumed2 = parse(&mut parser, &message2);

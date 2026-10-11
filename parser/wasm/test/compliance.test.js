@@ -131,7 +131,21 @@ it('compliance_head_body_rejected', t => {
   assertError(milo, parser)
 })
 
-// Methods other than GET and HEAD can carry valid body framing.
+// CONNECT switches immediately to tunnel mode, so any request-body framing
+// would make intermediaries disagree about where the tunnel data begins.
+it('compliance_connect_content_length_rejected', t => {
+  const { milo, parser, parse } = requestParser(t)
+  parse('CONNECT example.com:443 HTTP/1.1\r\nContent-Length: 0\r\n\r\n')
+  assertError(milo, parser)
+})
+
+it('compliance_connect_transfer_encoding_rejected', t => {
+  const { milo, parser, parse } = requestParser(t)
+  parse('CONNECT example.com:443 HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n')
+  assertError(milo, parser)
+})
+
+// Methods other than GET, HEAD, and CONNECT can carry valid body framing.
 it('compliance_post_body_accepted', t => {
   const { milo, parser, parse } = requestParser(t)
   parse('POST / HTTP/1.1\r\nContent-Length: 1\r\n\r\nx')

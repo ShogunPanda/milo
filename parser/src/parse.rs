@@ -836,6 +836,8 @@ impl Parser {
                 UNEXPECTED_TRAILERS,
                 "Trailers are not allowed when not using chunked transfer encoding"
               );
+            } else if self.is_request && self.is_connect && (self.has_content_length || self.has_transfer_encoding) {
+              fail!(UNEXPECTED_CONTENT, "Body framing is not allowed for CONNECT requests");
             } else if self.is_request && (method == METHOD_GET || method == METHOD_HEAD) && self.content_length > 0 {
               fail!(UNEXPECTED_CONTENT, "Unexpected content for the request (GET or HEAD)");
             }

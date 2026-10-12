@@ -267,6 +267,8 @@ Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
 
+Event coordinates use 32-bit offsets and lengths. On 64-bit native targets, `parse()` rejects a current input or managed aggregate larger than `u32::MAX` with `ERROR_INPUT_TOO_LARGE` before reading the input.
+
 After a parser error, subsequent calls return `0`, emit no events or callbacks, and do not copy or retain new input. The original error and any previously retained input remain available until reset or destruction. Call `reset()` before reusing the parser.
 
 #### `Parser::reset(&mut self, keep_parsed: bool)`
@@ -379,7 +381,7 @@ Destroys a parser.
 
 Parses `data` up to `limit` characters.
 
-It returns the number of consumed characters.
+It returns the number of consumed characters. On 64-bit native targets, inputs or managed aggregates larger than `u32::MAX` are rejected with `ERROR_INPUT_TOO_LARGE` before the data pointer is read.
 
 ### `milo_reset(parser: *mut Parser, keep_parsed: bool)`
 

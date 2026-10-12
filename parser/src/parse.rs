@@ -47,6 +47,17 @@ impl Parser {
       return 0;
     }
 
+    // Event offsets and lengths are encoded as u32. Reject oversized native
+    // ranges before constructing a slice or narrowing event coordinates.
+    if limit > u32::MAX as usize {
+      self.position = 0;
+      self.fail(ERROR_INPUT_TOO_LARGE, "Input exceeds the 32-bit event coordinate limit");
+      if self.active_callbacks != 0 {
+        self.invoke_callbacks();
+      }
+      return 0;
+    }
+
     let input = unsafe { from_raw_parts(input, limit) };
 
     // Set the data to analyze, prepending unconsumed data from previous iteration
@@ -56,8 +67,23 @@ impl Parser {
     let unconsumed_len = self.unconsumed_len;
 
     let mut data = if self.manage_unconsumed && unconsumed_len > 0 {
+      let Some(aggregate_limit) = limit
+        .checked_add(unconsumed_len)
+        .filter(|size| *size <= u32::MAX as usize)
+      else {
+        self.position = 0;
+        self.fail(
+          ERROR_INPUT_TOO_LARGE,
+          "Managed input exceeds the 32-bit event coordinate limit",
+        );
+        if self.active_callbacks != 0 {
+          self.invoke_callbacks();
+        }
+        return 0;
+      };
+
       unsafe {
-        limit += unconsumed_len;
+        limit = aggregate_limit;
         let unconsumed = from_raw_parts(self.unconsumed, unconsumed_len);
 
         // Rebuild a contiguous view so state handlers can scan across parse-call

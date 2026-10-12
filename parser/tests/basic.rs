@@ -4,9 +4,9 @@ mod helpers;
 use std::ffi::c_uchar;
 
 use milo_parser::{
-  CALLBACK_ACTIVE_ON_HEADERS, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER, ERROR_UNEXPECTED_STATE,
-  EVENT_ACTIVE_ON_HEADER_NAME, EVENT_ACTIVE_ON_HEADER_VALUE, STATE_BODY_DECISION, STATE_ERROR, STATE_FINISH,
-  STATE_HEADER, STATE_START,
+  CALLBACK_ACTIVE_ON_ERROR, CALLBACK_ACTIVE_ON_HEADERS, ERROR_INPUT_TOO_LARGE, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER,
+  ERROR_UNEXPECTED_STATE, EVENT_ACTIVE_ON_HEADER_NAME, EVENT_ACTIVE_ON_HEADER_VALUE, STATE_BODY_DECISION, STATE_ERROR,
+  STATE_FINISH, STATE_HEADER, STATE_START,
 };
 
 use crate::helpers::{context, create_parser, http, parse};
@@ -394,6 +394,43 @@ fn basic_complete_rejects_invalid_state() {
   assert_eq!(parser.state, STATE_ERROR);
   assert_eq!(parser.error_code, ERROR_UNEXPECTED_STATE);
   assert_eq!(parser.error_description_str(), "Invalid state");
+}
+
+#[cfg(target_pointer_width = "64")]
+fn count_oversized_error(parser: &mut milo_parser::Parser, _at: usize, _len: usize) {
+  let calls = unsafe { &mut *(parser.context as *mut usize) };
+  *calls += 1;
+}
+
+#[cfg(target_pointer_width = "64")]
+#[test]
+fn basic_oversized_event_coordinates_are_rejected_before_input_access() {
+  let mut parser = milo_parser::Parser::new();
+  let mut error_calls = 0usize;
+  parser.context = &mut error_calls as *mut usize as *mut _;
+  parser.callbacks.on_error = count_oversized_error;
+  parser.active_callbacks = CALLBACK_ACTIVE_ON_ERROR;
+  let dangling = std::ptr::NonNull::<u8>::dangling().as_ptr();
+
+  assert_eq!(parser.parse(dangling, u32::MAX as usize + 1), 0);
+  assert_eq!(parser.state, STATE_ERROR);
+  assert_eq!(parser.error_code, ERROR_INPUT_TOO_LARGE);
+  assert_eq!(error_calls, 1);
+
+  parser.reset(false);
+  parser.manage_unconsumed = true;
+  parser.unconsumed = dangling;
+  parser.unconsumed_len = u32::MAX as usize;
+  let current = b"x";
+  let consumed = parser.parse(current.as_ptr(), current.len());
+  // The synthetic retained pointer was never allocated and must not be freed.
+  parser.unconsumed = std::ptr::null();
+  parser.unconsumed_len = 0;
+
+  assert_eq!(consumed, 0);
+  assert_eq!(parser.state, STATE_ERROR);
+  assert_eq!(parser.error_code, ERROR_INPUT_TOO_LARGE);
+  assert_eq!(error_calls, 2);
 }
 
 #[test]

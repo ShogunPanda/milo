@@ -15,8 +15,11 @@ pub fn event_with_range(input: TokenStream) -> TokenStream {
   let length = definition.length.as_ref().expect("event_with_range requires length");
   let needed = quote! { EVENT_RANGE_SIZE };
   let emit = quote! {
-    let at = (self.position + #offset) as u32;
-    let len = (#length) as u32;
+    let at = self.position.checked_add(#offset)
+      .and_then(|value| u32::try_from(value).ok())
+      .expect("event offset exceeds the validated 32-bit coordinate range");
+    let len = u32::try_from(#length)
+      .expect("event length exceeds the validated 32-bit coordinate range");
     unsafe {
       *self.events.add(event_cursor) = #event_type;
       core::ptr::write_unaligned(
@@ -52,7 +55,8 @@ pub fn event_with_error(input: TokenStream) -> TokenStream {
   let bitmask = format_ident!("EVENT_ACTIVE_{}", definition.identifier.to_string().to_uppercase());
   let needed = quote! { EVENT_ERROR_SIZE };
   let emit = quote! {
-    let at = self.position as u32;
+    let at = u32::try_from(self.position)
+      .expect("error offset exceeds the validated 32-bit coordinate range");
     unsafe {
       *self.events.add(event_cursor) = #event_type;
       core::ptr::write_unaligned(
@@ -85,7 +89,9 @@ pub fn event_with_metadata(input: TokenStream) -> TokenStream {
   let offset = definition.offset.unwrap_or_else(|| syn::parse_quote! { 0 });
   let needed = quote! { EVENT_METADATA_SIZE };
   let emit = quote! {
-    let at = (self.position + #offset) as u32;
+    let at = self.position.checked_add(#offset)
+      .and_then(|value| u32::try_from(value).ok())
+      .expect("metadata offset exceeds the validated 32-bit coordinate range");
     let status_or_method = if self.is_request { self.method as u16 } else { self.status as u16 };
     let body_kind = if self.has_content_length { 0u8 } else if self.has_chunked_transfer_encoding { 1u8 } else { 2u8 };
     let should_keep_alive = (!self.has_connection_close) as u8;

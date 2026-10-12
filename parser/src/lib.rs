@@ -228,10 +228,14 @@ impl Parser {
       return false;
     }
 
+    let (Ok(at), Ok(len)) = (u32::try_from(at), u32::try_from(len)) else {
+      return false;
+    };
+
     unsafe {
       *self.events.add(*event_cursor) = event_type;
-      core::ptr::write_unaligned(self.events.add(*event_cursor + 1) as *mut u32, (at as u32).to_le());
-      core::ptr::write_unaligned(self.events.add(*event_cursor + 5) as *mut u32, (len as u32).to_le());
+      core::ptr::write_unaligned(self.events.add(*event_cursor + 1) as *mut u32, at.to_le());
+      core::ptr::write_unaligned(self.events.add(*event_cursor + 5) as *mut u32, len.to_le());
     }
     *event_cursor += EVENT_RANGE_SIZE;
     true
@@ -243,12 +247,13 @@ impl Parser {
       return false;
     }
 
+    let Ok(position) = u32::try_from(self.position) else {
+      return false;
+    };
+
     unsafe {
       *self.events.add(*event_cursor) = EVENT_ERROR;
-      core::ptr::write_unaligned(
-        self.events.add(*event_cursor + 1) as *mut u32,
-        (self.position as u32).to_le(),
-      );
+      core::ptr::write_unaligned(self.events.add(*event_cursor + 1) as *mut u32, position.to_le());
       *self.events.add(*event_cursor + 5) = self.error_code;
     }
     *event_cursor += EVENT_ERROR_SIZE;

@@ -25,6 +25,10 @@ impl Parser {
   ///
   /// It returns the number of consumed characters.
   pub fn parse(&mut self, input: *const c_uchar, limit: usize) -> usize {
+    if !self.can_mutate() {
+      return 0;
+    }
+
     let mut event_cursor = 0usize;
     let mut failed = false;
     let active_events = self.active_events | self.active_callbacks;
@@ -1489,7 +1493,7 @@ impl Parser {
     }
 
     if self.active_callbacks != 0 {
-      self.invoke_callbacks();
+      self.invoke_callbacks(event_cursor + EVENT_END_SIZE);
     }
 
     // Return the number of consumed bytes
@@ -1502,6 +1506,10 @@ impl Parser {
   /// Milo after headers were parsed, then need Milo to perform the normal
   /// completion transition and emit completion events.
   pub fn complete(&mut self) {
+    if !self.can_mutate() {
+      return;
+    }
+
     match self.state {
       STATE_BODY_DECISION
       | STATE_TUNNEL

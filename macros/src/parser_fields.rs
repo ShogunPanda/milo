@@ -46,6 +46,8 @@ struct ParserStub {
   unconsumed: WasmPointer,
   unconsumed_len: WasmUsize,
   error_description_len: u8,
+  callback_replay: bool,
+  destroy_pending: bool,
   events: WasmPointer,
 }
 

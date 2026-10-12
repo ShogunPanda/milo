@@ -24,10 +24,10 @@ pub fn generate_callbacks(callbacks: &[String]) -> TokenStream {
 
       quote! {
         #event_const => {
-          let at = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 1) as *const u32) }.to_le() as usize;
-          let len = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 5) as *const u32) }.to_le() as usize;
-          if self.active_callbacks & #active_const != 0 {
-            unsafe { #callback(self.ptr, at, len); }
+          let at = unsafe { core::ptr::read_unaligned(events.as_ptr().add(cursor + 1) as *const u32) }.to_le() as usize;
+          let len = unsafe { core::ptr::read_unaligned(events.as_ptr().add(cursor + 5) as *const u32) }.to_le() as usize;
+          if active_callbacks & #active_const != 0 {
+            unsafe { #callback(parser_ptr, at, len); }
           }
           cursor += EVENT_RANGE_SIZE;
         }
@@ -65,34 +65,49 @@ pub fn generate_callbacks(callbacks: &[String]) -> TokenStream {
     #[cfg(target_family = "wasm")]
     impl Parser {
       #[inline]
-      fn invoke_callbacks(&mut self) {
+      fn invoke_callbacks(&mut self, event_len: usize) {
+        if self.callback_replay || event_len == 0 || event_len > EVENTS_BUFFER_SIZE {
+          return;
+        }
+
+        let events = unsafe { core::slice::from_raw_parts(self.events, event_len) }.to_vec();
+        let active_callbacks = self.active_callbacks;
+        let parser_ptr = self as *mut Parser as *mut c_void;
+        let replay_flag = core::ptr::addr_of_mut!(self.callback_replay);
+        unsafe { core::ptr::write_volatile(replay_flag, true); }
+
+        struct ReplayGuard(*mut bool);
+        impl Drop for ReplayGuard {
+          fn drop(&mut self) { unsafe { core::ptr::write_volatile(self.0, false); } }
+        }
+        let _guard = ReplayGuard(replay_flag);
         let mut cursor = 0usize;
 
-        loop {
-          let event_type = unsafe { *self.events.add(cursor) };
+        while cursor < events.len() {
+          let event_type = events[cursor];
 
           match event_type {
             EVENT_END => break,
             EVENT_ERROR => {
-              let at = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 1) as *const u32) }.to_le() as usize;
-              if self.active_callbacks & CALLBACK_ACTIVE_ON_ERROR != 0 {
-                unsafe { on_error(self.ptr, at, 0); }
+              let at = unsafe { core::ptr::read_unaligned(events.as_ptr().add(cursor + 1) as *const u32) }.to_le() as usize;
+              if active_callbacks & CALLBACK_ACTIVE_ON_ERROR != 0 {
+                unsafe { on_error(parser_ptr, at, 0); }
               }
               cursor += EVENT_ERROR_SIZE;
             }
             EVENT_HEADERS => {
-              let at = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 1) as *const u32) }.to_le() as usize;
-              let method_or_status = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 5) as *const u16) }.to_le() as u32;
-              let should_keep_alive = unsafe { *self.events.add(cursor + 7) } != 0;
-              let should_upgrade = unsafe { *self.events.add(cursor + 8) } != 0;
-              let has_trailers = unsafe { *self.events.add(cursor + 9) } != 0;
-              let body_kind = unsafe { *self.events.add(cursor + 10) };
-              let content_length = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 11) as *const u64) }.to_le() as f64;
+              let at = unsafe { core::ptr::read_unaligned(events.as_ptr().add(cursor + 1) as *const u32) }.to_le() as usize;
+              let method_or_status = unsafe { core::ptr::read_unaligned(events.as_ptr().add(cursor + 5) as *const u16) }.to_le() as u32;
+              let should_keep_alive = events[cursor + 7] != 0;
+              let should_upgrade = events[cursor + 8] != 0;
+              let has_trailers = events[cursor + 9] != 0;
+              let body_kind = events[cursor + 10];
+              let content_length = unsafe { core::ptr::read_unaligned(events.as_ptr().add(cursor + 11) as *const u64) }.to_le() as f64;
 
-              if self.active_callbacks & CALLBACK_ACTIVE_ON_HEADERS != 0 {
+              if active_callbacks & CALLBACK_ACTIVE_ON_HEADERS != 0 {
                 unsafe {
                   on_headers(
-                    self.ptr,
+                    parser_ptr,
                     at,
                     method_or_status,
                     should_keep_alive,
@@ -107,6 +122,10 @@ pub fn generate_callbacks(callbacks: &[String]) -> TokenStream {
             }
             #(#replay_arms)*
             _ => break,
+          }
+
+          if unsafe { core::ptr::read_volatile(core::ptr::addr_of!(self.destroy_pending)) } {
+            break;
           }
         }
       }

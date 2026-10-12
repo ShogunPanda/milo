@@ -22,6 +22,8 @@ Callbacks are dispatched only when enabled with `setActiveCallbacks`.
 
 Callbacks are disabled by default.
 
+Callback delivery uses an immutable snapshot of the current event batch and activation mask. While that batch is being replayed, operations that mutate the same parser are ignored and nested `parse()` calls return `0`. Calling `destroy()` is deferred until replay ends and stops delivery of the remaining callbacks in that batch. JavaScript callback exceptions are captured and rethrown only after Rust has cleaned up replay state.
+
 ### Constants
 
 The module exports several constants (`*` is used to denote a family prefix):

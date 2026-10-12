@@ -8,6 +8,12 @@ use std::ffi::{CString, c_char, c_uchar};
 use crate::parse;
 use crate::{Callbacks, Errors, Events, Methods, Parser, States};
 
+unsafe fn with_mutable_parser(parser: *mut Parser, mutate: impl FnOnce(&mut Parser)) {
+  if unsafe { Parser::can_mutate_raw(parser) } {
+    mutate(unsafe { &mut *parser });
+  }
+}
+
 #[repr(C)]
 pub struct CStringWithLength {
   pub ptr: *const c_uchar,
@@ -70,39 +76,45 @@ pub extern "C" fn milo_destroy(parser: *mut Parser) {
     return;
   }
 
-  unsafe {
-    let _ = Box::from_raw(parser);
+  if unsafe { Parser::request_destroy_raw(parser) } {
+    unsafe {
+      let _ = Box::from_raw(parser);
+    }
   }
 }
 
 /// Parses a slice of characters. It returns the number of consumed characters.
 #[unsafe(no_mangle)]
 pub extern "C" fn milo_parse(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize {
-  unsafe { (*parser).parse(data, limit) }
+  if !unsafe { Parser::can_mutate_raw(parser) } {
+    return 0;
+  }
+
+  let consumed = unsafe { (*parser).parse(data, limit) };
+  if unsafe { Parser::should_destroy_after_call_raw(parser) } {
+    unsafe {
+      let _ = Box::from_raw(parser);
+    }
+  }
+  consumed
 }
 
 /// Sets the parser event bitmask.
 #[unsafe(no_mangle)]
 pub extern "C" fn milo_set_active_events(parser: *mut Parser, value: u64) {
-  unsafe {
-    (*parser).active_events = value;
-  }
+  unsafe { with_mutable_parser(parser, |parser| parser.active_events = value) }
 }
 
 /// Sets the maximum body payload consumed by a single parse invocation.
 #[unsafe(no_mangle)]
 pub extern "C" fn milo_set_max_body_payload(parser: *mut Parser, value: u64) {
-  unsafe {
-    (*parser).max_body_payload = value;
-  }
+  unsafe { with_mutable_parser(parser, |parser| parser.max_body_payload = value) }
 }
 
 /// Sets whether parsing should stop after headers have completed.
 #[unsafe(no_mangle)]
 pub extern "C" fn milo_set_suspend_after_headers(parser: *mut Parser, value: bool) {
-  unsafe {
-    (*parser).suspend_after_headers = value;
-  }
+  unsafe { with_mutable_parser(parser, |parser| parser.suspend_after_headers = value) }
 }
 
 /// Resets a parser. The second parameters specifies if to also reset the
@@ -120,35 +132,37 @@ pub extern "C" fn milo_set_suspend_after_headers(parser: *mut Parser, value: boo
 ///   * debug
 ///   * context
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_reset(parser: *mut Parser, keep_parsed: bool) { unsafe { (*parser).reset(keep_parsed) } }
+pub extern "C" fn milo_reset(parser: *mut Parser, keep_parsed: bool) {
+  unsafe { with_mutable_parser(parser, |parser| parser.reset(keep_parsed)) }
+}
 
 /// Clears all values about the message in the parser.
 ///
 /// The autodetect and is_request fields are not cleared.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_clear(parser: *mut Parser) { unsafe { (*parser).clear() } }
+pub extern "C" fn milo_clear(parser: *mut Parser) { unsafe { with_mutable_parser(parser, Parser::clear) } }
 
 /// Pauses the parser. It will have to be resumed via `milo_resume`.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_pause(parser: *mut Parser) { unsafe { (*parser).pause() } }
+pub extern "C" fn milo_pause(parser: *mut Parser) { unsafe { with_mutable_parser(parser, Parser::pause) } }
 
 /// Resumes the parser.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_resume(parser: *mut Parser) { unsafe { (*parser).resume() } }
+pub extern "C" fn milo_resume(parser: *mut Parser) { unsafe { with_mutable_parser(parser, Parser::resume) } }
 
 /// Completes the current message without consuming more input.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_complete(parser: *mut Parser) { unsafe { (*parser).complete() } }
+pub extern "C" fn milo_complete(parser: *mut Parser) { unsafe { with_mutable_parser(parser, Parser::complete) } }
 
 /// Marks the parser as finished. Any new data received via `milo_parse` will
 /// put the parser in the error state.
 #[unsafe(no_mangle)]
-pub extern "C" fn milo_finish(parser: *mut Parser) { unsafe { (*parser).finish() } }
+pub extern "C" fn milo_finish(parser: *mut Parser) { unsafe { with_mutable_parser(parser, Parser::finish) } }
 
 /// Marks the parsing a failed, setting a error code and and error message.
 #[unsafe(no_mangle)]
 pub extern "C" fn milo_fail(parser: *mut Parser, code: u8, description: CStringWithLength) {
-  unsafe { (*parser).fail(code, description.into()) };
+  unsafe { with_mutable_parser(parser, |parser| parser.fail(code, description.into())) }
 }
 
 /// Returns the current parser's state as string.

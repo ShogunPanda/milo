@@ -70,6 +70,10 @@ pub struct Parser {
   pub unconsumed_len: usize,
   pub error_description_len: u8,
 
+  // Callback replay state. These fields are managed internally.
+  callback_replay: bool,
+  destroy_pending: bool,
+
   // Event buffer. Keep this at the end of the struct for external readers.
   pub events: *mut c_uchar,
 }
@@ -143,8 +147,33 @@ impl Parser {
       unconsumed: ptr::null(),
       unconsumed_len: 0,
       error_description_len: 0,
+      callback_replay: false,
+      destroy_pending: false,
       events: events_ptr,
     }
+  }
+
+  #[inline(always)]
+  pub(crate) fn can_mutate(&self) -> bool { !self.callback_replay }
+
+  #[inline(always)]
+  pub(crate) unsafe fn can_mutate_raw(parser: *const Parser) -> bool {
+    !unsafe { core::ptr::read_volatile(core::ptr::addr_of!((*parser).callback_replay)) }
+  }
+
+  #[inline(always)]
+  pub(crate) unsafe fn request_destroy_raw(parser: *mut Parser) -> bool {
+    if unsafe { Self::can_mutate_raw(parser) } {
+      true
+    } else {
+      unsafe { core::ptr::write_volatile(core::ptr::addr_of_mut!((*parser).destroy_pending), true) };
+      false
+    }
+  }
+
+  #[inline(always)]
+  pub(crate) unsafe fn should_destroy_after_call_raw(parser: *const Parser) -> bool {
+    unsafe { Self::can_mutate_raw(parser) && core::ptr::read_volatile(core::ptr::addr_of!((*parser).destroy_pending)) }
   }
 
   /// Resets a parser. The second parameters specifies if to also reset the
@@ -161,6 +190,10 @@ impl Parser {
   ///   * debug
   ///   * context
   pub fn reset(&mut self, keep_parsed: bool) {
+    if !self.can_mutate() {
+      return;
+    }
+
     self.state = STATE_START;
     self.paused = false;
 
@@ -199,6 +232,10 @@ impl Parser {
 
   /// Clears all values about the message in the parser.
   pub fn clear(&mut self) {
+    if !self.can_mutate() {
+      return;
+    }
+
     self.is_connect = false;
     self.method = 0;
     self.status = 0;
@@ -256,14 +293,26 @@ impl Parser {
   }
 
   /// Pauses the parser. It will have to be resumed via `resume`.
-  pub fn pause(&mut self) { self.paused = true; }
+  pub fn pause(&mut self) {
+    if self.can_mutate() {
+      self.paused = true;
+    }
+  }
 
   /// Resumes the parser.
-  pub fn resume(&mut self) { self.paused = false; }
+  pub fn resume(&mut self) {
+    if self.can_mutate() {
+      self.paused = false;
+    }
+  }
 
   /// Marks the parser as finished. Any new data received via `parse` will
   /// put the parser in the error state.
   pub fn finish(&mut self) {
+    if !self.can_mutate() {
+      return;
+    }
+
     match self.state {
       // If the parser is one of the initial states, simply jump to finish
       STATE_START | STATE_REQUEST_LINE | STATE_STATUS_LINE | STATE_FINISH => {
@@ -294,6 +343,10 @@ impl Parser {
   /// Marks parsing as failed and starts a standalone error event batch.
   #[inline(always)]
   pub fn fail(&mut self, code: u8, description: &str) {
+    if !self.can_mutate() {
+      return;
+    }
+
     self.set_error(code, description);
     let mut event_cursor = 0usize;
     if (self.active_events | self.active_callbacks) & EVENT_ACTIVE_ON_ERROR != 0 {

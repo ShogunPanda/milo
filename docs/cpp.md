@@ -34,6 +34,8 @@ Callbacks are dispatched only when the corresponding `CALLBACK_ACTIVE_*` flag is
 
 Callbacks are disabled by default.
 
+Callback delivery uses an immutable snapshot of the current event batch, callback table, and activation mask. While that batch is being replayed, Milo functions that mutate the same parser are ignored and nested `milo_parse()` calls return `0`. Calling `milo_destroy()` is deferred until replay ends and stops delivery of the remaining callbacks in that batch. Direct field writes during callbacks remain unsupported.
+
 ## Constants
 
 The file `milo.h` defines several constants (`*` is used to denote a family prefix):

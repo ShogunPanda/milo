@@ -27,6 +27,10 @@ fn issue_26__preserve_events_before_error() {
           };
           let mut parser = Parser::new();
           parser.autodetect = false;
+          // This regression intentionally creates thousands of fields to fill the event
+          // buffer.
+          parser.max_header_bytes = 0;
+          parser.max_header_count = 0;
           parser.active_events =
             EVENT_ACTIVE_ON_HEADERS | EVENT_ACTIVE_ON_MESSAGE_COMPLETE | EVENT_ACTIVE_ON_HEADER_VALUE;
           if errors {

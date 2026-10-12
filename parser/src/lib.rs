@@ -22,6 +22,10 @@ pub struct Parser {
   pub context: *mut c_void,
   pub max_start_line_length: usize,
   pub max_header_length: usize,
+  pub max_header_bytes: usize,
+  pub max_header_count: usize,
+  pub max_trailer_bytes: usize,
+  pub max_trailer_count: usize,
   pub max_body_payload: u64,
   pub autodetect: bool,
   pub is_request: bool,
@@ -53,6 +57,10 @@ pub struct Parser {
   pub has_connection_upgrade: bool,
   pub has_upgrade: bool,
   pub has_trailers: bool,
+  pub header_bytes: usize,
+  pub header_count: usize,
+  pub trailer_bytes: usize,
+  pub trailer_count: usize,
 
   // Callback handling
   pub active_callbacks: u64,
@@ -101,6 +109,10 @@ impl Parser {
       context: ptr::null_mut(),
       max_start_line_length: 8192,
       max_header_length: 8192,
+      max_header_bytes: 65536,
+      max_header_count: 100,
+      max_trailer_bytes: 65536,
+      max_trailer_count: 100,
       max_body_payload: 0,
       autodetect: true,
       is_request: false,
@@ -130,6 +142,10 @@ impl Parser {
       has_connection_upgrade: false,
       has_upgrade: false,
       has_trailers: false,
+      header_bytes: 0,
+      header_count: 0,
+      trailer_bytes: 0,
+      trailer_count: 0,
       // Callbacks handling
       active_callbacks: 0,
       active_events: 0,
@@ -158,6 +174,13 @@ impl Parser {
   ///   * suspend_after_headers
   ///   * manage_unconsumed
   ///   * continue_without_data
+  ///   * max_start_line_length
+  ///   * max_header_length
+  ///   * max_header_bytes
+  ///   * max_header_count
+  ///   * max_trailer_bytes
+  ///   * max_trailer_count
+  ///   * max_body_payload
   ///   * debug
   ///   * context
   pub fn reset(&mut self, keep_parsed: bool) {
@@ -209,6 +232,10 @@ impl Parser {
     self.has_connection_upgrade = false;
     self.has_upgrade = false;
     self.has_trailers = false;
+    self.header_bytes = 0;
+    self.header_count = 0;
+    self.trailer_bytes = 0;
+    self.trailer_count = 0;
     self.content_length = 0;
     self.chunk_size = 0;
     self.remaining_content_length = 0;

@@ -161,6 +161,26 @@ pub fn get_max_header_length(parser: *const c_void) -> usize {
   unsafe { (*(parser as *const Parser)).max_header_length }
 }
 
+// Get the parser max_header_bytes property.
+#[unsafe(no_mangle)]
+pub fn get_max_header_bytes(parser: *const c_void) -> usize { unsafe { (*(parser as *const Parser)).max_header_bytes } }
+
+// Get the parser max_header_count property.
+#[unsafe(no_mangle)]
+pub fn get_max_header_count(parser: *const c_void) -> usize { unsafe { (*(parser as *const Parser)).max_header_count } }
+
+// Get the parser max_trailer_bytes property.
+#[unsafe(no_mangle)]
+pub fn get_max_trailer_bytes(parser: *const c_void) -> usize {
+  unsafe { (*(parser as *const Parser)).max_trailer_bytes }
+}
+
+// Get the parser max_trailer_count property.
+#[unsafe(no_mangle)]
+pub fn get_max_trailer_count(parser: *const c_void) -> usize {
+  unsafe { (*(parser as *const Parser)).max_trailer_count }
+}
+
 // Get the parser max_body_payload property.
 #[unsafe(no_mangle)]
 pub fn get_max_body_payload(parser: *const c_void) -> u64 { unsafe { (*(parser as *const Parser)).max_body_payload } }
@@ -310,6 +330,34 @@ pub fn set_max_start_line_length(parser: *mut c_void, value: usize) {
 pub fn set_max_header_length(parser: *mut c_void, value: usize) {
   unsafe {
     (*(parser as *mut Parser)).max_header_length = value;
+  }
+}
+
+#[unsafe(no_mangle)]
+pub fn set_max_header_bytes(parser: *mut c_void, value: usize) {
+  unsafe {
+    (*(parser as *mut Parser)).max_header_bytes = value;
+  }
+}
+
+#[unsafe(no_mangle)]
+pub fn set_max_header_count(parser: *mut c_void, value: usize) {
+  unsafe {
+    (*(parser as *mut Parser)).max_header_count = value;
+  }
+}
+
+#[unsafe(no_mangle)]
+pub fn set_max_trailer_bytes(parser: *mut c_void, value: usize) {
+  unsafe {
+    (*(parser as *mut Parser)).max_trailer_bytes = value;
+  }
+}
+
+#[unsafe(no_mangle)]
+pub fn set_max_trailer_count(parser: *mut c_void, value: usize) {
+  unsafe {
+    (*(parser as *mut Parser)).max_trailer_count = value;
   }
 }
 

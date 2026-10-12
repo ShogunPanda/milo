@@ -485,6 +485,19 @@ impl Parser {
                   }
                 }
 
+                let next_header_count = match self.header_count.checked_add(1) {
+                  Some(count) if self.max_header_count == 0 || count <= self.max_header_count => count,
+                  _ => {
+                    fail!(UNEXPECTED_CHARACTER, "Too many header fields");
+                  }
+                };
+                let next_header_bytes = match self.header_bytes.checked_add(cr + 2) {
+                  Some(bytes) if self.max_header_bytes == 0 || bytes <= self.max_header_bytes => bytes,
+                  _ => {
+                    fail!(UNEXPECTED_CHARACTER, "Header section too large");
+                  }
+                };
+
                 // RFC 9112 section.4
                 // RFC 9110 section 5.5 and 5.6
                 let header_name_start = 0;
@@ -796,6 +809,8 @@ impl Parser {
                   );
                 }
 
+                self.header_count = next_header_count;
+                self.header_bytes = next_header_bytes;
                 advance!(cr + 2);
               }
               HeaderLineScanResult::Invalid(invalid) => {
@@ -1324,6 +1339,19 @@ impl Parser {
                   next!();
                 }
 
+                let next_trailer_count = match self.trailer_count.checked_add(1) {
+                  Some(count) if self.max_trailer_count == 0 || count <= self.max_trailer_count => count,
+                  _ => {
+                    fail!(UNEXPECTED_CHARACTER, "Too many trailer fields");
+                  }
+                };
+                let next_trailer_bytes = match self.trailer_bytes.checked_add(cr + 2) {
+                  Some(bytes) if self.max_trailer_bytes == 0 || bytes <= self.max_trailer_bytes => bytes,
+                  _ => {
+                    fail!(UNEXPECTED_CHARACTER, "Trailer section too large");
+                  }
+                };
+
                 let trailer_name_start = 0;
                 let trailer_name_end = match find_char(data, trailer_name_start, cr, b':') {
                   Some(index) if index > trailer_name_start => index,
@@ -1358,6 +1386,9 @@ impl Parser {
                     trailer_value_end - trailer_value_start
                   );
                 }
+
+                self.trailer_count = next_trailer_count;
+                self.trailer_bytes = next_trailer_bytes;
                 advance!(cr + 2);
               }
               HeaderLineScanResult::Invalid(invalid) => {

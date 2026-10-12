@@ -89,6 +89,38 @@ pub extern "C" fn milo_set_active_events(parser: *mut Parser, value: u64) {
   }
 }
 
+/// Sets the maximum aggregate initial-header bytes per message.
+#[unsafe(no_mangle)]
+pub extern "C" fn milo_set_max_header_bytes(parser: *mut Parser, value: usize) {
+  unsafe {
+    (*parser).max_header_bytes = value;
+  }
+}
+
+/// Sets the maximum initial-header field count per message.
+#[unsafe(no_mangle)]
+pub extern "C" fn milo_set_max_header_count(parser: *mut Parser, value: usize) {
+  unsafe {
+    (*parser).max_header_count = value;
+  }
+}
+
+/// Sets the maximum aggregate trailer bytes per message.
+#[unsafe(no_mangle)]
+pub extern "C" fn milo_set_max_trailer_bytes(parser: *mut Parser, value: usize) {
+  unsafe {
+    (*parser).max_trailer_bytes = value;
+  }
+}
+
+/// Sets the maximum trailer field count per message.
+#[unsafe(no_mangle)]
+pub extern "C" fn milo_set_max_trailer_count(parser: *mut Parser, value: usize) {
+  unsafe {
+    (*parser).max_trailer_count = value;
+  }
+}
+
 /// Sets the maximum body payload consumed by a single parse invocation.
 #[unsafe(no_mangle)]
 pub extern "C" fn milo_set_max_body_payload(parser: *mut Parser, value: u64) {
@@ -114,6 +146,12 @@ pub extern "C" fn milo_set_suspend_after_headers(parser: *mut Parser, value: boo
 ///   * autodetect
 ///   * is_request
 ///   * suspend_after_headers
+///   * max_start_line_length
+///   * max_header_length
+///   * max_header_bytes
+///   * max_header_count
+///   * max_trailer_bytes
+///   * max_trailer_count
 ///   * max_body_payload
 ///   * manage_unconsumed
 ///   * continue_without_data

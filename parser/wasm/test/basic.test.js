@@ -150,6 +150,132 @@ it('basic_connection_close', t => {
   assert.equal(milo.getState(parser), milo.STATE_FINISH)
 })
 
+it('basic_header_and_trailer_budget_defaults', t => {
+  const { milo, parser } = createParser(t, setup)
+
+  assert.equal(milo.getMaxHeaderBytes(parser), 65536)
+  assert.equal(milo.getMaxHeaderCount(parser), 100)
+  assert.equal(milo.getMaxTrailerBytes(parser), 65536)
+  assert.equal(milo.getMaxTrailerCount(parser), 100)
+})
+
+it('basic_initial_header_budgets', t => {
+  const message = 'GET / HTTP/1.1\r\nA: b\r\nB: c\r\n\r\n'
+  const current = (milo, parser, field) => new DataView(milo.memory.buffer).getUint32(parser + field, true)
+
+  {
+    const { milo, parser, parse } = createParser(t, setup)
+    milo.setShouldAutodetect(parser, false)
+    milo.setIsRequest(parser, true)
+    milo.setMaxHeaderBytes(parser, 12)
+    milo.setMaxHeaderCount(parser, 2)
+    assert.equal(parse(message), message.length)
+    assert.equal(current(milo, parser, milo.PARSER_FIELD_HEADER_BYTES), 12)
+    assert.equal(current(milo, parser, milo.PARSER_FIELD_HEADER_COUNT), 2)
+    assert.notEqual(milo.getState(parser), milo.STATE_ERROR)
+  }
+
+  for (const [maxBytes, maxCount, description] of [
+    [11, 2, 'Header section too large'],
+    [12, 1, 'Too many header fields']
+  ]) {
+    const { milo, parser, parse } = createParser(t, setup)
+    milo.setShouldAutodetect(parser, false)
+    milo.setIsRequest(parser, true)
+    milo.setMaxHeaderBytes(parser, maxBytes)
+    milo.setMaxHeaderCount(parser, maxCount)
+    parse(message)
+    assert.equal(milo.getState(parser), milo.STATE_ERROR)
+    assert.equal(current(milo, parser, milo.PARSER_FIELD_HEADER_BYTES), 6)
+    assert.equal(current(milo, parser, milo.PARSER_FIELD_HEADER_COUNT), 1)
+    assert.equal(milo.getErrorDescription(parser), description)
+  }
+
+  {
+    const unlimited = `GET / HTTP/1.1\r\n${'X: y\r\n'.repeat(101)}\r\n`
+    const { milo, parser, parse } = createParser(t, setup)
+    milo.setShouldAutodetect(parser, false)
+    milo.setIsRequest(parser, true)
+    milo.setMaxHeaderBytes(parser, 0)
+    milo.setMaxHeaderCount(parser, 0)
+    assert.equal(parse(unlimited), unlimited.length)
+    assert.equal(current(milo, parser, milo.PARSER_FIELD_HEADER_COUNT), 101)
+    assert.notEqual(milo.getState(parser), milo.STATE_ERROR)
+  }
+})
+
+it('basic_trailer_budgets', t => {
+  const message = 'POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nA: b\r\nB: c\r\n\r\n'
+  const current = (milo, parser, field) => new DataView(milo.memory.buffer).getUint32(parser + field, true)
+
+  {
+    const { milo, parser, parse } = createParser(t, setup)
+    milo.setShouldAutodetect(parser, false)
+    milo.setIsRequest(parser, true)
+    milo.setMaxTrailerBytes(parser, 12)
+    milo.setMaxTrailerCount(parser, 2)
+    assert.equal(parse(message), message.length)
+    assert.equal(current(milo, parser, milo.PARSER_FIELD_TRAILER_BYTES), 12)
+    assert.equal(current(milo, parser, milo.PARSER_FIELD_TRAILER_COUNT), 2)
+    assert.notEqual(milo.getState(parser), milo.STATE_ERROR)
+  }
+
+  for (const [maxBytes, maxCount, description] of [
+    [11, 2, 'Trailer section too large'],
+    [12, 1, 'Too many trailer fields']
+  ]) {
+    const { milo, parser, parse } = createParser(t, setup)
+    milo.setShouldAutodetect(parser, false)
+    milo.setIsRequest(parser, true)
+    milo.setMaxTrailerBytes(parser, maxBytes)
+    milo.setMaxTrailerCount(parser, maxCount)
+    parse(message)
+    assert.equal(milo.getState(parser), milo.STATE_ERROR)
+    assert.equal(current(milo, parser, milo.PARSER_FIELD_TRAILER_BYTES), 6)
+    assert.equal(current(milo, parser, milo.PARSER_FIELD_TRAILER_COUNT), 1)
+    assert.equal(milo.getErrorDescription(parser), description)
+  }
+})
+
+it('basic_header_budget_survives_managed_fragments_and_event_suspension', t => {
+  const fieldCount = 4000
+  const fields = 'X: y\r\n'.repeat(fieldCount)
+  const message = `GET / HTTP/1.1\r\n${fields}\r\n`
+  const milo = setup()
+  const parser = milo.create()
+  t.after(() => milo.destroy(parser))
+
+  function parse (input) {
+    const bytes = Buffer.from(input)
+    const ptr = milo.alloc(bytes.length)
+    new Uint8Array(milo.memory.buffer, ptr, bytes.length).set(bytes)
+    return milo.parse(parser, ptr, bytes.length)
+  }
+
+  const current = field => new DataView(milo.memory.buffer).getUint32(parser + field, true)
+  milo.setShouldAutodetect(parser, false)
+  milo.setIsRequest(parser, true)
+  milo.setShouldManageUnconsumed(parser, true)
+  milo.setMaxHeaderBytes(parser, fields.length)
+  milo.setMaxHeaderCount(parser, fieldCount)
+  milo.setActiveEvents(parser, milo.EVENT_ACTIVE_ON_HEADER_NAME | milo.EVENT_ACTIVE_ON_HEADER_VALUE)
+
+  const split = 20
+  assert.equal(parse(message.slice(0, split)), 16)
+  assert.equal(current(milo.PARSER_FIELD_HEADER_COUNT), 0)
+
+  const first = parse(message.slice(split))
+  assert.ok(first < message.length - 16)
+  assert.ok(current(milo.PARSER_FIELD_HEADER_COUNT) > 0)
+  assert.ok(current(milo.PARSER_FIELD_HEADER_COUNT) < fieldCount)
+
+  assert.ok(parse('') > 0)
+  assert.equal(milo.getState(parser), milo.STATE_START)
+  assert.equal(current(milo.PARSER_FIELD_HEADER_BYTES), fields.length)
+  assert.equal(current(milo.PARSER_FIELD_HEADER_COUNT), fieldCount)
+  assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
+})
+
 it('basic_max_body_payload_content_length', t => {
   const { milo, parser, parse } = createParser(t, setup)
   milo.setShouldAutodetect(parser, false)
@@ -266,6 +392,8 @@ it('basic_event_buffer_full_stops_parsing', t => {
   const { milo, parser, parse } = createParser(t, setup)
   milo.setShouldAutodetect(parser, false)
   milo.setIsRequest(parser, false)
+  milo.setMaxHeaderBytes(parser, 0)
+  milo.setMaxHeaderCount(parser, 0)
   milo.setActiveCallbacks(parser, 0n)
   milo.setActiveEvents(parser, milo.EVENT_ACTIVE_ON_HEADER_NAME | milo.EVENT_ACTIVE_ON_HEADER_VALUE)
   let message = 'HTTP/1.1 200 OK\r\n'
@@ -310,6 +438,8 @@ it('basic_event_buffer_full_resumes_completion', () => {
     )
     const ptr = milo.alloc(message.length)
     try {
+      milo.setMaxHeaderBytes(parser, 0)
+      milo.setMaxHeaderCount(parser, 0)
       milo.setActiveCallbacks(
         parser,
         milo.CALLBACK_ACTIVE_ON_HEADER_VALUE |

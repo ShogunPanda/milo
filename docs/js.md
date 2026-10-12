@@ -543,16 +543,17 @@ The flag only affects tracing in debug-enabled builds.
 
 ## Simple API
 
-A preconfigured module instance exported as `simple`.
+A preconfigured module instance exported as `simple({ maxSpans = 65536 } = {})`.
 
-It is equivalent to calling `setup(...)` with all callbacks wired to collect parser spans automatically.
+It is equivalent to calling `setup(...)` with all callbacks wired to collect parser spans automatically. `maxSpans` is a non-negative safe integer and limits retained spans per parser.
 
 Differences from a plain `setup()` instance:
 
 - `create()` enables all callbacks automatically (`CALLBACK_ACTIVE_ALL`).
-- `destroy(parser)` also clears collected spans for that parser.
+- `destroy(parser)` also clears collected spans and overflow state for that parser.
 - A `spans` object is exposed on the module, keyed by parser id.
-- Every callback appends `[callbackType, offset, length]` to `spans[parser]`.
+- Callbacks append `[callbackType, offset, length]` until `maxSpans` is reached. Further spans are dropped and `spanOverflow[parser]` becomes `true`.
+- `drain(parser)` atomically returns `{ spans, truncated }` and resets that parser's collection. Drain long-lived parsers regularly; `truncated` reports whether spans were dropped since the previous drain.
 
 This API is useful when you want a minimal integration that records parser events without manually providing callback functions.
 
@@ -570,7 +571,10 @@ const buffer = Buffer.from(milo.memory.buffer, ptr, message.length)
 buffer.set(message, 0)
 milo.parse(parser, ptr, message.length)
 
-for (const [type, at, len] of milo.spans[parser]) {
+const batch = milo.drain(parser)
+if (batch.truncated) throw new Error('span limit reached')
+
+for (const [type, at, len] of batch.spans) {
   console.log(`[${at.toString().padStart(3, ' ')}, ${len.toString().padStart(3, ' ')}] -> ${milo.Callbacks[type]}`)
 }
 

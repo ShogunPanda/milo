@@ -50,16 +50,40 @@ function hasDebug () {
 
 /* REPLACE: setters */
 
-function simpleCreate (spans, create) {
+// The postbuild step injects generated callback references.
+// eslint-disable-next-line no-unused-vars
+function collectSpan (spans, spanOverflow, maxSpans, parser, span) {
+  if (spans[parser].length < maxSpans) {
+    spans[parser].push(span)
+  } else {
+    spanOverflow[parser] = true
+  }
+}
+
+function simpleCreate (spans, spanOverflow, create) {
   const parser = create()
   spans[parser] = []
+  spanOverflow[parser] = false
   this.setActiveCallbacks(parser, this.CALLBACK_ACTIVE_ALL)
   return parser
 }
 
-function simpleDestroy (spans, destroy, parser) {
-  spans[parser] = undefined
+function simpleDestroy (spans, spanOverflow, destroy, parser) {
+  delete spans[parser]
+  delete spanOverflow[parser]
   destroy(parser)
+}
+
+function simpleDrain (spans, spanOverflow, parser) {
+  const drained = spans[parser] ?? []
+  const truncated = spanOverflow[parser] ?? false
+
+  if (spans[parser] !== undefined) {
+    spans[parser] = []
+    spanOverflow[parser] = false
+  }
+
+  return { spans: drained, truncated }
 }
 
 export function noop () {}
@@ -116,14 +140,25 @@ export function setup (env = {}) {
   return milo
 }
 
-export function simple () {
-  const spans = {}
+export function simple ({ maxSpans = 65536 } = {}) {
+  if (!Number.isSafeInteger(maxSpans) || maxSpans < 0) {
+    throw new RangeError('maxSpans must be a non-negative safe integer')
+  }
 
-  const milo = setup({/* REPLACE: callbacks:simple */})
+  const spans = Object.create(null)
+  const spanOverflow = Object.create(null)
+
+  /* prettier-ignore */
+  const milo = setup({
+    /* REPLACE: callbacks:simple */
+  })
 
   milo.spans = spans
-  milo.create = simpleCreate.bind(milo, spans, milo.create)
-  milo.destroy = simpleDestroy.bind(milo, spans, milo.destroy)
+  milo.spanOverflow = spanOverflow
+  milo.maxSpans = maxSpans
+  milo.create = simpleCreate.bind(milo, spans, spanOverflow, milo.create)
+  milo.destroy = simpleDestroy.bind(milo, spans, spanOverflow, milo.destroy)
+  milo.drain = simpleDrain.bind(undefined, spans, spanOverflow)
 
   return milo
 }

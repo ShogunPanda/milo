@@ -1,6 +1,9 @@
 mod helpers;
 
-use milo_parser::{ERROR_NONE, METHOD_OTHER, Parser, STATE_ERROR, STATE_FINISH, STATE_START, STATE_TUNNEL};
+use milo_parser::{
+  ERROR_NONE, ERROR_UNEXPECTED_TRAILERS, EVENT_ACTIVE_ON_TRAILER_NAME, EVENT_ACTIVE_ON_TRAILER_VALUE, EVENT_END,
+  METHOD_OTHER, Parser, STATE_ERROR, STATE_FINISH, STATE_START, STATE_TUNNEL,
+};
 
 use crate::helpers::{create_parser, parse};
 
@@ -71,6 +74,98 @@ fn compliance_trailer_name_rejects_comma() {
   parse(&mut parser, &message);
 
   assert_error(&parser);
+}
+
+// RFC 9110 section 6.5.1 forbids trailer fields that affect framing,
+// routing, authentication, connection handling, or payload processing.
+#[test]
+fn compliance_forbidden_trailer_fields_rejected() {
+  for name in [
+    "Accept-Ranges",
+    "Age",
+    "Allow",
+    "Authorization",
+    "Cache-Control",
+    "Connection",
+    "Content-Disposition",
+    "Content-Encoding",
+    "Content-Length",
+    "Content-Range",
+    "Content-Type",
+    "Cookie",
+    "Date",
+    "ETag",
+    "Expect",
+    "Expires",
+    "Forwarded",
+    "Host",
+    "If-Match",
+    "If-Modified-Since",
+    "If-None-Match",
+    "If-Range",
+    "If-Unmodified-Since",
+    "Keep-Alive",
+    "Last-Modified",
+    "Location",
+    "Max-Forwards",
+    "Pragma",
+    "Proxy-Authenticate",
+    "Proxy-Authorization",
+    "Proxy-Connection",
+    "Range",
+    "Referer",
+    "Retry-After",
+    "Server",
+    "Set-Cookie",
+    "TE",
+    "Trailer",
+    "Transfer-Encoding",
+    "Upgrade",
+    "Vary",
+    "Via",
+    "Warning",
+    "WWW-Authenticate",
+    "X-Forwarded-For",
+    "X-Forwarded-Host",
+    "X-Forwarded-Proto",
+  ] {
+    let mut parser = response_parser();
+    let message = wire(&format!(
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: {name}\r\n\r\n0\r\n{name}: value\r\n\r\n"
+    ));
+
+    parse(&mut parser, &message);
+
+    assert_error(&parser);
+    assert_eq!(parser.error_code, ERROR_UNEXPECTED_TRAILERS);
+  }
+}
+
+#[test]
+fn compliance_forbidden_trailer_is_case_insensitive_and_not_delivered() {
+  let mut parser = request_parser();
+  parser.active_callbacks = 0;
+  parser.active_events = EVENT_ACTIVE_ON_TRAILER_NAME | EVENT_ACTIVE_ON_TRAILER_VALUE;
+  let message = wire(
+    "POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nTrailer: cOnTeNt-LeNgTh\r\n\r\n0\r\ncOnTeNt-LeNgTh: 1\r\n\r\n",
+  );
+
+  parse(&mut parser, &message);
+
+  assert_error(&parser);
+  assert_eq!(parser.error_code, ERROR_UNEXPECTED_TRAILERS);
+  assert_eq!(unsafe { *parser.events }, EVENT_END);
+}
+
+#[test]
+fn compliance_safe_trailer_field_accepted() {
+  let mut parser = response_parser();
+  let message =
+    wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: Digest\r\n\r\n0\r\nDigest: sha-256=:abc:\r\n\r\n");
+
+  parse(&mut parser, &message);
+
+  assert_ok(&parser);
 }
 
 // Unknown valid method tokens are accepted as extension methods.

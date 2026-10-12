@@ -454,15 +454,15 @@ fn basic_trailers() {
     r#"
         POST /chunked_w_unicorns_after_length HTTP/1.1\r\n
         Transfer-Encoding: chunked\r\n
-        Trailer: host,cache-control\r\n
+        Trailer: x-host,x-cache-control\r\n
         \r\n
         5;ilovew3;somuchlove="arethesepara\"metersfor";another="1111\"2222\"3333"\r\n
         hello\r\n
         7;blahblah;blah;somuchlove="arethesepara"\r\n
         \s world\r\n
         0\r\n
-        Host: example.com\r\n
-        Cache-Control: private\r\n\r\n
+        X-Host: example.com\r\n
+        X-Cache-Control: private\r\n\r\n
       "#,
   );
 
@@ -689,10 +689,10 @@ fn basic_empty_fields() {
         POST / HTTP/1.1\r\n
         Transfer-Encoding: chunked\r\n
         Content-Type: \r\n
-        Trailer: host\r\n
+        Trailer: x-host\r\n
         \r\n
         0\r\n
-        Host:\r\n\r\n
+        X-Host:\r\n\r\n
       "#,
   );
 

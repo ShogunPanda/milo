@@ -1343,6 +1343,10 @@ impl Parser {
                   fail!(UNEXPECTED_CHARACTER, "Invalid trailer field name character");
                 }
 
+                if is_forbidden_trailer_name(&data[trailer_name_start..trailer_name_end]) {
+                  fail!(UNEXPECTED_TRAILERS, "Forbidden trailer field");
+                }
+
                 if has_trailer_name_event {
                   event_with_range!(
                     on_trailer_name,

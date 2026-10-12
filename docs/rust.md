@@ -104,7 +104,7 @@ A struct representing a parser. It has the following fields:
 - `autodetect` (`bool`): If the parser should autodetect requests and responses. Enabled by default.
 - `is_request` (`bool`): The configured or detected message type. Set this when `autodetect` is `false`.
 - `paused` (`bool`): If the parser is paused.
-- `manage_unconsumed` (`bool`): If the parser should automatically copy and prepend unconsumed data.
+- `manage_unconsumed` (`bool`): If the parser should automatically retain and prepend unconsumed data. Retention grows geometrically and incomplete lines resume scanning at the previous endpoint, so byte-fragmented input performs linear aggregate copying and scanning.
 - `suspend_after_headers` (`bool`): If parsing should stop after headers have completed. Disabled by default.
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
 - `is_connect` (`bool`): If the current request used `CONNECT` method.

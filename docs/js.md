@@ -375,7 +375,7 @@ Returns `true` if the parser is paused.
 
 #### `shouldManageUnconsumed(parser)`
 
-Returns `true` if the parser should automatically copy and prepend unconsumed data.
+Returns `true` if the parser should automatically retain and prepend unconsumed data. Retention grows geometrically and incomplete lines resume scanning at the previous endpoint, so byte-fragmented input performs linear aggregate copying and scanning.
 
 #### `getMaxStartLineLength(parser)`
 

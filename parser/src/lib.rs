@@ -2,6 +2,7 @@
 
 extern crate alloc;
 
+use alloc::alloc::{Layout, alloc as allocate, dealloc as deallocate, handle_alloc_error, realloc};
 use alloc::ffi::CString;
 use alloc::vec::Vec;
 use alloc::{boxed::Box, format};
@@ -11,6 +12,16 @@ use core::fmt::Debug;
 use core::str;
 use core::{mem, ptr};
 use core::{slice, slice::from_raw_parts};
+
+#[repr(C)]
+struct RetainedInput {
+  capacity: usize,
+  scanned: usize,
+  copied: usize,
+  scan_work: usize,
+}
+
+const RETAINED_INPUT_MIN_CAPACITY: usize = 64;
 
 use milo_macros::generate;
 
@@ -182,15 +193,156 @@ impl Parser {
     }
   }
 
+  #[inline(always)]
+  fn retained_header(&self) -> *mut RetainedInput {
+    unsafe { self.unconsumed.cast_mut().cast::<RetainedInput>().sub(1) }
+  }
+
+  #[inline(always)]
+  fn retained_layout(capacity: usize) -> Layout {
+    Layout::from_size_align(
+      mem::size_of::<RetainedInput>()
+        .checked_add(capacity)
+        .expect("retained input capacity overflow"),
+      mem::align_of::<RetainedInput>(),
+    )
+    .expect("invalid retained input layout")
+  }
+
+  fn allocate_retained(&mut self, data: &[u8], scanned: usize, scan_work: usize) {
+    let capacity = data.len().max(RETAINED_INPUT_MIN_CAPACITY).next_power_of_two();
+    let layout = Self::retained_layout(capacity);
+    let allocation = unsafe { allocate(layout) };
+    if allocation.is_null() {
+      handle_alloc_error(layout);
+    }
+
+    let header = allocation.cast::<RetainedInput>();
+    let retained = unsafe { header.add(1).cast::<c_uchar>() };
+    unsafe {
+      header.write(RetainedInput {
+        capacity,
+        scanned,
+        copied: data.len(),
+        scan_work,
+      });
+      ptr::copy_nonoverlapping(data.as_ptr(), retained, data.len());
+    }
+    self.unconsumed = retained;
+    self.unconsumed_len = data.len();
+  }
+
+  pub(crate) fn append_unconsumed(&mut self, data: &[u8]) {
+    if data.is_empty() {
+      return;
+    }
+    if self.unconsumed_len == 0 {
+      self.allocate_retained(data, 0, 0);
+      return;
+    }
+
+    let required = self
+      .unconsumed_len
+      .checked_add(data.len())
+      .expect("retained input length overflow");
+    let retained_start = self.unconsumed.addr();
+    let retained_end = retained_start
+      .checked_add(self.unconsumed_len)
+      .expect("retained input address overflow");
+    let data_start = data.as_ptr().addr();
+    let data_end = data_start.checked_add(data.len());
+    let aliased_offset = data_end
+      .filter(|end| data_start >= retained_start && *end <= retained_end)
+      .map(|_| data_start - retained_start);
+    let mut header = self.retained_header();
+    let mut capacity = unsafe { (*header).capacity };
+    if required > capacity {
+      while capacity < required {
+        capacity = capacity.checked_mul(2).expect("retained input capacity overflow");
+      }
+      let old_capacity = unsafe { (*header).capacity };
+      let old_layout = Self::retained_layout(old_capacity);
+      let allocation = unsafe { realloc(header.cast::<u8>(), old_layout, Self::retained_layout(capacity).size()) };
+      if allocation.is_null() {
+        handle_alloc_error(Self::retained_layout(capacity));
+      }
+      header = allocation.cast::<RetainedInput>();
+      unsafe {
+        (*header).capacity = capacity;
+        (*header).copied += self.unconsumed_len;
+      }
+      self.unconsumed = unsafe { header.add(1).cast::<c_uchar>() };
+    }
+
+    unsafe {
+      let source = aliased_offset.map_or(data.as_ptr(), |offset| self.unconsumed.add(offset));
+      ptr::copy(source, self.unconsumed.cast_mut().add(self.unconsumed_len), data.len());
+      (*header).copied += data.len();
+    }
+    self.unconsumed_len = required;
+  }
+
+  pub(crate) fn retain_unconsumed_suffix(&mut self, data: &[u8], scanned: usize, scan_work: usize) {
+    if data.is_empty() {
+      self.clear_unconsumed();
+      return;
+    }
+    if self.unconsumed_len == 0 {
+      self.allocate_retained(data, scanned, scan_work);
+      return;
+    }
+
+    let header = self.retained_header();
+    if data.as_ptr() != self.unconsumed {
+      unsafe {
+        ptr::copy(data.as_ptr(), self.unconsumed.cast_mut(), data.len());
+        (*header).copied += data.len();
+      }
+    }
+    self.unconsumed_len = data.len();
+    unsafe {
+      (*header).scanned = scanned.min(data.len());
+      (*header).scan_work = scan_work;
+    }
+  }
+
+  pub(crate) fn unconsumed_scan_state(&self) -> (usize, usize) {
+    if self.unconsumed_len == 0 {
+      (0, 0)
+    } else {
+      let header = self.retained_header();
+      unsafe { ((*header).scanned.min(self.unconsumed_len), (*header).scan_work) }
+    }
+  }
+
+  /// Returns deterministic counters for the managed-input implementation.
+  ///
+  /// This is intended for regression instrumentation. The tuple contains the
+  /// retained allocation capacity, the line-scan resume offset, cumulative
+  /// bytes copied, and cumulative bytes inspected while looking for line ends.
+  #[doc(hidden)]
+  pub fn managed_unconsumed_stats(&self) -> (usize, usize, usize, usize) {
+    if self.unconsumed_len == 0 {
+      (0, 0, 0, 0)
+    } else {
+      let header = self.retained_header();
+      unsafe {
+        (
+          (*header).capacity,
+          (*header).scanned.min(self.unconsumed_len),
+          (*header).copied,
+          (*header).scan_work,
+        )
+      }
+    }
+  }
+
   pub(crate) fn clear_unconsumed(&mut self) {
     if self.unconsumed_len > 0 {
-      // SAFETY: Retained input is allocated as a boxed slice with exactly this
-      // length, and the parser owns it until replacement, reset, or destruction.
+      let header = self.retained_header();
+      let capacity = unsafe { (*header).capacity };
       unsafe {
-        drop(Box::from_raw(ptr::slice_from_raw_parts_mut(
-          self.unconsumed as *mut c_uchar,
-          self.unconsumed_len,
-        )));
+        deallocate(header.cast::<u8>(), Self::retained_layout(capacity));
       }
     }
     self.unconsumed = ptr::null();

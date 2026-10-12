@@ -24,12 +24,36 @@ pub fn ensure_valid_line(data: &[u8], cr: usize, available: usize) -> MatchResul
 }
 
 #[inline(always)]
-pub fn find_cr(data: &[u8], available: usize) -> Option<usize> {
-  if available == 0 {
+pub fn find_cr(data: &[u8], available: usize, cursor: &mut usize, scan_work: &mut usize) -> Option<usize> {
+  let start = (*cursor).min(available);
+  let found = if start == available {
     None
   } else {
-    find_char(data, 0, available - 1, b'\r')
-  }
+    find_char(data, start, available - 1, b'\r')
+  };
+  let end = found.unwrap_or(available);
+  *scan_work += end - start + usize::from(found.is_some());
+  *cursor = end;
+  found
+}
+
+#[inline(always)]
+pub fn find_header_line_end_from(
+  ptr: *const u8,
+  len: usize,
+  cursor: &mut usize,
+  scan_work: &mut usize,
+) -> HeaderLineScanResult {
+  let start = (*cursor).min(len);
+  let result = unsafe { find_header_line_end(ptr.add(start), len - start) };
+  let (result, end, found) = match result {
+    HeaderLineScanResult::Cr(index) => (HeaderLineScanResult::Cr(start + index), start + index, true),
+    HeaderLineScanResult::Invalid(index) => (HeaderLineScanResult::Invalid(start + index), start + index, true),
+    HeaderLineScanResult::Incomplete => (HeaderLineScanResult::Incomplete, len, false),
+  };
+  *scan_work += end - start + usize::from(found);
+  *cursor = end;
+  result
 }
 
 #[inline(always)]

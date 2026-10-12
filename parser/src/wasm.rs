@@ -187,6 +187,18 @@ pub fn get_state(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Par
 #[unsafe(no_mangle)]
 pub fn get_position(parser: *const c_void) -> usize { unsafe { (*(parser as *const Parser)).position } }
 
+// Get deterministic managed-input copy instrumentation.
+#[unsafe(no_mangle)]
+pub fn get_managed_unconsumed_copy_bytes(parser: *const c_void) -> usize {
+  unsafe { (*(parser as *const Parser)).managed_unconsumed_stats().2 }
+}
+
+// Get deterministic managed-line scan instrumentation.
+#[unsafe(no_mangle)]
+pub fn get_managed_unconsumed_scan_bytes(parser: *const c_void) -> usize {
+  unsafe { (*(parser as *const Parser)).managed_unconsumed_stats().3 }
+}
+
 // Get the parser parsed property.
 #[unsafe(no_mangle)]
 pub fn get_parsed(parser: *const c_void) -> u64 { unsafe { (*(parser as *const Parser)).parsed } }

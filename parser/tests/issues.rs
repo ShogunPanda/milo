@@ -35,9 +35,12 @@ unsafe impl GlobalAlloc for TrackingAllocator {
     if TRACK_MEMORY.try_with(Cell::get).unwrap_or(false) {
       let _ = LIVE_BYTES.try_with(|bytes| bytes.set(bytes.get() - layout.size() as isize));
     }
-    if WATCHED_POINTER
-      .compare_exchange(pointer as usize, 0, Ordering::SeqCst, Ordering::SeqCst)
-      .is_ok()
+    let watched = WATCHED_POINTER.load(Ordering::SeqCst);
+    if watched >= pointer as usize
+      && watched < pointer as usize + layout.size()
+      && WATCHED_POINTER
+        .compare_exchange(watched, 0, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
     {
       FREED_SIZE.store(layout.size(), Ordering::SeqCst);
     }
@@ -137,15 +140,17 @@ fn issue_16__release_retained_input() {
   assert_eq!(parser.parse(prefix.as_ptr(), prefix.len()), 16);
   assert_eq!(parser.unconsumed_len, 8);
 
-  // Replacing an incomplete header must free the previous allocation, even
+  // Appending an incomplete header reuses the retained allocation, including
   // when no new input arrives.
+  let retained = parser.unconsumed;
   for input in [b"a".as_slice(), b"", b"b"] {
     let previous_len = parser.unconsumed_len;
     FREED_SIZE.store(0, Ordering::SeqCst);
     WATCHED_POINTER.store(parser.unconsumed as usize, Ordering::SeqCst);
     assert_eq!(parser.parse(input.as_ptr(), input.len()), 0);
-    assert_eq!(WATCHED_POINTER.load(Ordering::SeqCst), 0);
-    assert_eq!(FREED_SIZE.load(Ordering::SeqCst), previous_len);
+    assert_eq!(WATCHED_POINTER.load(Ordering::SeqCst), retained as usize);
+    assert_eq!(FREED_SIZE.load(Ordering::SeqCst), 0);
+    assert_eq!(parser.unconsumed, retained);
     assert_eq!(parser.unconsumed_len, previous_len + input.len());
   }
 
@@ -154,7 +159,7 @@ fn issue_16__release_retained_input() {
   let suffix = b"\r\n\r\n";
   assert_eq!(parser.parse(suffix.as_ptr(), suffix.len()), previous_len + suffix.len());
   assert_eq!(WATCHED_POINTER.load(Ordering::SeqCst), 0);
-  assert_eq!(FREED_SIZE.load(Ordering::SeqCst), previous_len);
+  assert!(FREED_SIZE.load(Ordering::SeqCst) >= previous_len);
   assert!(parser.unconsumed.is_null());
   assert_eq!(parser.unconsumed_len, 0);
   assert_eq!(parser.error_code, ERROR_NONE);
@@ -182,8 +187,74 @@ fn issue_16__release_retained_input() {
         parser = Parser::new();
       }
       assert_eq!(WATCHED_POINTER.load(Ordering::SeqCst), 0);
-      assert_eq!(FREED_SIZE.load(Ordering::SeqCst), previous_len);
+      assert!(FREED_SIZE.load(Ordering::SeqCst) >= previous_len);
       parser.manage_unconsumed = true;
     }
   }
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn sec_10__retained_input_may_be_reused_as_input_across_growth() {
+  let mut parser = Parser::new();
+  parser.autodetect = false;
+  parser.is_request = true;
+  parser.manage_unconsumed = true;
+
+  let prefix = b"GET / HTTP/1.1\r\nX: aaaaaaaa";
+  assert_eq!(parser.parse(prefix.as_ptr(), prefix.len()), 16);
+
+  while parser.unconsumed_len < 128 {
+    let retained = parser.unconsumed;
+    let retained_len = parser.unconsumed_len;
+    assert_eq!(parser.parse(retained, retained_len), 0);
+    assert_eq!(parser.unconsumed_len, retained_len * 2);
+    assert_eq!(parser.error_code, ERROR_NONE);
+  }
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn sec_10__byte_fragmented_managed_line_has_linear_work() {
+  let mut parser = Parser::new();
+  parser.autodetect = false;
+  parser.is_request = true;
+  parser.manage_unconsumed = true;
+
+  let prefix = b"GET / HTTP/1.1\r\nX-Long: ";
+  assert_eq!(parser.parse(prefix.as_ptr(), prefix.len()), 16);
+  let initial_len = parser.unconsumed_len;
+  let (_, initial_scanned, initial_copied, initial_scan_work) = parser.managed_unconsumed_stats();
+  assert_eq!(initial_scanned, initial_len);
+
+  const FRAGMENTS: usize = 4096;
+  for _ in 0..FRAGMENTS {
+    assert_eq!(parser.parse(b"a".as_ptr(), 1), 0);
+  }
+
+  let retained_len = initial_len + FRAGMENTS;
+  let (capacity, scanned, copied, scan_work) = parser.managed_unconsumed_stats();
+  assert_eq!(parser.unconsumed_len, retained_len);
+  assert_eq!(scanned, retained_len);
+  assert_eq!(scan_work - initial_scan_work, FRAGMENTS);
+  assert!(capacity >= retained_len);
+  assert!(capacity < retained_len * 2);
+  assert!(copied - initial_copied < FRAGMENTS * 3);
+
+  let cr = b"\r";
+  assert_eq!(parser.parse(cr.as_ptr(), cr.len()), 0);
+  assert_eq!(parser.unconsumed_len, retained_len + 1);
+
+  // Resume from the saved CR when LF arrives in a later invocation.
+  let suffix = b"\n\r\n";
+  assert_eq!(
+    parser.parse(suffix.as_ptr(), suffix.len()),
+    retained_len + 1 + suffix.len()
+  );
+  assert_eq!(parser.error_code, ERROR_NONE);
+  assert_eq!(
+    parser.parsed,
+    (prefix.len() + FRAGMENTS + cr.len() + suffix.len()) as u64
+  );
+  assert!(parser.unconsumed.is_null());
 }

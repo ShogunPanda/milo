@@ -57,6 +57,57 @@ it('issue-16 - error_retries_do_not_accumulate_input', () => {
   }
 })
 
+it('sec-10 - byte_fragmented_managed_line_has_linear_work', () => {
+  const milo = setup()
+  const parser = milo.create()
+  const prefix = Buffer.from('GET / HTTP/1.1\r\nX-Long: ')
+  const suffix = Buffer.from('\n\r\n')
+  const ptr = milo.alloc(prefix.length)
+  try {
+    milo.setShouldAutodetect(parser, false)
+    milo.setIsRequest(parser, true)
+    milo.setShouldManageUnconsumed(parser, true)
+
+    let memory = new Uint8Array(milo.memory.buffer)
+    memory.set(prefix, ptr)
+    assert.equal(milo.parse(parser, ptr, prefix.length), 16)
+    const view = new DataView(milo.memory.buffer)
+    const initialLength = view.getUint32(parser + milo.ParserFields.UNCONSUMED_LEN, true)
+    const initialCopied = milo.getManagedUnconsumedCopyBytes(parser)
+    const initialScanWork = milo.getManagedUnconsumedScanBytes(parser)
+
+    const fragments = 4096
+    for (let i = 0; i < fragments; i++) {
+      memory = new Uint8Array(milo.memory.buffer)
+      memory[ptr] = 0x61
+      assert.equal(milo.parse(parser, ptr, 1), 0)
+    }
+
+    const retainedLength = initialLength + fragments
+    assert.equal(
+      new DataView(milo.memory.buffer).getUint32(parser + milo.ParserFields.UNCONSUMED_LEN, true),
+      retainedLength
+    )
+    assert.equal(milo.getManagedUnconsumedScanBytes(parser) - initialScanWork, fragments)
+    assert.ok(milo.getManagedUnconsumedCopyBytes(parser) - initialCopied < fragments * 3)
+
+    memory = new Uint8Array(milo.memory.buffer)
+    memory[ptr] = 0x0d
+    assert.equal(milo.parse(parser, ptr, 1), 0)
+
+    // Resume from the saved CR when LF arrives in a later invocation.
+    memory = new Uint8Array(milo.memory.buffer)
+    memory.set(suffix, ptr)
+    assert.equal(milo.parse(parser, ptr, suffix.length), retainedLength + 1 + suffix.length)
+    assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
+    assert.equal(milo.getParsed(parser), BigInt(prefix.length + fragments + 1 + suffix.length))
+    assert.equal(new DataView(milo.memory.buffer).getUint32(parser + milo.ParserFields.UNCONSUMED_LEN, true), 0)
+  } finally {
+    milo.dealloc(ptr, prefix.length)
+    milo.destroy(parser)
+  }
+})
+
 it('issue-26 - preserve_events_before_error', () => {
   const suffix = 'HTTP/9.9 garbage\r\n\r\n'
   for (const chunked of [false, true]) {

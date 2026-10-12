@@ -2,8 +2,7 @@
 
 extern crate alloc;
 
-use alloc::vec::Vec;
-use alloc::{boxed::Box, format};
+use alloc::format;
 use core::cell::{Cell, RefCell};
 use core::ffi::{c_char, c_uchar, c_void};
 use core::fmt::Debug;
@@ -49,22 +48,20 @@ impl Parser {
 
     let input = unsafe { from_raw_parts(input, limit) };
 
-    // Set the data to analyze, prepending unconsumed data from previous iteration
-    // if needed
+    // Set the data to analyze, appending to the amortized retained allocation
+    // when a previous call ended in the middle of a line.
     let mut limit = limit;
-    let aggregate: Vec<c_uchar>;
-    let unconsumed_len = self.unconsumed_len;
+    let had_unconsumed = self.manage_unconsumed && self.unconsumed_len > 0;
+    let (mut line_scan_cursor, mut line_scan_work) = if had_unconsumed {
+      self.unconsumed_scan_state()
+    } else {
+      (0, 0)
+    };
 
-    let mut data = if self.manage_unconsumed && unconsumed_len > 0 {
-      unsafe {
-        limit += unconsumed_len;
-        let unconsumed = from_raw_parts(self.unconsumed, unconsumed_len);
-
-        // Rebuild a contiguous view so state handlers can scan across parse-call
-        // boundaries.
-        aggregate = [unconsumed, input].concat();
-        &aggregate[..]
-      }
+    let mut data = if had_unconsumed {
+      self.append_unconsumed(input);
+      limit = self.unconsumed_len;
+      unsafe { from_raw_parts(self.unconsumed, limit) }
     } else {
       input
     };
@@ -200,7 +197,7 @@ impl Parser {
           }
 
           STATE_REQUEST_LINE => {
-            match find_cr(data, available) {
+            match find_cr(data, available, &mut line_scan_cursor, &mut line_scan_work) {
               // // RFC 9112 section 3
               Some(cr) => {
                 match ensure_valid_line(data, cr, available) {
@@ -348,7 +345,7 @@ impl Parser {
 
           // RFC 9112 section 4
           STATE_STATUS_LINE => {
-            match find_cr(data, available) {
+            match find_cr(data, available, &mut line_scan_cursor, &mut line_scan_work) {
               Some(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
@@ -457,7 +454,7 @@ impl Parser {
           }
 
           STATE_HEADER => {
-            match find_header_line_end(data.as_ptr(), available) {
+            match find_header_line_end_from(data.as_ptr(), available, &mut line_scan_cursor, &mut line_scan_work) {
               HeaderLineScanResult::Cr(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
@@ -1009,7 +1006,7 @@ impl Parser {
 
           // RFC 9112 section 7.1
           STATE_CHUNK_HEADER => {
-            match find_cr(data, available) {
+            match find_cr(data, available, &mut line_scan_cursor, &mut line_scan_work) {
               Some(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
@@ -1091,7 +1088,7 @@ impl Parser {
           }
 
           STATE_CHUNK_EXTENSIONS => {
-            match find_cr(data, available) {
+            match find_cr(data, available, &mut line_scan_cursor, &mut line_scan_work) {
               Some(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
@@ -1291,7 +1288,7 @@ impl Parser {
 
           // RFC 9112 section 7.1.2
           STATE_TRAILER => {
-            match find_header_line_end(data.as_ptr(), available) {
+            match find_header_line_end_from(data.as_ptr(), available, &mut line_scan_cursor, &mut line_scan_work) {
               HeaderLineScanResult::Cr(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
@@ -1397,6 +1394,7 @@ impl Parser {
         self.position += advanced;
         data = &data[advanced..];
         available -= advanced;
+        line_scan_cursor = 0;
 
         #[cfg(any(debug_assertions, feature = "debug"))]
         if self.debug {
@@ -1451,14 +1449,10 @@ impl Parser {
     self.parsed += consumed as u64;
 
     if self.manage_unconsumed {
-      self.clear_unconsumed();
-
-      // Use a boxed slice so the length also determines the allocation layout
-      // when releasing retained input; Vec capacity is not stored in the ABI.
       if consumed < limit {
-        let retained = data.to_vec().into_boxed_slice();
-        self.unconsumed_len = retained.len();
-        self.unconsumed = Box::into_raw(retained) as *const c_uchar;
+        self.retain_unconsumed_suffix(data, line_scan_cursor, line_scan_work);
+      } else {
+        self.clear_unconsumed();
       }
     }
 

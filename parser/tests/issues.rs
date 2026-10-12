@@ -152,7 +152,7 @@ fn issue_16__release_retained_input() {
   let previous_len = parser.unconsumed_len;
   WATCHED_POINTER.store(parser.unconsumed as usize, Ordering::SeqCst);
   let suffix = b"\r\n\r\n";
-  assert_eq!(parser.parse(suffix.as_ptr(), suffix.len()), previous_len + suffix.len());
+  assert_eq!(parser.parse(suffix.as_ptr(), suffix.len()), suffix.len());
   assert_eq!(WATCHED_POINTER.load(Ordering::SeqCst), 0);
   assert_eq!(FREED_SIZE.load(Ordering::SeqCst), previous_len);
   assert!(parser.unconsumed.is_null());

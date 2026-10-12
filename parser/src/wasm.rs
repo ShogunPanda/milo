@@ -187,6 +187,14 @@ pub fn get_state(parser: *const c_void) -> u8 { unsafe { (*(parser as *const Par
 #[unsafe(no_mangle)]
 pub fn get_position(parser: *const c_void) -> usize { unsafe { (*(parser as *const Parser)).position } }
 
+// Get the backing pointer for event and callback ranges.
+#[unsafe(no_mangle)]
+pub fn get_event_data(parser: *const c_void) -> usize { unsafe { (*(parser as *const Parser)).event_data as usize } }
+
+// Get the backing buffer length for event and callback ranges.
+#[unsafe(no_mangle)]
+pub fn get_event_data_len(parser: *const c_void) -> usize { unsafe { (*(parser as *const Parser)).event_data_len } }
+
 // Get the parser parsed property.
 #[unsafe(no_mangle)]
 pub fn get_parsed(parser: *const c_void) -> u64 { unsafe { (*(parser as *const Parser)).parsed } }

@@ -78,11 +78,17 @@ it('basic_incomplete_string_automanaged_1', t => {
     message.slice(24, 29),
     message.slice(29)
   ]
-  const consumed = [0, 16, 0, 0, 0, message.length - 16]
+  const consumed = [0, 1, 0, 0, 0, samples[5].length]
 
   for (let pass = 1; pass <= 2; pass++) {
     for (let i = 0; i < samples.length; i++) {
       assert.equal(parse(samples[i]), consumed[i])
+      if (i === 1 || i === 5) {
+        const ptr = milo.getEventData(parser)
+        const len = milo.getEventDataLength(parser)
+        const actual = Buffer.from(milo.memory.buffer, ptr, len).toString()
+        assert.equal(actual, i === 1 ? message.slice(0, 16) : message.slice(16))
+      }
     }
     assert.notEqual(milo.getState(parser), milo.STATE_ERROR)
     assert.equal(milo.getParsed(parser), BigInt(message.length * pass))

@@ -49,23 +49,33 @@ impl Parser {
 
     let input = unsafe { from_raw_parts(input, limit) };
 
-    // Set the data to analyze, prepending unconsumed data from previous iteration
-    // if needed
+    // Set the data to analyze, prepending unconsumed data from the previous
+    // invocation. Keep an owned aggregate alive so every emitted range has an
+    // explicit backing buffer after parse returns.
+    self.clear_event_data();
     let mut limit = limit;
-    let aggregate: Vec<c_uchar>;
     let unconsumed_len = self.unconsumed_len;
+    let aggregate: Vec<c_uchar>;
 
     let mut data = if self.manage_unconsumed && unconsumed_len > 0 {
       unsafe {
         limit += unconsumed_len;
         let unconsumed = from_raw_parts(self.unconsumed, unconsumed_len);
-
-        // Rebuild a contiguous view so state handlers can scan across parse-call
-        // boundaries.
-        aggregate = [unconsumed, input].concat();
-        &aggregate[..]
+        if active_events != 0 {
+          let owned = [unconsumed, input].concat().into_boxed_slice();
+          self.event_data_len = owned.len();
+          self.event_data = Box::into_raw(owned) as *const c_uchar;
+          self.event_data_owned = true;
+          from_raw_parts(self.event_data, self.event_data_len)
+        } else {
+          aggregate = [unconsumed, input].concat();
+          &aggregate[..]
+        }
       }
     } else {
+      self.event_data = input.as_ptr();
+      self.event_data_len = input.len();
+      self.event_data_owned = false;
       input
     };
 
@@ -1488,12 +1498,16 @@ impl Parser {
       }
     }
 
+    // Public consumption and position are relative to this invocation's input,
+    // not the retained prefix. Event ranges remain relative to event_data.
+    let current_consumed = consumed.saturating_sub(unconsumed_len).min(input.len());
+    self.position = current_consumed;
+
     if self.active_callbacks != 0 {
       self.invoke_callbacks();
     }
 
-    // Return the number of consumed bytes
-    consumed
+    current_consumed
   }
 
   /// Completes the current message without consuming more input.

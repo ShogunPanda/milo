@@ -45,6 +45,8 @@ const GETTERS: &[(&str, GetterType, &str)] = &[
   ("shouldSkipBody", GetterType::Bool, "should_skip_body"),
   ("getState", GetterType::Number, "get_state"),
   ("getPosition", GetterType::Number, "get_position"),
+  ("getEventData", GetterType::Number, "get_event_data"),
+  ("getEventDataLength", GetterType::Number, "get_event_data_len"),
   ("getParsed", GetterType::BigInt, "get_parsed"),
   ("getErrorCode", GetterType::Number, "get_error_code"),
   ("getMethod", GetterType::Number, "get_method"),

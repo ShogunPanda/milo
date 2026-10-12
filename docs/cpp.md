@@ -137,6 +137,8 @@ A struct representing a parser. It has the following fields:
 - `error_description_len` (`uint8_t`): The parser error description length, excluding the NIL terminator. Error descriptions are clamped to 254 bytes.
 - `unconsumed` (`const unsigned char*`): The unconsumed data from the previous execution of `parse` when `manage_unconsumed` is `true`.
 - `unconsumed_len` (`uintptr_t`): The unconsumed data length from the previous execution of `parse` when `manage_unconsumed` is `true`.
+- `event_data` (`const unsigned char*`): Backing bytes for ranges emitted by the latest `milo_parse()` call.
+- `event_data_len` (`uintptr_t`): Length of `event_data`.
 - `events` (`unsigned char[65536]`): Parser-owned event buffer.
 
 All the fields **MUST** be considered readonly, with the following exceptions:
@@ -189,7 +191,9 @@ uint32_t at
 uint32_t len
 ```
 
-`type` is one of the `EVENT_*` constants. `at` and `len` are relative to the last input passed to `milo_parse()`. `len` can be `0`.
+`type` is one of the `EVENT_*` constants. `at` and `len` index `Parser::event_data`. Without managed input this is the latest input. When retained bytes are prepended, it is a parser-owned aggregate valid until the next `milo_parse()`, `milo_reset()`, or destruction. `len` can be `0`.
+
+The value returned by `milo_parse()` and `position` always count bytes consumed from the current call's input; retained-prefix bytes are excluded. `parsed` continues to count each consumed stream byte once.
 
 `EVENT_STATE_CHANGE` is debug-only and uses the same payload. For this event, `len` contains the new parser state id as a `uint32_t`. Callback replay passes that value as the callback `size` argument.
 

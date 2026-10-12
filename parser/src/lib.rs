@@ -68,6 +68,10 @@ pub struct Parser {
   pub error_description: [u8; 255],
   pub unconsumed: *const c_uchar,
   pub unconsumed_len: usize,
+  /// Backing bytes for event and callback ranges from the latest parse.
+  pub event_data: *const c_uchar,
+  pub event_data_len: usize,
+  event_data_owned: bool,
   pub error_description_len: u8,
 
   // Event buffer. Keep this at the end of the struct for external readers.
@@ -142,6 +146,9 @@ impl Parser {
       error_description: [0; 255],
       unconsumed: ptr::null(),
       unconsumed_len: 0,
+      event_data: ptr::null(),
+      event_data_len: 0,
+      event_data_owned: false,
       error_description_len: 0,
       events: events_ptr,
     }
@@ -174,12 +181,27 @@ impl Parser {
     self.error_description_len = 0;
 
     self.clear_unconsumed();
+    self.clear_event_data();
 
     self.clear();
     self.skip_body = false;
     unsafe {
       *self.events = EVENT_END;
     }
+  }
+
+  pub(crate) fn clear_event_data(&mut self) {
+    if self.event_data_owned {
+      unsafe {
+        drop(Box::from_raw(ptr::slice_from_raw_parts_mut(
+          self.event_data as *mut c_uchar,
+          self.event_data_len,
+        )));
+      }
+    }
+    self.event_data = ptr::null();
+    self.event_data_len = 0;
+    self.event_data_owned = false;
   }
 
   pub(crate) fn clear_unconsumed(&mut self) {
@@ -324,6 +346,19 @@ impl Parser {
   /// Returns the current parser's error state as string.
   pub fn error_code_str(&self) -> &str { Errors::try_from(self.error_code).unwrap().as_str() }
 
+  /// Returns the backing bytes for ranges emitted by the latest parse.
+  ///
+  /// # Safety
+  /// When the latest parse did not prepend managed input, the caller must keep
+  /// that parse input alive and unchanged while using the returned slice.
+  pub unsafe fn event_data(&self) -> &[u8] {
+    if self.event_data_len == 0 {
+      &[]
+    } else {
+      unsafe { from_raw_parts(self.event_data, self.event_data_len) }
+    }
+  }
+
   /// Returns the current parser's error description as string.
   pub fn error_description_str(&self) -> &str {
     unsafe {
@@ -342,6 +377,7 @@ impl Parser {
 impl Drop for Parser {
   fn drop(&mut self) {
     self.clear_unconsumed();
+    self.clear_event_data();
     if !self.events.is_null() {
       unsafe {
         let _ = Box::from_raw(self.events as *mut [u8; 65536]);

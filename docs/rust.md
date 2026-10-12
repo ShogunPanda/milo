@@ -138,6 +138,8 @@ A struct representing a parser. It has the following fields:
 - `error_description_len` (`u8`): The parser error description length, excluding the NIL terminator. Error descriptions are clamped to 254 bytes.
 - `unconsumed` (`*const c_uchar`): The unconsumed data from the previous execution of `parse` when `manage_unconsumed` is `true`.
 - `unconsumed_len` (`usize`): The unconsumed data length from the previous execution of `parse` when `manage_unconsumed` is `true`.
+- `event_data` (`*const c_uchar`): Backing bytes for ranges emitted by the latest `parse()` call.
+- `event_data_len` (`usize`): Length of `event_data`. Rust callers can use the unsafe `event_data()` accessor while honoring its input-lifetime contract.
 - `events` (`*mut c_uchar`): Parser-owned event buffer.
 
 All the fields **MUST** be considered readonly, with the following exceptions:
@@ -190,7 +192,9 @@ u32 at
 u32 len
 ```
 
-`type` is one of the `EVENT_*` constants. `at` and `len` are relative to the last input passed to `parse()`. `len` can be `0`.
+`type` is one of the `EVENT_*` constants. `at` and `len` index `Parser::event_data()`. Without managed input this is the latest input. When retained bytes are prepended, it is the parser-owned aggregate and remains valid until the next `parse()`, `reset()`, or destruction. Otherwise the caller must keep the latest input alive and unchanged while reading ranges or using unsafe `event_data()`. `len` can be `0`.
+
+The value returned by `parse()` and `position` always count bytes consumed from the current call's input; retained-prefix bytes are excluded. `parsed` continues to count each consumed stream byte once.
 
 `EVENT_STATE_CHANGE` is debug-only and uses the same payload. For this event, `len` contains the new parser state id as a `u32`. Callback replay passes that value as the callback `size` argument.
 

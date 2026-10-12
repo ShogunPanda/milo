@@ -113,6 +113,204 @@ pub fn validate_url(data: &[u8], start: usize, end: usize) -> bool {
 }
 
 #[inline(always)]
+pub fn is_hex_digit(byte: u8) -> bool { byte.is_ascii_hexdigit() }
+
+/// Validates every percent sign as a complete pct-encoded triplet.
+#[inline(always)]
+pub fn validate_percent_triplets(data: &[u8]) -> bool {
+  let mut i = 0;
+  while i < data.len() {
+    if data[i] == b'%' {
+      if i + 2 >= data.len() || !is_hex_digit(data[i + 1]) || !is_hex_digit(data[i + 2]) {
+        return false;
+      }
+      i += 3;
+    } else {
+      i += 1;
+    }
+  }
+  true
+}
+
+#[inline(always)]
+fn is_uri_unreserved(byte: u8) -> bool { byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') }
+
+#[inline(always)]
+fn is_uri_sub_delim(byte: u8) -> bool {
+  matches!(
+    byte,
+    b'!' | b'$' | b'&' | b'\'' | b'(' | b')' | b'*' | b'+' | b',' | b';' | b'='
+  )
+}
+
+#[inline(always)]
+fn is_uri_pchar(byte: u8) -> bool { is_uri_unreserved(byte) || is_uri_sub_delim(byte) || matches!(byte, b':' | b'@') }
+
+fn validate_uri_component(value: &[u8], allow_slash: bool, allow_question: bool) -> bool {
+  let mut i = 0;
+  while i < value.len() {
+    let byte = value[i];
+    if is_uri_pchar(byte) || (allow_slash && byte == b'/') || (allow_question && byte == b'?') {
+      i += 1;
+    } else if byte == b'%' && i + 2 < value.len() && is_hex_digit(value[i + 1]) && is_hex_digit(value[i + 2]) {
+      i += 3;
+    } else {
+      return false;
+    }
+  }
+  true
+}
+
+pub fn validate_origin_form(target: &[u8]) -> bool {
+  if !target.starts_with(b"/") {
+    return false;
+  }
+  match target.iter().position(|byte| *byte == b'?') {
+    Some(query) => {
+      validate_uri_component(&target[..query], true, false) && validate_uri_component(&target[query + 1..], true, true)
+    }
+    None => validate_uri_component(target, true, false),
+  }
+}
+
+fn validate_reg_name(value: &[u8]) -> bool {
+  if value.is_empty() {
+    return false;
+  }
+
+  let mut i = 0;
+  while i < value.len() {
+    if is_uri_unreserved(value[i]) || is_uri_sub_delim(value[i]) {
+      i += 1;
+    } else if value[i] == b'%' && i + 2 < value.len() && is_hex_digit(value[i + 1]) && is_hex_digit(value[i + 2]) {
+      i += 3;
+    } else {
+      return false;
+    }
+  }
+  true
+}
+
+fn validate_ip_literal(value: &[u8]) -> bool {
+  if value.is_empty() {
+    return false;
+  }
+
+  if matches!(value[0], b'v' | b'V') {
+    let Some(dot) = value.iter().position(|byte| *byte == b'.') else {
+      return false;
+    };
+    if dot == 1 || !value[1..dot].iter().all(|byte| is_hex_digit(*byte)) || dot + 1 == value.len() {
+      return false;
+    }
+    return value[dot + 1..]
+      .iter()
+      .all(|byte| is_uri_unreserved(*byte) || is_uri_sub_delim(*byte) || *byte == b':');
+  }
+
+  let Ok(text) = core::str::from_utf8(value) else {
+    return false;
+  };
+  text.parse::<core::net::Ipv6Addr>().is_ok()
+}
+
+/// Validates an HTTP authority/Host field value without userinfo. Ports must be
+/// non-empty decimal strings when present.
+pub fn validate_authority(value: &[u8]) -> bool {
+  if value.is_empty() {
+    return false;
+  }
+
+  let port = if value[0] == b'[' {
+    let Some(close) = value.iter().position(|byte| *byte == b']') else {
+      return false;
+    };
+    if !validate_ip_literal(&value[1..close]) {
+      return false;
+    }
+    if close + 1 == value.len() {
+      None
+    } else if value[close + 1] == b':' {
+      Some(&value[close + 2..])
+    } else {
+      return false;
+    }
+  } else {
+    let colon = value.iter().position(|byte| *byte == b':');
+    let host_end = colon.unwrap_or(value.len());
+    if !validate_reg_name(&value[..host_end]) {
+      return false;
+    }
+    match colon {
+      Some(index) => Some(&value[index + 1..]),
+      None => None,
+    }
+  };
+
+  match port {
+    Some(port) => !port.is_empty() && port.iter().all(|byte| is_digit(*byte)),
+    None => true,
+  }
+}
+
+pub fn validate_connect_authority(value: &[u8]) -> bool {
+  if !validate_authority(value) {
+    return false;
+  }
+  if value[0] == b'[' {
+    value
+      .iter()
+      .position(|byte| *byte == b']')
+      .is_some_and(|close| value.get(close + 1) == Some(&b':'))
+  } else {
+    value.contains(&b':')
+  }
+}
+
+/// Returns the authority range for an absolute-form target, `None` when the
+/// target does not look absolute-form, and `Err` for malformed absolute-form.
+pub fn absolute_form_authority(target: &[u8]) -> Result<Option<(usize, usize)>, ()> {
+  let Some(colon) = target.iter().position(|byte| *byte == b':') else {
+    return Ok(None);
+  };
+
+  if colon == 0
+    || !target[0].is_ascii_alphabetic()
+    || !target[1..colon]
+      .iter()
+      .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
+    || target.get(colon + 1..colon + 3) != Some(b"//")
+  {
+    return Err(());
+  }
+
+  let authority_start = colon + 3;
+  let authority_end = target[authority_start..]
+    .iter()
+    .position(|byte| matches!(byte, b'/' | b'?'))
+    .map_or(target.len(), |index| authority_start + index);
+  if !validate_authority(&target[authority_start..authority_end]) {
+    return Err(());
+  }
+
+  let remainder = &target[authority_end..];
+  let valid_remainder = if remainder.is_empty() {
+    true
+  } else if remainder[0] == b'/' {
+    validate_origin_form(remainder)
+  } else if remainder[0] == b'?' {
+    validate_uri_component(&remainder[1..], true, true)
+  } else {
+    false
+  };
+  if !valid_remainder {
+    return Err(());
+  }
+
+  Ok(Some((authority_start, authority_end)))
+}
+
+#[inline(always)]
 pub fn strip_ows_fast(data: &[u8], start_ref: &mut usize, end_ref: &mut usize, allow_empty: bool) -> bool {
   let start = *start_ref;
   let end = *end_ref;

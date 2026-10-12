@@ -105,6 +105,14 @@ pub extern "C" fn milo_set_suspend_after_headers(parser: *mut Parser, value: boo
   }
 }
 
+/// Enables strict proxy-facing request semantics.
+#[unsafe(no_mangle)]
+pub extern "C" fn milo_set_strict_proxy_semantics(parser: *mut Parser, value: bool) {
+  unsafe {
+    (*parser).strict_proxy_semantics = value;
+  }
+}
+
 /// Resets a parser. The second parameters specifies if to also reset the
 /// parsed counter.
 ///
@@ -114,6 +122,7 @@ pub extern "C" fn milo_set_suspend_after_headers(parser: *mut Parser, value: boo
 ///   * autodetect
 ///   * is_request
 ///   * suspend_after_headers
+///   * strict_proxy_semantics
 ///   * max_body_payload
 ///   * manage_unconsumed
 ///   * continue_without_data

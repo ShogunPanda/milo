@@ -149,6 +149,12 @@ pub fn should_suspend_after_headers(parser: *const c_void) -> bool {
   unsafe { (*(parser as *const Parser)).suspend_after_headers }
 }
 
+// Get the parser strict_proxy_semantics property.
+#[unsafe(no_mangle)]
+pub fn should_use_strict_proxy_semantics(parser: *const c_void) -> bool {
+  unsafe { (*(parser as *const Parser)).strict_proxy_semantics }
+}
+
 // Get the parser max_start_line_length property.
 #[unsafe(no_mangle)]
 pub fn get_max_start_line_length(parser: *const c_void) -> usize {
@@ -296,6 +302,13 @@ pub fn set_should_manage_unconsumed(parser: *mut c_void, value: bool) {
 pub fn set_should_suspend_after_headers(parser: *mut c_void, value: bool) {
   unsafe {
     (*(parser as *mut Parser)).suspend_after_headers = value;
+  }
+}
+
+#[unsafe(no_mangle)]
+pub fn set_should_use_strict_proxy_semantics(parser: *mut c_void, value: bool) {
+  unsafe {
+    (*(parser as *mut Parser)).strict_proxy_semantics = value;
   }
 }
 

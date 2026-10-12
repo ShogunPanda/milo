@@ -304,6 +304,40 @@ impl Parser {
                   fail!(UNEXPECTED_CHARACTER, "Invalid URL character");
                 }
 
+                if self.strict_proxy_semantics {
+                  let target = &data[url_start..url_end];
+                  if !validate_percent_triplets(target) {
+                    fail!(UNEXPECTED_CHARACTER, "Invalid percent-encoded request target");
+                  }
+
+                  if self.method == METHOD_CONNECT {
+                    if !validate_connect_authority(target) {
+                      fail!(
+                        UNEXPECTED_CHARACTER,
+                        "CONNECT requires authority-form with an explicit port"
+                      );
+                    }
+                    self.set_strict_authority(target);
+                  } else if target == b"*" {
+                    if self.method != METHOD_OPTIONS && self.method != METHOD_PRI {
+                      fail!(UNEXPECTED_CHARACTER, "Asterisk-form request target requires OPTIONS");
+                    }
+                  } else if target.starts_with(b"/") {
+                    if !validate_origin_form(target) {
+                      fail!(UNEXPECTED_CHARACTER, "Invalid origin-form request target");
+                    }
+                  } else {
+                    match absolute_form_authority(target) {
+                      Ok(Some((authority_start, authority_end))) => {
+                        self.set_strict_authority(&target[authority_start..authority_end]);
+                      }
+                      _ => {
+                        fail!(UNEXPECTED_CHARACTER, "Invalid request-target form for method");
+                      }
+                    }
+                  }
+                }
+
                 let version_start = protocol_end + 1;
                 if cr != protocol_start + 8 {
                   fail!(UNEXPECTED_CHARACTER, "Invalid protocol name");
@@ -471,6 +505,13 @@ impl Parser {
 
                 // No more headers or no headers at all, move to the headers state
                 if cr == 0 {
+                  if self.strict_proxy_semantics && self.is_request && !self.has_host {
+                    fail!(
+                      UNEXPECTED_CHARACTER,
+                      "Strict proxy semantics require exactly one Host header"
+                    );
+                  }
+
                   advance!(2);
                   if has_metadata_event {
                     event_with_metadata!(on_headers, 2);
@@ -499,7 +540,7 @@ impl Parser {
 
                 let status = self.status;
                 let first_header_byte = data[header_name_start];
-                if !matches!(first_header_byte, b'c' | b'C' | b't' | b'T' | b'u' | b'U') {
+                if !matches!(first_header_byte, b'c' | b'C' | b'h' | b'H' | b't' | b'T' | b'u' | b'U') {
                   if !validate_token(data, header_name_start, header_name_end) {
                     fail!(UNEXPECTED_CHARACTER, "Invalid header field name character");
                   }
@@ -510,6 +551,37 @@ impl Parser {
                 } else {
                   let header_name_len = header_name_end - header_name_start;
                   match (header_name_len, &data[header_name_start..header_name_end]) {
+                    (4, case_insensitive_string!("host")) => {
+                      if self.strict_proxy_semantics && self.is_request {
+                        if self.has_host {
+                          fail!(
+                            UNEXPECTED_CHARACTER,
+                            "Strict proxy semantics reject duplicate Host headers"
+                          );
+                        }
+                        if !strip_ows_fast(data, &mut header_value_start, &mut header_value_end, false)
+                          || !validate_authority(&data[header_value_start..header_value_end])
+                        {
+                          fail!(UNEXPECTED_CHARACTER, "Invalid Host header");
+                        }
+                        if self.strict_authority_len > 0
+                          && !self.strict_authority_matches(&data[header_value_start..header_value_end])
+                        {
+                          fail!(
+                            UNEXPECTED_CHARACTER,
+                            "Absolute-form authority does not match Host header"
+                          );
+                        }
+                        self.has_host = true;
+                      } else {
+                        if !validate_token(data, header_name_start, header_name_end) {
+                          fail!(UNEXPECTED_CHARACTER, "Invalid header field name character");
+                        }
+                        if has_header_value_event {
+                          strip_ows_fast(data, &mut header_value_start, &mut header_value_end, true);
+                        }
+                      }
+                    }
                     // RFC 9112 section 6.2
                     (14, case_insensitive_string!("content-length")) => {
                       if self.has_transfer_encoding {
@@ -1341,6 +1413,12 @@ impl Parser {
                 // Validate
                 if !validate_token(data, trailer_name_start, trailer_name_end) {
                   fail!(UNEXPECTED_CHARACTER, "Invalid trailer field name character");
+                }
+                if self.strict_proxy_semantics
+                  && self.is_request
+                  && data[trailer_name_start..trailer_name_end].eq_ignore_ascii_case(b"host")
+                {
+                  fail!(UNEXPECTED_CHARACTER, "Host is forbidden in request trailers");
                 }
 
                 if has_trailer_name_event {

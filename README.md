@@ -298,7 +298,7 @@ Milo does not aim for byte-for-byte llhttp compatibility when lenient behavior w
 
 ## Security Boundaries
 
-Milo validates HTTP/1.1 syntax, message framing, protocol switching, connection management, and data-after-close behavior. Milo does not validate routing, authorization, representation semantics, URI normalization, `Host` policy, method-specific request-target forms, CONNECT authority-form, or full header field semantics unless they affect safe framing.
+Milo validates HTTP/1.1 syntax, message framing, protocol switching, connection management, and data-after-close behavior. Routing validation is disabled by default; integrations can enable `strict_proxy_semantics` to validate `Host`, method-specific request-target forms, percent encoding, and CONNECT authority-form. Milo does not validate authorization, representation semantics, URI normalization, or full header field semantics unless they affect safe framing.
 
 ## How it works?
 

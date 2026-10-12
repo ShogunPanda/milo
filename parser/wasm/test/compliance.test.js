@@ -16,6 +16,12 @@ function responseParser (t) {
   return context
 }
 
+function strictRequestParser (t) {
+  const context = requestParser(t)
+  context.milo.setShouldUseStrictProxySemantics(context.parser, true)
+  return context
+}
+
 function assertOk (milo, parser) {
   assert.notEqual(milo.getState(parser), milo.STATE_ERROR, milo.getErrorDescription(parser))
   assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
@@ -24,6 +30,52 @@ function assertOk (milo, parser) {
 function assertError (milo, parser) {
   assert.equal(milo.getState(parser), milo.STATE_ERROR)
 }
+
+it('compliance_strict_proxy_semantics_is_opt_in', t => {
+  for (const message of ['GET relative HTTP/1.1\r\n\r\n', 'GET / HTTP/1.1\r\nHost:\r\nHost: duplicate\r\n\r\n']) {
+    const { milo, parser, parse } = requestParser(t)
+    parse(message)
+    assertOk(milo, parser)
+  }
+})
+
+it('compliance_strict_proxy_semantics_accepts_valid_routing_forms', t => {
+  for (const message of [
+    'GET /path:a?q=a:b%20c HTTP/1.1\r\nHost: example.com\r\n\r\n',
+    'GET http://example.com:8080/path HTTP/1.1\r\nHost: EXAMPLE.COM:8080\r\n\r\n',
+    'CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n',
+    'OPTIONS * HTTP/1.1\r\nHost: [2001:db8::1]\r\n\r\n'
+  ]) {
+    const { milo, parser, parse } = strictRequestParser(t)
+    parse(message)
+    assertOk(milo, parser)
+  }
+})
+
+it('compliance_strict_proxy_semantics_rejects_ambiguous_routing', t => {
+  for (const message of [
+    'GET / HTTP/1.1\r\n\r\n',
+    'GET / HTTP/1.1\r\nHost:\r\n\r\n',
+    'GET / HTTP/1.1\r\nHost: example.com\r\nHost: example.com\r\n\r\n',
+    'GET / HTTP/1.1\r\nHost: user@example.com\r\n\r\n',
+    'GET / HTTP/1.1\r\nHost: example.com:\r\n\r\n',
+    'GET relative HTTP/1.1\r\nHost: example.com\r\n\r\n',
+    'GET /bad%2 HTTP/1.1\r\nHost: example.com\r\n\r\n',
+    'GET /bad%GG HTTP/1.1\r\nHost: example.com\r\n\r\n',
+    'GET /bad[route] HTTP/1.1\r\nHost: example.com\r\n\r\n',
+    'GET * HTTP/1.1\r\nHost: example.com\r\n\r\n',
+    'CONNECT / HTTP/1.1\r\nHost: example.com\r\n\r\n',
+    'CONNECT example.com HTTP/1.1\r\nHost: example.com\r\n\r\n',
+    'CONNECT example.com:443 HTTP/1.1\r\nHost: other.example\r\n\r\n',
+    'GET http://example.com/path HTTP/1.1\r\nHost: other.example\r\n\r\n',
+    'GET http:/example.com HTTP/1.1\r\nHost: example.com\r\n\r\n',
+    'POST / HTTP/1.1\r\nHost: victim.example\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nHost: attacker.example\r\n\r\n'
+  ]) {
+    const { milo, parser, parse } = strictRequestParser(t)
+    parse(message)
+    assertError(milo, parser)
+  }
+})
 
 // RFC token syntax allows `|` in header names.
 it('compliance_header_name_allows_pipe', t => {

@@ -106,6 +106,7 @@ A struct representing a parser. It has the following fields:
 - `paused` (`bool`): If the parser is paused.
 - `manage_unconsumed` (`bool`): If the parser should automatically copy and prepend unconsumed data.
 - `suspend_after_headers` (`bool`): If parsing should stop after headers have completed. Disabled by default.
+- `strict_proxy_semantics` (`bool`): Enables strict request-target and `Host` routing validation. Disabled by default.
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
 - `is_connect` (`bool`): If the current request used `CONNECT` method.
 - `skip_body` (`bool`): If the parser should skip the body.
@@ -131,6 +132,7 @@ A struct representing a parser. It has the following fields:
 - `has_connection_upgrade` (`bool`): If the current message has a `Connection: upgrade` token.
 - `has_upgrade` (`bool`): If the current message has an `Upgrade` header.
 - `has_trailers` (`bool`): If the current message has a `Trailer` header.
+- `has_host` (`bool`): If strict request validation accepted a `Host` header for the current message.
 - `active_callbacks` (`u64`): Active callback bitmask. Set to one or more `CALLBACK_ACTIVE_*` flags.
 - `active_events` (`u64`): Active event bitmask. Set to one or more `EVENT_ACTIVE_*` flags.
 - `callbacks` (`ParserCallbacks`): The callbacks for the current parser.
@@ -138,6 +140,7 @@ A struct representing a parser. It has the following fields:
 - `error_description_len` (`u8`): The parser error description length, excluding the NIL terminator. Error descriptions are clamped to 254 bytes.
 - `unconsumed` (`*const c_uchar`): The unconsumed data from the previous execution of `parse` when `manage_unconsumed` is `true`.
 - `unconsumed_len` (`usize`): The unconsumed data length from the previous execution of `parse` when `manage_unconsumed` is `true`.
+- `strict_authority` / `strict_authority_len`: Parser-owned target-authority storage used by strict validation. Read-only and valid until the next message, reset, or destruction.
 - `events` (`*mut c_uchar`): Parser-owned event buffer.
 
 All the fields **MUST** be considered readonly, with the following exceptions:
@@ -146,6 +149,7 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 - `is_request`
 - `manage_unconsumed`
 - `suspend_after_headers`
+- `strict_proxy_semantics`
 - `continue_without_data`
 - `is_connect`
 - `skip_body`
@@ -167,6 +171,14 @@ Callbacks are replayed from the same event buffer. Setting `active_callbacks` al
 The event buffer is terminated by `EVENT_END`. Do not rely on the internal buffer size; always stop reading at `EVENT_END`. Event payload integers are little-endian and may be unaligned, so read multi-byte values with unaligned reads.
 
 If an active event would exceed the internal event buffer, parsing stops before consuming the data that would have produced the event. This is not a parser error and does not pause the parser. Call `parse()` again after draining the event buffer.
+
+## Strict Proxy Semantics
+
+Set `strict_proxy_semantics` to `true` for proxy- or server-facing HTTP/1.1 request parsing that needs unambiguous routing. The default is `false`, preserving Milo's lower-level, syntax-focused behavior.
+
+Strict mode requires exactly one non-empty, syntactically valid initial `Host` field and rejects `Host` in trailers. It validates RFC 3986 path/query characters and percent encoding, accepts origin-form and absolute-form targets, requires authority-form with an explicit port for `CONNECT`, and restricts asterisk-form to `OPTIONS`. The HTTP/2 `PRI *` preface remains accepted by its existing dedicated path.
+
+For absolute-form and `CONNECT` targets, Milo requires the target authority and `Host` value to match case-insensitively, including any explicit port. It does not infer default ports or rewrite either value. Strict validation applies only to requests; response parsing is unchanged.
 
 ## Body Payload Limit
 

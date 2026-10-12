@@ -26,6 +26,7 @@ pub struct Parser {
   pub autodetect: bool,
   pub is_request: bool,
   pub suspend_after_headers: bool,
+  pub strict_proxy_semantics: bool,
   pub manage_unconsumed: bool,
   pub continue_without_data: bool,
   pub is_connect: bool,
@@ -53,6 +54,7 @@ pub struct Parser {
   pub has_connection_upgrade: bool,
   pub has_upgrade: bool,
   pub has_trailers: bool,
+  pub has_host: bool,
 
   // Callback handling
   pub active_callbacks: u64,
@@ -68,6 +70,8 @@ pub struct Parser {
   pub error_description: [u8; 255],
   pub unconsumed: *const c_uchar,
   pub unconsumed_len: usize,
+  pub strict_authority: *const c_uchar,
+  pub strict_authority_len: usize,
   pub error_description_len: u8,
 
   // Event buffer. Keep this at the end of the struct for external readers.
@@ -105,6 +109,7 @@ impl Parser {
       autodetect: true,
       is_request: false,
       suspend_after_headers: false,
+      strict_proxy_semantics: false,
       manage_unconsumed: false,
       continue_without_data: false,
       is_connect: false,
@@ -130,6 +135,7 @@ impl Parser {
       has_connection_upgrade: false,
       has_upgrade: false,
       has_trailers: false,
+      has_host: false,
       // Callbacks handling
       active_callbacks: 0,
       active_events: 0,
@@ -142,6 +148,8 @@ impl Parser {
       error_description: [0; 255],
       unconsumed: ptr::null(),
       unconsumed_len: 0,
+      strict_authority: ptr::null(),
+      strict_authority_len: 0,
       error_description_len: 0,
       events: events_ptr,
     }
@@ -156,6 +164,7 @@ impl Parser {
   ///   * autodetect
   ///   * is_request
   ///   * suspend_after_headers
+  ///   * strict_proxy_semantics
   ///   * manage_unconsumed
   ///   * continue_without_data
   ///   * debug
@@ -197,8 +206,34 @@ impl Parser {
     self.unconsumed_len = 0;
   }
 
+  pub(crate) fn clear_strict_authority(&mut self) {
+    if self.strict_authority_len > 0 {
+      unsafe {
+        drop(Box::from_raw(ptr::slice_from_raw_parts_mut(
+          self.strict_authority as *mut c_uchar,
+          self.strict_authority_len,
+        )));
+      }
+    }
+    self.strict_authority = ptr::null();
+    self.strict_authority_len = 0;
+  }
+
+  pub(crate) fn set_strict_authority(&mut self, authority: &[u8]) {
+    self.clear_strict_authority();
+    let authority = authority.to_vec().into_boxed_slice();
+    self.strict_authority_len = authority.len();
+    self.strict_authority = Box::into_raw(authority) as *const c_uchar;
+  }
+
+  pub(crate) fn strict_authority_matches(&self, authority: &[u8]) -> bool {
+    self.strict_authority_len == authority.len()
+      && unsafe { from_raw_parts(self.strict_authority, self.strict_authority_len) }.eq_ignore_ascii_case(authority)
+  }
+
   /// Clears all values about the message in the parser.
   pub fn clear(&mut self) {
+    self.clear_strict_authority();
     self.is_connect = false;
     self.method = 0;
     self.status = 0;
@@ -209,6 +244,7 @@ impl Parser {
     self.has_connection_upgrade = false;
     self.has_upgrade = false;
     self.has_trailers = false;
+    self.has_host = false;
     self.content_length = 0;
     self.chunk_size = 0;
     self.remaining_content_length = 0;
@@ -342,6 +378,7 @@ impl Parser {
 impl Drop for Parser {
   fn drop(&mut self) {
     self.clear_unconsumed();
+    self.clear_strict_authority();
     if !self.events.is_null() {
       unsafe {
         let _ = Box::from_raw(self.events as *mut [u8; 65536]);

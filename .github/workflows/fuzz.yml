@@ -83,7 +83,7 @@ jobs:
           fi
       - name: Seed corpus
         run: |
-          mkdir -p parser/fuzz/corpus/${{ matrix.target }}
+          mkdir -p parser/fuzz/corpus/${{ matrix.target }} artifacts/${{ matrix.target }}
           cp -n parser/fuzz/corpus/seeds/* parser/fuzz/corpus/${{ matrix.target }}/ || true
       - name: Fuzz ${{ matrix.target }}
         working-directory: parser
@@ -133,4 +133,4 @@ jobs:
           key: miri-cargo-${{ hashFiles('**/Cargo.toml') }}-${{ hashFiles('**/Cargo.lock') }}
       - name: Miri test (smuggling + memory)
         working-directory: parser
-        run: cargo +nightly miri test --test smuggling --test issues
+        run: cargo miri test --test smuggling --test issues

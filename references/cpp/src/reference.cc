@@ -44,8 +44,16 @@ void clear_context(context_t* context) {
   }
 }
 
-uchar_t* create_string() {
-  return reinterpret_cast<uchar_t*>(calloc(MAX_FORMAT, sizeof(uchar_t)));
+uchar_t* create_string(usize_t size = MAX_FORMAT) {
+  if (size == UINTPTR_MAX) {
+    abort();
+  }
+
+  auto value = reinterpret_cast<uchar_t*>(calloc(size + 1, sizeof(uchar_t)));
+  if (value == NULL) {
+    abort();
+  }
+  return value;
 }
 
 void append_output(const milo_parser::Parser* parser, uchar_t* message, const uchar_t* data, usize_t from,
@@ -53,9 +61,10 @@ void append_output(const milo_parser::Parser* parser, uchar_t* message, const uc
   if (data == NULL) {
     printf("{ %s, \"data\": null }\n", message);
   } else {
-    uchar_t* string_data = create_string();
-    strncpy(reinterpret_cast<char*>(string_data), reinterpret_cast<const char*>(data), size);
+    uchar_t* string_data = create_string(size);
+    memcpy(string_data, data, size);
     printf("{ %s, \"data\": \"%s\" }\n", message, string_data);
+    free(string_data);
   }
 
   free(message);
@@ -69,8 +78,10 @@ void event(const milo_parser::Parser* parser, const char* name, const uchar_t* d
 
 void show_span(const milo_parser::Parser* parser, const char* name, const uchar_t* data, usize_t from, usize_t size) {
   auto context = reinterpret_cast<context_t*>(parser->context);
-  uchar_t* string_data = create_string();
-  strncpy(reinterpret_cast<char*>(string_data), reinterpret_cast<const char*>(data), size);
+  uchar_t* string_data = create_string(size);
+  if (size > 0) {
+    memcpy(string_data, data, size);
+  }
 
   if (strcmp(name, "method") == 0) {
     context->method = string_data;
@@ -95,8 +106,8 @@ uchar_t* copy_string(const char* source, usize_t size) {
     size = strlen(source);
   }
 
-  auto destination = reinterpret_cast<uchar_t*>(malloc(sizeof(uchar_t) * size));
-  strncpy(reinterpret_cast<char*>(destination), source, size);
+  auto destination = create_string(size);
+  memcpy(destination, source, size);
   return destination;
 }
 

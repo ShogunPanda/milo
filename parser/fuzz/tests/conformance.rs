@@ -57,6 +57,18 @@ fn rejects_transfer_encoding_not_ending_in_chunked() {
   }
 }
 
+#[test]
+fn rejects_invalid_transfer_encoding_syntax() {
+  for input in [
+    &b"POST / HTTP/1.1\r\nTransfer-Encoding: bad@coding, chunked\r\n\r\n0\r\n\r\n"[..],
+    &b"POST / HTTP/1.1\r\nTransfer-Encoding: gzip,, chunked\r\n\r\n0\r\n\r\n"[..],
+    &b"POST / HTTP/1.1\r\nTransfer-Encoding: gzip; level=bad@value, chunked\r\n\r\n0\r\n\r\n"[..],
+    &b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked; level=9\r\n\r\n0\r\n\r\n"[..],
+  ] {
+    assert_ne!(error_code(input, true), ERROR_NONE, "invalid TE syntax must be rejected: {input:?}");
+  }
+}
+
 // --- Well-formed messages must still be accepted. ---
 
 #[test]

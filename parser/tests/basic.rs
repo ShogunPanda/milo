@@ -5,7 +5,7 @@ use std::ffi::c_uchar;
 
 use milo_parser::{
   CALLBACK_ACTIVE_ON_HEADERS, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER, ERROR_UNEXPECTED_STATE,
-  EVENT_ACTIVE_ON_HEADER_NAME, EVENT_ACTIVE_ON_HEADER_VALUE, STATE_BODY_DECISION, STATE_ERROR, STATE_FINISH,
+  EVENT_ACTIVE_ON_HEADER_NAME, EVENT_ACTIVE_ON_HEADER_VALUE, Parser, STATE_BODY_DECISION, STATE_ERROR, STATE_FINISH,
   STATE_HEADER, STATE_START,
 };
 
@@ -241,6 +241,115 @@ fn basic_connection_close() {
 }
 
 #[test]
+fn basic_header_and_trailer_budget_defaults() {
+  let parser = Parser::new();
+
+  assert_eq!(parser.max_header_bytes, 65536);
+  assert_eq!(parser.max_header_count, 100);
+  assert_eq!(parser.max_trailer_bytes, 65536);
+  assert_eq!(parser.max_trailer_count, 100);
+}
+
+#[test]
+fn basic_initial_header_budgets() {
+  let message = "GET / HTTP/1.1\r\nA: b\r\nB: c\r\n\r\n";
+
+  let mut parser = Parser::new();
+  parser.autodetect = false;
+  parser.is_request = true;
+  parser.max_header_bytes = 12;
+  parser.max_header_count = 2;
+  assert_eq!(parser.parse(message.as_ptr(), message.len()), message.len());
+  assert_eq!(parser.header_bytes, 12);
+  assert_eq!(parser.header_count, 2);
+  assert_ne!(parser.state, STATE_ERROR);
+
+  for (max_bytes, max_count, description) in [(11, 2, "Header section too large"), (12, 1, "Too many header fields")] {
+    let mut parser = Parser::new();
+    parser.autodetect = false;
+    parser.is_request = true;
+    parser.max_header_bytes = max_bytes;
+    parser.max_header_count = max_count;
+    parser.parse(message.as_ptr(), message.len());
+    assert_eq!(parser.state, STATE_ERROR);
+    assert_eq!(parser.header_bytes, 6);
+    assert_eq!(parser.header_count, 1);
+    assert_eq!(parser.error_description_str(), description);
+  }
+
+  let unlimited = format!("GET / HTTP/1.1\r\n{}\r\n", "X: y\r\n".repeat(101));
+  let mut parser = Parser::new();
+  parser.autodetect = false;
+  parser.is_request = true;
+  parser.max_header_bytes = 0;
+  parser.max_header_count = 0;
+  assert_eq!(parser.parse(unlimited.as_ptr(), unlimited.len()), unlimited.len());
+  assert_eq!(parser.header_count, 101);
+  assert_ne!(parser.state, STATE_ERROR);
+}
+
+#[test]
+fn basic_trailer_budgets() {
+  let message = "POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nA: b\r\nB: c\r\n\r\n";
+
+  let mut parser = Parser::new();
+  parser.autodetect = false;
+  parser.is_request = true;
+  parser.max_trailer_bytes = 12;
+  parser.max_trailer_count = 2;
+  assert_eq!(parser.parse(message.as_ptr(), message.len()), message.len());
+  assert_eq!(parser.trailer_bytes, 12);
+  assert_eq!(parser.trailer_count, 2);
+  assert_ne!(parser.state, STATE_ERROR);
+
+  for (max_bytes, max_count, description) in [(11, 2, "Trailer section too large"), (12, 1, "Too many trailer fields")]
+  {
+    let mut parser = Parser::new();
+    parser.autodetect = false;
+    parser.is_request = true;
+    parser.max_trailer_bytes = max_bytes;
+    parser.max_trailer_count = max_count;
+    parser.parse(message.as_ptr(), message.len());
+    assert_eq!(parser.state, STATE_ERROR);
+    assert_eq!(parser.trailer_bytes, 6);
+    assert_eq!(parser.trailer_count, 1);
+    assert_eq!(parser.error_description_str(), description);
+  }
+}
+
+#[test]
+fn basic_header_budget_survives_managed_fragments_and_event_suspension() {
+  const FIELD_COUNT: usize = 4000;
+  let fields = "X: y\r\n".repeat(FIELD_COUNT);
+  let message = format!("GET / HTTP/1.1\r\n{fields}\r\n");
+  let expected_bytes = fields.len();
+
+  let mut parser = Parser::new();
+  parser.autodetect = false;
+  parser.is_request = true;
+  parser.manage_unconsumed = true;
+  parser.max_header_bytes = expected_bytes;
+  parser.max_header_count = FIELD_COUNT;
+  parser.active_events = EVENT_ACTIVE_ON_HEADER_NAME | EVENT_ACTIVE_ON_HEADER_VALUE;
+
+  let split = 20;
+  assert_eq!(parser.parse(message.as_ptr(), split), 16);
+  assert_eq!(parser.header_count, 0);
+
+  let first = parser.parse(unsafe { message.as_ptr().add(split) }, message.len() - split);
+  assert!(first < message.len() - 16);
+  assert!(parser.header_count > 0);
+  assert!(parser.header_count < FIELD_COUNT);
+
+  let consumed = parser.parse([].as_ptr(), 0);
+  assert!(consumed > 0);
+  assert_eq!(parser.state, STATE_START);
+  assert_eq!(parser.header_bytes, expected_bytes);
+  assert_eq!(parser.header_count, FIELD_COUNT);
+  assert_eq!(parser.error_code, ERROR_NONE);
+}
+
+#[test]
 fn basic_max_body_payload_content_length() {
   let mut parser = create_parser();
   parser.autodetect = false;
@@ -401,6 +510,8 @@ fn basic_event_buffer_full_stops_parsing() {
   let mut parser = milo_parser::Parser::new();
   parser.autodetect = false;
   parser.is_request = false;
+  parser.max_header_bytes = 0;
+  parser.max_header_count = 0;
   parser.active_events = EVENT_ACTIVE_ON_HEADER_NAME | EVENT_ACTIVE_ON_HEADER_VALUE;
 
   let mut message = String::from("HTTP/1.1 200 OK\r\n");

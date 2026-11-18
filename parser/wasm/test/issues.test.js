@@ -89,6 +89,9 @@ it('issue-26 - preserve_events_before_error', () => {
             try {
               milo.setShouldAutodetect(parser, false)
               milo.setIsRequest(parser, false)
+              // This regression intentionally creates thousands of fields to fill the event buffer.
+              milo.setMaxHeaderBytes(parser, 0)
+              milo.setMaxHeaderCount(parser, 0)
               const mask =
                 milo.EVENT_ACTIVE_ON_HEADERS |
                 milo.EVENT_ACTIVE_ON_MESSAGE_COMPLETE |

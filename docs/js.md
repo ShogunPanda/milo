@@ -125,6 +125,12 @@ Read the event buffer pointer from `parser + ParserFields.EVENTS`, then drain re
 
 If an active event would exceed the internal event buffer, parsing stops before consuming the data that would have produced the event. This is not a parser error and does not pause the parser. Call `parse()` again after draining the event buffer.
 
+### Header and Trailer Budgets
+
+`setMaxHeaderBytes`, `setMaxHeaderCount`, `setMaxTrailerBytes`, and `setMaxTrailerCount` configure independent aggregate initial-header and trailer limits. Defaults are 65,536 bytes and 100 fields for each section; set an individual limit to `0` to disable it.
+
+The byte total includes every committed field line, including its terminating CRLF, but excludes the final empty CRLF. Complete field lines are checked against the budget before field syntax and semantics are processed, so an over-budget malformed field reports the budget error. Totals commit only after validation and event delivery; fragmented input and a retry after event-buffer suspension do not count a side-effect-free field more than once. Exceeding a limit fails parsing with `ERROR_UNEXPECTED_CHARACTER`.
+
 ### Body Payload Limit
 
 `setMaxBodyPayload(parser, value)` limits how many body payload bytes a single `parse()` invocation can consume. The default value is `0`, which means unlimited.
@@ -385,9 +391,17 @@ Default is `8192`.
 
 #### `getMaxHeaderLength(parser)`
 
-Returns the parser maximum allowed header length.
+Returns the parser maximum allowed individual header or trailer line length.
 
 Default is `8192`.
+
+#### `getMaxHeaderBytes(parser)` / `getMaxHeaderCount(parser)`
+
+Return the aggregate initial-header byte or field-count limit. Defaults are `65536` and `100`.
+
+#### `getMaxTrailerBytes(parser)` / `getMaxTrailerCount(parser)`
+
+Return the aggregate trailer byte or field-count limit. Defaults are `65536` and `100`.
 
 #### `getMaxBodyPayload(parser)`
 
@@ -499,9 +513,17 @@ Defaults to `8192` in a new parser.
 
 #### `setMaxHeaderLength(parser, value)`
 
-Sets the parser maximum allowed header length.
+Sets the parser maximum allowed individual header or trailer line length.
 
 Defaults to `8192` in a new parser.
+
+#### `setMaxHeaderBytes(parser, value)` / `setMaxHeaderCount(parser, value)`
+
+Set the aggregate initial-header byte or field-count limit. Use `0` for unlimited.
+
+#### `setMaxTrailerBytes(parser, value)` / `setMaxTrailerCount(parser, value)`
+
+Set the aggregate trailer byte or field-count limit. Use `0` for unlimited.
 
 #### `setMaxBodyPayload(parser, value)`
 

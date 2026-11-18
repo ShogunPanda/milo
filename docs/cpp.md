@@ -110,7 +110,11 @@ A struct representing a parser. It has the following fields:
 - `skip_body` (`bool`): If the parser should skip the body.
 - `debug` (`bool`): If debug tracing is enabled for this parser. It only affects tracing in debug-enabled builds.
 - `max_start_line_length` (`uintptr_t`): Maximum allowed request/status line length. By default is `8192`.
-- `max_header_length` (`uintptr_t`): Maximum allowed header length. By default is `8192`.
+- `max_header_length` (`uintptr_t`): Maximum allowed individual header or trailer line length. By default is `8192`.
+- `max_header_bytes` (`uintptr_t`): Maximum aggregate initial-header field bytes per message. By default is `65536`; `0` means unlimited.
+- `max_header_count` (`uintptr_t`): Maximum initial-header field count per message. By default is `100`; `0` means unlimited.
+- `max_trailer_bytes` (`uintptr_t`): Maximum aggregate trailer field bytes per message. By default is `65536`; `0` means unlimited.
+- `max_trailer_count` (`uintptr_t`): Maximum trailer field count per message. By default is `100`; `0` means unlimited.
 - `max_body_payload` (`uint64_t`): Maximum body payload bytes consumed in a single `milo_parse()` call. `0` means unlimited and is the default.
 - `context` (`void*`): The context of this parser. Use is reserved to the developer.
 - `state` (`uint8_t`): The current parser state.
@@ -130,6 +134,8 @@ A struct representing a parser. It has the following fields:
 - `has_connection_upgrade` (`bool`): If the current message has a `Connection: upgrade` token.
 - `has_upgrade` (`bool`): If the current message has an `Upgrade` header.
 - `has_trailers` (`bool`): If the current message has a `Trailer` header.
+- `header_bytes` / `header_count` (`uintptr_t`): Committed initial-header field bytes and count for the current message.
+- `trailer_bytes` / `trailer_count` (`uintptr_t`): Committed trailer field bytes and count for the current message.
 - `active_callbacks` (`uint64_t`): Active callback bitmask. Set to one or more `CALLBACK_ACTIVE_*` values.
 - `active_events` (`uint64_t`): Active event bitmask. Set to one or more `EVENT_ACTIVE_*` values.
 - `callbacks` (`ParserCallbacks`): The callbacks for the current parser.
@@ -151,6 +157,10 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 - `debug`
 - `max_start_line_length`
 - `max_header_length`
+- `max_header_bytes`
+- `max_header_count`
+- `max_trailer_bytes`
+- `max_trailer_count`
 - `max_body_payload`
 - `context`
 - `active_callbacks`
@@ -166,6 +176,12 @@ Callbacks are replayed from the same event buffer. Setting `active_callbacks` al
 The event buffer is terminated by `EVENT_END`. Do not rely on the internal buffer size; always stop reading at `EVENT_END`. Event payload integers are little-endian and may be unaligned, so copy multi-byte values before decoding them.
 
 If an active event would exceed the internal event buffer, parsing stops before consuming the data that would have produced the event. This is not a parser error and does not pause the parser. Call `milo_parse()` again after draining the event buffer.
+
+## Header and Trailer Budgets
+
+Initial headers and trailers have independent aggregate byte and field-count limits. Defaults are 65,536 bytes and 100 fields for each section; set an individual limit to `0` to disable it. Native callers may write the public configuration fields or use `milo_set_max_header_bytes()`, `milo_set_max_header_count()`, `milo_set_max_trailer_bytes()`, and `milo_set_max_trailer_count()`.
+
+The byte total includes every committed field line, including its terminating CRLF, but excludes the final empty CRLF. Complete field lines are checked against the budget before field syntax and semantics are processed, so an over-budget malformed field reports the budget error. Totals commit only after validation and event delivery; fragmented input and a retry after event-buffer suspension do not count a side-effect-free field more than once. Exceeding a limit fails parsing with `ERROR_UNEXPECTED_CHARACTER`.
 
 ## Body Payload Limit
 

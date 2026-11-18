@@ -169,7 +169,8 @@ fn basic_incomplete_string_automanaged_1() {
   let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
   assert_eq!(consumed1, 0);
   let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
-  assert_eq!(consumed2, 16);
+  assert_eq!(consumed2, sample2.len());
+  assert_eq!(unsafe { parser.event_data() }, message[..16].as_bytes());
   let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
   assert_eq!(consumed3, 0);
   let consumed4 = parser.parse(sample4.as_ptr(), sample4.len());
@@ -177,7 +178,8 @@ fn basic_incomplete_string_automanaged_1() {
   let consumed5 = parser.parse(sample5.as_ptr(), sample5.len());
   assert_eq!(consumed5, 0);
   let consumed6 = parser.parse(sample6.as_ptr(), sample6.len());
-  assert_eq!(consumed6, sample3.len() + sample4.len() + sample5.len() + sample6.len());
+  assert_eq!(consumed6, sample6.len());
+  assert_eq!(unsafe { parser.event_data() }, message[16..].as_bytes());
 
   assert_ne!(parser.state, STATE_ERROR);
   assert_eq!(parser.parsed, message.len() as u64);
@@ -188,7 +190,7 @@ fn basic_incomplete_string_automanaged_1() {
   let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
   assert_eq!(consumed1, 0);
   let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
-  assert_eq!(consumed2, 16);
+  assert_eq!(consumed2, sample2.len());
   let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
   assert_eq!(consumed3, 0);
   let consumed4 = parser.parse(sample4.as_ptr(), sample4.len());
@@ -196,7 +198,7 @@ fn basic_incomplete_string_automanaged_1() {
   let consumed5 = parser.parse(sample5.as_ptr(), sample5.len());
   assert_eq!(consumed5, 0);
   let consumed6 = parser.parse(sample6.as_ptr(), sample6.len());
-  assert_eq!(consumed6, sample3.len() + sample4.len() + sample5.len() + sample6.len());
+  assert_eq!(consumed6, sample6.len());
 
   assert_ne!(parser.state, STATE_ERROR);
   assert_eq!(parser.parsed, (message.len() * 2) as u64);

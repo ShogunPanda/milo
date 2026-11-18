@@ -45,6 +45,9 @@ struct ParserStub {
   error_description: [u8; 255],
   unconsumed: WasmPointer,
   unconsumed_len: WasmUsize,
+  event_data: WasmPointer,
+  event_data_len: WasmUsize,
+  event_data_owned: bool,
   error_description_len: u8,
   events: WasmPointer,
 }
@@ -91,6 +94,8 @@ pub const FIELDS: &[(&str, usize)] = &[
   ("ERROR_DESCRIPTION", offset_of!(ParserStub, error_description)),
   ("UNCONSUMED", offset_of!(ParserStub, unconsumed)),
   ("UNCONSUMED_LEN", offset_of!(ParserStub, unconsumed_len)),
+  ("EVENT_DATA", offset_of!(ParserStub, event_data)),
+  ("EVENT_DATA_LEN", offset_of!(ParserStub, event_data_len)),
   ("ERROR_DESCRIPTION_LEN", offset_of!(ParserStub, error_description_len)),
   ("EVENTS", offset_of!(ParserStub, events)),
 ];

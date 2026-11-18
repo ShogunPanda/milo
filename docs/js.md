@@ -147,7 +147,9 @@ u32 at
 u32 len
 ```
 
-`type` is one of the `EVENT_*` constants. `at` and `len` are relative to the last input passed to `parse()`. `len` can be `0`.
+`type` is one of the `EVENT_*` constants. `at` and `len` index the bytes at `getEventData(parser)` with length `getEventDataLength(parser)`. Without managed input this is the latest input. When retained bytes are prepended, it is a parser-owned aggregate valid until the next `parse()`, `reset()`, or `destroy()`. `len` can be `0`.
+
+The value returned by `parse()` and `getPosition(parser)` always count bytes consumed from the current call's input; retained-prefix bytes are excluded. `getParsed(parser)` continues to count each consumed stream byte once.
 
 `EVENT_STATE_CHANGE` is debug-only and uses the same payload. For this event, `len` contains the new parser state id as a `u32`. Callback replay passes that value as the callback `size` argument.
 
@@ -418,6 +420,14 @@ Returns the parser state.
 #### `getPosition(parser)`
 
 Returns the parser position.
+
+#### `getEventData(parser)`
+
+Returns the WebAssembly memory pointer backing ranges emitted by the latest `parse()` call.
+
+#### `getEventDataLength(parser)`
+
+Returns the length of the event backing buffer.
 
 #### `getParsed(parser)`
 

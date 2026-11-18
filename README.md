@@ -191,6 +191,14 @@ Create a sample source file:
 #include <cstdio>
 #include <cstring>
 
+extern "C" void on_data(milo_parser::Parser* p, uintptr_t from, uintptr_t size) {
+  const char* payload = reinterpret_cast<const char*>(p->context) + from;
+
+  printf("Pos=%" PRIuPTR " Body: ", from);
+  fwrite(payload, 1, size, stdout);
+  putchar('\n');
+}
+
 int main() {
   // Create the parser.
   milo_parser::Parser* parser = milo_parser::milo_create();
@@ -213,11 +221,7 @@ int main() {
 
     If the current callback has no payload, both values are set to 0.
   */
-  parser->callbacks.on_data = [](milo_parser::Parser* p, uintptr_t from, uintptr_t size) {
-    const char* payload = reinterpret_cast<const char*>(p->context) + from;
-
-    printf("Pos=%" PRIuPTR " Body: %.*s\n", from, static_cast<int>(size), payload);
-  };
+  parser->callbacks.on_data = on_data;
 
   // Toggle on the callbacks you want to receive
   parser->active_callbacks |= milo_parser::CALLBACK_ACTIVE_ON_DATA;

@@ -104,6 +104,8 @@ uchar_t* copy_string(uchar_t* source, usize_t size) {
   return copy_string(reinterpret_cast<const char*>(source), size);
 }
 
+extern "C" {
+
 void on_state_change(milo_parser::Parser* parser, usize_t from, usize_t size) {
   auto state = milo_parser::milo_state_to_string(static_cast<uint8_t>(size));
 
@@ -303,6 +305,8 @@ void on_trailers(milo_parser::Parser* parser, usize_t from, usize_t size) {
   EXTRACT_PAYLOAD(data, parser, from, size);
   event(parser, "trailers", data, from, size);
 }
+
+} // extern "C"
 
 int main() {
   milo_parser::Parser* parser = milo_parser::milo_create();

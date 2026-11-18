@@ -584,13 +584,16 @@ impl Parser {
                         fail!(UNEXPECTED_CHARACTER, "Expected Transfer-Encoding header value");
                       }
 
-                      let header_has_chunked =
+                      let header_has_chunked = if &data[header_value_start..header_value_end] == b"chunked" {
+                        true
+                      } else {
                         match validate_transfer_encoding(data, header_value_start, header_value_end) {
                           Some(has_chunked) => has_chunked,
                           None => {
                             fail!(INVALID_TRANSFER_ENCODING, "Invalid Transfer-Encoding header value");
                           }
-                        };
+                        }
+                      };
 
                       // A later field value would make a previously observed chunked coding
                       // non-final.

@@ -100,9 +100,8 @@ pub fn validate_quoted_string(data: &[u8], start: usize, end: usize) -> bool {
 #[inline(always)]
 pub fn validate_transfer_encoding(data: &[u8], start: usize, end: usize) -> Option<bool> {
   let mut i = start;
-  let mut has_chunked = false;
 
-  while i < end {
+  loop {
     while i < end && is_ws(data[i]) {
       i += 1;
     }
@@ -116,14 +115,15 @@ pub fn validate_transfer_encoding(data: &[u8], start: usize, end: usize) -> Opti
     }
 
     let is_chunked = data[coding_start..i].eq_ignore_ascii_case(b"chunked");
-    let mut has_parameters = false;
 
     while i < end && is_ws(data[i]) {
       i += 1;
     }
 
     while i < end && data[i] == b';' {
-      has_parameters = true;
+      if is_chunked {
+        return None;
+      }
       i += 1;
 
       while i < end && is_ws(data[i]) {
@@ -155,29 +155,29 @@ pub fn validate_transfer_encoding(data: &[u8], start: usize, end: usize) -> Opti
 
       if data[i] == b'"' {
         i += 1;
-        let value_start = i;
         loop {
           if i == end {
             return None;
           }
 
-          match data[i] {
-            b'"' => break,
+          let byte = data[i];
+          i += 1;
+          match byte {
+            b'"' => {
+              break;
+            }
             b'\\' => {
-              i += 1;
-              if i == end {
+              if i == end || !QUOTED_PAIR_TABLE[data[i] as usize] {
                 return None;
               }
+              i += 1;
+            }
+            _ if !QUOTED_STRING_TABLE[byte as usize] => {
+              return None;
             }
             _ => {}
           }
-          i += 1;
         }
-
-        if !validate_quoted_string(data, value_start, i) {
-          return None;
-        }
-        i += 1;
       } else {
         let value_start = i;
         while i < end && TOKEN_TABLE[data[i] as usize] {
@@ -193,30 +193,15 @@ pub fn validate_transfer_encoding(data: &[u8], start: usize, end: usize) -> Opti
       }
     }
 
-    if is_chunked {
-      if has_chunked || has_parameters {
-        return None;
-      }
-      has_chunked = true;
-    }
-
     if i == end {
-      return Some(has_chunked);
+      return Some(is_chunked);
     }
-    if data[i] != b',' || has_chunked {
+    if data[i] != b',' || is_chunked {
       return None;
     }
 
     i += 1;
-    while i < end && is_ws(data[i]) {
-      i += 1;
-    }
-    if i == end {
-      return None;
-    }
   }
-
-  None
 }
 
 #[inline(always)]

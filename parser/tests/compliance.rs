@@ -644,7 +644,8 @@ fn compliance_transfer_encoding_rejects_invalid_parameters() {
 #[test]
 fn compliance_transfer_encoding_accepts_parameters_before_chunked() {
   let mut parser = response_parser();
-  let message = wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip; level = 9; note=\"a,b\", ChUnKeD\r\n\r\n0\r\n\r\n");
+  let message =
+    wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip; level = 9; note=\"a,b\\\"c\\\\d\", ChUnKeD\r\n\r\n0\r\n\r\n");
 
   parse(&mut parser, &message);
 

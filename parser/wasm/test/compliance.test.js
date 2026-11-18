@@ -425,7 +425,7 @@ for (const [name, value] of [
 // Valid non-chunked parameters are preserved, including quoted commas, before final chunked.
 it('compliance_transfer_encoding_accepts_parameters_before_chunked', t => {
   const { milo, parser, parse } = responseParser(t)
-  parse('HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip; level = 9; note="a,b", ChUnKeD\r\n\r\n0\r\n\r\n')
+  parse('HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip; level = 9; note="a,b\\"c\\\\d", ChUnKeD\r\n\r\n0\r\n\r\n')
   assertOk(milo, parser)
   assert.equal(milo.hasTransferEncoding(parser), true)
   assert.equal(milo.hasChunkedTransferEncoding(parser), true)

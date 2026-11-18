@@ -131,6 +131,20 @@ it('compliance_head_body_rejected', t => {
   assertError(milo, parser)
 })
 
+// Milo rejects chunked framing on GET and HEAD even when the encoded body is empty.
+for (const method of ['GET', 'HEAD']) {
+  for (const [name, body] of [
+    ['empty', '0\r\n\r\n'],
+    ['non_empty', '1\r\nx\r\n0\r\n\r\n']
+  ]) {
+    it(`compliance_${method.toLowerCase()}_${name}_chunked_body_rejected`, t => {
+      const { milo, parser, parse } = requestParser(t)
+      parse(`${method} / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n${body}`)
+      assertError(milo, parser)
+    })
+  }
+}
+
 // Methods other than GET and HEAD can carry valid body framing.
 it('compliance_post_body_accepted', t => {
   const { milo, parser, parse } = requestParser(t)

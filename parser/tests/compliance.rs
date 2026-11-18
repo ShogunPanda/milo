@@ -20,6 +20,12 @@ fn response_parser() -> Parser {
   parser
 }
 
+fn strict_request_parser() -> Parser {
+  let mut parser = request_parser();
+  parser.strict_proxy_semantics = true;
+  parser
+}
+
 fn assert_ok(parser: &Parser) {
   assert_ne!(parser.state, STATE_ERROR, "{}", parser.error_description_str());
   assert_eq!(parser.error_code, ERROR_NONE);
@@ -27,6 +33,58 @@ fn assert_ok(parser: &Parser) {
 
 fn assert_error(parser: &Parser) {
   assert_eq!(parser.state, STATE_ERROR);
+}
+
+#[test]
+fn compliance_strict_proxy_semantics_is_opt_in() {
+  for message in [
+    "GET relative HTTP/1.1\r\n\r\n",
+    "GET / HTTP/1.1\r\nHost:\r\nHost: duplicate\r\n\r\n",
+  ] {
+    let mut parser = request_parser();
+    parse(&mut parser, message);
+    assert_ok(&parser);
+  }
+}
+
+#[test]
+fn compliance_strict_proxy_semantics_accepts_valid_routing_forms() {
+  for message in [
+    "GET /path:a?q=a:b%20c HTTP/1.1\r\nHost: example.com\r\n\r\n",
+    "GET http://example.com:8080/path HTTP/1.1\r\nHost: EXAMPLE.COM:8080\r\n\r\n",
+    "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n",
+    "OPTIONS * HTTP/1.1\r\nHost: [2001:db8::1]\r\n\r\n",
+  ] {
+    let mut parser = strict_request_parser();
+    parse(&mut parser, message);
+    assert_ok(&parser);
+  }
+}
+
+#[test]
+fn compliance_strict_proxy_semantics_rejects_ambiguous_routing() {
+  for message in [
+    "GET / HTTP/1.1\r\n\r\n",
+    "GET / HTTP/1.1\r\nHost:\r\n\r\n",
+    "GET / HTTP/1.1\r\nHost: example.com\r\nHost: example.com\r\n\r\n",
+    "GET / HTTP/1.1\r\nHost: user@example.com\r\n\r\n",
+    "GET / HTTP/1.1\r\nHost: example.com:\r\n\r\n",
+    "GET relative HTTP/1.1\r\nHost: example.com\r\n\r\n",
+    "GET /bad%2 HTTP/1.1\r\nHost: example.com\r\n\r\n",
+    "GET /bad%GG HTTP/1.1\r\nHost: example.com\r\n\r\n",
+    "GET /bad[route] HTTP/1.1\r\nHost: example.com\r\n\r\n",
+    "GET * HTTP/1.1\r\nHost: example.com\r\n\r\n",
+    "CONNECT / HTTP/1.1\r\nHost: example.com\r\n\r\n",
+    "CONNECT example.com HTTP/1.1\r\nHost: example.com\r\n\r\n",
+    "CONNECT example.com:443 HTTP/1.1\r\nHost: other.example\r\n\r\n",
+    "GET http://example.com/path HTTP/1.1\r\nHost: other.example\r\n\r\n",
+    "GET http:/example.com HTTP/1.1\r\nHost: example.com\r\n\r\n",
+    "POST / HTTP/1.1\r\nHost: victim.example\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nHost: attacker.example\r\n\r\n",
+  ] {
+    let mut parser = strict_request_parser();
+    parse(&mut parser, message);
+    assert_error(&parser);
+  }
 }
 
 // RFC token syntax allows `|` in header names.

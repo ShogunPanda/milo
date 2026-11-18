@@ -125,6 +125,14 @@ Read the event buffer pointer from `parser + ParserFields.EVENTS`, then drain re
 
 If an active event would exceed the internal event buffer, parsing stops before consuming the data that would have produced the event. This is not a parser error and does not pause the parser. Call `parse()` again after draining the event buffer.
 
+### Strict Proxy Semantics
+
+Call `setShouldUseStrictProxySemantics(parser, true)` for proxy- or server-facing HTTP/1.1 request parsing that needs unambiguous routing. The default is `false`, preserving Milo's lower-level, syntax-focused behavior.
+
+Strict mode requires exactly one non-empty, syntactically valid initial `Host` field and rejects `Host` in trailers. It validates RFC 3986 path/query characters and percent encoding, accepts origin-form and absolute-form targets, requires authority-form with an explicit port for `CONNECT`, and restricts asterisk-form to `OPTIONS`. The HTTP/2 `PRI *` preface remains accepted by its existing dedicated path.
+
+For absolute-form and `CONNECT` targets, Milo requires the target authority and `Host` value to match case-insensitively, including any explicit port. It does not infer default ports or rewrite either value. Strict validation applies only to requests; response parsing is unchanged.
+
 ### Body Payload Limit
 
 `setMaxBodyPayload(parser, value)` limits how many body payload bytes a single `parse()` invocation can consume. The default value is `0`, which means unlimited.
@@ -411,6 +419,10 @@ Returns `true` if the parser should skip the body.
 
 Returns `true` if parsing should return after headers have completed.
 
+#### `shouldUseStrictProxySemantics(parser)`
+
+Returns `true` if strict request-target and `Host` routing validation is enabled. Default is `false`.
+
 #### `getState(parser)`
 
 Returns the parser state.
@@ -522,6 +534,10 @@ Sets if the parser should automatically copy and prepend unconsumed data.
 #### `setShouldSuspendAfterHeaders(parser, value)`
 
 Sets if parsing should return after headers have completed.
+
+#### `setShouldUseStrictProxySemantics(parser, value)`
+
+Enables or disables strict request-target and `Host` routing validation. Defaults to `false`.
 
 #### `setShouldContinueWithoutData(parser, value)`
 

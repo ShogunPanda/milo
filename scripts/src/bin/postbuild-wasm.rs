@@ -32,6 +32,11 @@ const GETTERS: &[(&str, GetterType, &str)] = &[
     GetterType::Bool,
     "should_suspend_after_headers",
   ),
+  (
+    "shouldUseStrictProxySemantics",
+    GetterType::Bool,
+    "should_use_strict_proxy_semantics",
+  ),
   ("getMaxStartLineLength", GetterType::Number, "get_max_start_line_length"),
   ("getMaxHeaderLength", GetterType::Number, "get_max_header_length"),
   ("getMaxBodyPayload", GetterType::BigInt, "get_max_body_payload"),
@@ -79,6 +84,10 @@ const SETTERS: &[(&str, &str)] = &[
   ("setDebug", "set_debug"),
   ("setShouldManageUnconsumed", "set_should_manage_unconsumed"),
   ("setShouldSuspendAfterHeaders", "set_should_suspend_after_headers"),
+  (
+    "setShouldUseStrictProxySemantics",
+    "set_should_use_strict_proxy_semantics",
+  ),
   ("setMaxStartLineLength", "set_max_start_line_length"),
   ("setMaxHeaderLength", "set_max_header_length"),
   ("setMaxBodyPayload", "set_max_body_payload"),

@@ -4,9 +4,9 @@ mod helpers;
 use std::ffi::c_uchar;
 
 use milo_parser::{
-  CALLBACK_ACTIVE_ON_HEADERS, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER, ERROR_UNEXPECTED_STATE,
+  CALLBACK_ACTIVE_ON_HEADERS, CStringWithLength, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER, ERROR_UNEXPECTED_STATE,
   EVENT_ACTIVE_ON_HEADER_NAME, EVENT_ACTIVE_ON_HEADER_VALUE, STATE_BODY_DECISION, STATE_ERROR, STATE_FINISH,
-  STATE_HEADER, STATE_START,
+  STATE_HEADER, STATE_START, milo_error_description_string, milo_fail, milo_free_string,
 };
 
 use crate::helpers::{context, create_parser, http, parse};
@@ -27,6 +27,44 @@ fn basic_error_description_is_clamped_and_terminated() {
 
   assert_eq!(parser.error_description_len, 0);
   assert_eq!(parser.error_description[0], 0);
+
+  let description = format!("{}é", "a".repeat(253));
+  parser.fail(ERROR_UNEXPECTED_CHARACTER, &description);
+  assert_eq!(parser.error_description_len, 253);
+  assert_eq!(parser.error_description_str(), "a".repeat(253));
+
+  parser.error_description[0] = 0xff;
+  parser.error_description_len = 1;
+  assert_eq!(parser.error_description_str(), "");
+}
+
+#[test]
+fn basic_ffi_error_description_rejects_invalid_utf8() {
+  let mut parser = create_parser();
+  let invalid = [0xff];
+  let description = CStringWithLength {
+    ptr: invalid.as_ptr(),
+    len: invalid.len(),
+  };
+
+  milo_fail(&mut parser, ERROR_UNEXPECTED_CHARACTER, description);
+  assert_eq!(parser.error_description_str(), "Invalid UTF-8 error description");
+
+  milo_fail(
+    &mut parser,
+    ERROR_UNEXPECTED_CHARACTER,
+    CStringWithLength {
+      ptr: std::ptr::null(),
+      len: 0,
+    },
+  );
+  assert_eq!(parser.error_description_str(), "");
+
+  parser.fail(ERROR_UNEXPECTED_CHARACTER, "before\0after");
+  let output = milo_error_description_string(&mut parser);
+  assert_eq!(output.len, 6);
+  assert_eq!(unsafe { std::slice::from_raw_parts(output.ptr, output.len) }, b"before");
+  milo_free_string(output);
 }
 
 #[test]

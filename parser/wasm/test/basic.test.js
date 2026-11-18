@@ -12,6 +12,15 @@ it('basic_error_description_is_clamped_and_terminated', t => {
   assert.equal(memory[parser + milo.PARSER_FIELD_ERROR_DESCRIPTION + 254], 0)
   assert.equal(milo.getErrorDescription(parser), 'a'.repeat(254))
 
+  milo.fail(parser, milo.ERROR_UNEXPECTED_CHARACTER, `${'a'.repeat(253)}é`)
+  assert.equal(milo.getErrorDescription(parser), 'a'.repeat(253))
+
+  milo.fail(parser, milo.ERROR_UNEXPECTED_CHARACTER, 'é😀')
+  assert.equal(milo.getErrorDescription(parser), 'é😀')
+
+  milo.fail(parser, milo.ERROR_UNEXPECTED_CHARACTER, '')
+  assert.equal(milo.getErrorDescription(parser), '')
+
   milo.reset(parser, false)
   memory = new Uint8Array(milo.memory.buffer)
   assert.equal(memory[parser + milo.PARSER_FIELD_ERROR_DESCRIPTION_LEN], 0)

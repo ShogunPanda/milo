@@ -4,9 +4,9 @@ mod helpers;
 use std::ffi::c_uchar;
 
 use milo_parser::{
-  CALLBACK_ACTIVE_ON_HEADERS, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER, ERROR_UNEXPECTED_STATE,
-  EVENT_ACTIVE_ON_HEADER_NAME, EVENT_ACTIVE_ON_HEADER_VALUE, STATE_BODY_DECISION, STATE_ERROR, STATE_FINISH,
-  STATE_HEADER, STATE_START,
+  CALLBACK_ACTIVE_ON_HEADERS, CStringWithLength, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER, ERROR_UNEXPECTED_STATE,
+  EVENT_ACTIVE_ON_HEADER_NAME, EVENT_ACTIVE_ON_HEADER_VALUE, Parser, STATE_BODY_DECISION, STATE_ERROR, STATE_FINISH,
+  STATE_HEADER, STATE_START, STATE_TUNNEL, milo_error_description_string, milo_fail, milo_free_string,
 };
 
 use crate::helpers::{context, create_parser, http, parse};
@@ -24,6 +24,46 @@ fn basic_error_description_is_clamped_and_reset() {
   parser.reset(false);
 
   assert_eq!(parser.error_description_str(), "");
+
+  let description = format!("{}é", "a".repeat(253));
+  parser.fail(ERROR_UNEXPECTED_CHARACTER, &description);
+  assert_eq!(parser.error_description_str(), "a".repeat(253));
+}
+
+#[test]
+fn basic_ffi_error_description_rejects_invalid_utf8() {
+  let mut parser = create_parser();
+  let invalid = [0xff];
+  let description = CStringWithLength {
+    ptr: invalid.as_ptr(),
+    len: invalid.len(),
+  };
+
+  // SAFETY: Both the parser and the separate input allocation are live.
+  unsafe { milo_fail(&mut parser, ERROR_UNEXPECTED_CHARACTER, description) };
+  assert_eq!(parser.error_description_str(), "Invalid UTF-8 error description");
+
+  // SAFETY: The parser is live and the null description has length zero.
+  unsafe {
+    milo_fail(
+      &mut parser,
+      ERROR_UNEXPECTED_CHARACTER,
+      CStringWithLength {
+        ptr: std::ptr::null(),
+        len: 0,
+      },
+    )
+  };
+  assert_eq!(parser.error_description_str(), "");
+
+  parser.fail(ERROR_UNEXPECTED_CHARACTER, "before\0after");
+  // SAFETY: The parser is live and exclusively borrowed here.
+  let output = unsafe { milo_error_description_string(&mut parser) };
+  assert_eq!(output.len, 6);
+  // SAFETY: Milo owns the returned string until milo_free_string is called.
+  assert_eq!(unsafe { std::slice::from_raw_parts(output.ptr, output.len) }, b"before");
+  // SAFETY: The string was allocated by Milo and has not been freed.
+  unsafe { milo_free_string(output) };
 }
 
 #[test]
@@ -182,6 +222,36 @@ fn basic_incomplete_string_automanaged_2() {
 
   assert_ne!(parser.state, STATE_ERROR);
   assert_eq!(parser.parsed, message.len() as u64);
+}
+
+#[test]
+fn basic_autodetect_fragmented_response() {
+  for split in 1..=4 {
+    let mut parser = create_parser();
+    parser.manage_unconsumed = true;
+    let message = http(r#"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"#);
+
+    let mut context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
+    context.input = message.clone();
+    let _ = Box::into_raw(context);
+
+    assert_eq!(parser.parse(&message.as_bytes()[..split]), 0);
+    assert_eq!(parser.parse(&message.as_bytes()[split..]), message.len());
+    assert!(!parser.is_request);
+    assert_ne!(parser.state, STATE_ERROR);
+  }
+
+  let mut parser = create_parser();
+  parser.manage_unconsumed = true;
+  let message = http(r#"\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"#);
+  let mut context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
+  context.input = message.clone();
+  let _ = Box::into_raw(context);
+
+  assert_eq!(parser.parse(&message.as_bytes()[..1]), 0);
+  assert_eq!(parser.parse(&message.as_bytes()[1..]), message.len());
+  assert!(!parser.is_request);
+  assert_ne!(parser.state, STATE_ERROR);
 }
 
 #[test]
@@ -380,6 +450,40 @@ fn basic_complete_after_suspend_after_headers() {
   parser.complete();
   assert_eq!(parser.state, STATE_START);
   assert_eq!(parser.error_code, ERROR_NONE);
+}
+
+#[test]
+fn basic_managed_input_does_not_retain_tunnel_data() {
+  let mut parser = Parser::new();
+  parser.autodetect = false;
+  parser.is_request = true;
+  parser.manage_unconsumed = true;
+  let headers = b"CONNECT example.com:443 HTTP/1.1\r\n\r\n";
+  let mut message = headers.to_vec();
+  message.extend_from_slice(b"opaque tunnel data");
+
+  assert_eq!(parser.parse(&message), headers.len());
+  assert_eq!(parser.state, STATE_TUNNEL);
+  assert!(parser.unconsumed().is_empty());
+
+  let payload = b"more tunnel data";
+  assert_eq!(parser.parse(payload), 0);
+  assert!(parser.unconsumed().is_empty());
+
+  let mut parser = Parser::new();
+  parser.autodetect = false;
+  parser.is_request = true;
+  parser.manage_unconsumed = true;
+  parser.suspend_after_headers = true;
+  let headers = b"GET / HTTP/1.1\r\nConnection: upgrade\r\nUpgrade: websocket\r\n\r\n";
+  let mut message = headers.to_vec();
+  message.extend_from_slice(b"opaque tunnel data");
+
+  assert_eq!(parser.parse(&message), headers.len());
+  assert!(!parser.unconsumed().is_empty());
+  parser.complete();
+  assert_eq!(parser.state, STATE_TUNNEL);
+  assert!(parser.unconsumed().is_empty());
 }
 
 #[test]

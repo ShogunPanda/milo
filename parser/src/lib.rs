@@ -8,9 +8,9 @@ use alloc::{boxed::Box, format};
 use core::cell::{Cell, RefCell};
 use core::ffi::{c_char, c_uchar, c_void};
 use core::fmt::Debug;
+use core::slice;
 use core::str;
 use core::{mem, ptr};
-use core::{slice, slice::from_raw_parts};
 
 use milo_macros::generate;
 
@@ -337,7 +337,10 @@ impl Parser {
   #[inline(always)]
   pub(crate) fn set_error(&mut self, code: u8, description: &str) {
     let bytes = description.as_bytes();
-    let len = bytes.len().min(254);
+    let mut len = bytes.len().min(254);
+    while !description.is_char_boundary(len) {
+      len -= 1;
+    }
 
     self.state = STATE_ERROR;
     self.error_code = code;
@@ -354,16 +357,11 @@ impl Parser {
 
   /// Returns the current parser's error description as string.
   pub fn error_description_str(&self) -> &str {
-    unsafe {
-      if self.error_description_len > 0 {
-        str::from_utf8_unchecked(from_raw_parts(
-          self.error_description.as_ptr(),
-          self.error_description_len as usize,
-        ))
-      } else {
-        ""
-      }
+    if self.error_description_len == 0 {
+      return "";
     }
+
+    str::from_utf8(&self.error_description[..self.error_description_len as usize]).unwrap_or("")
   }
 }
 

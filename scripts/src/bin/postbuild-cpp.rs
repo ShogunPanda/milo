@@ -27,9 +27,7 @@ fn prepend_version_and_method_map(header: &str) -> Result<String, Box<dyn Error>
 #define MILO_METHODS_MAP(EACH) \
 {methods}
 
-namespace milo_parser {{
-
-struct Parser;"#,
+namespace milo_parser {{"#,
     version.raw, version.major, version.minor, version.patch, version.prerelease
   );
 

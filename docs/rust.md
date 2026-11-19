@@ -5,7 +5,7 @@
 All callbacks in Milo have the following signature (`Callback`):
 
 ```rust
-type Callback = fn (&mut Parser, usize, usize)
+type Callback = extern "C" fn (&mut Parser, usize, usize)
 ```
 
 where the parameters have the following meaning:
@@ -15,6 +15,8 @@ where the parameters have the following meaning:
 3. The data length. Can be `0`.
 
 If length is `0`, it means the callback has no payload associated.
+
+Callbacks must not panic or otherwise unwind across the C ABI boundary.
 
 Callbacks are dispatched only when the corresponding `CALLBACK_ACTIVE_*` flag is set in the parser `active_callbacks` field.
 
@@ -369,9 +371,11 @@ Destroys a parser.
 
 ### `milo_parse(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize`
 
-Parses `data` up to `limit` characters.
-
-It returns the number of consumed characters.
+Parses `limit` bytes from `data` and returns the number of bytes consumed.
+The caller must have exclusive access to a live, properly aligned parser. A
+nonempty input must be a readable range of initialized bytes in one allocation
+and must remain valid and unchanged during the call. It must not overlap the
+parser or its owned buffers. `data` may be null only when `limit` is zero.
 
 ### `milo_reset(parser: *mut Parser, keep_parsed: bool)`
 

@@ -1,3 +1,7 @@
+//! Raw WebAssembly exports. A parser pointer must refer to a live, aligned
+//! parser returned by `create`. Mutating it requires exclusive access for the
+//! duration of the call; read-only operations must not overlap mutation.
+
 use core::ffi::{c_uchar, c_void};
 use std::slice;
 
@@ -18,7 +22,8 @@ pub fn alloc(len: usize) -> *mut c_void {
 }
 
 /// # Safety
-/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
+/// `ptr` must be null or a live pointer from `alloc`, with the same `len` used
+/// to allocate it. The allocation must not be used after this call.
 #[unsafe(no_mangle)]
 pub unsafe fn dealloc(ptr: *mut c_void, len: usize) {
   if ptr.is_null() {
@@ -46,7 +51,8 @@ pub fn create() -> *mut c_void {
 /// Destroys a parser.
 ///
 /// # Safety
-/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
+/// `parser` must be null or a live pointer returned by `create`. The caller
+/// must have exclusive access to it and must not use it after this call.
 #[unsafe(no_mangle)]
 pub unsafe fn destroy(parser: *mut c_void) {
   if parser.is_null() {
@@ -75,17 +81,23 @@ pub unsafe fn reset(parser: *mut c_void, keep_parsed: bool) { unsafe { (*(parser
 #[unsafe(no_mangle)]
 pub unsafe fn clear(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).clear() } }
 
-// Parses a byte range. It returns the number of consumed bytes.
+/// Parses a byte range. It returns the number of consumed bytes.
+///
 /// # Safety
-/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
+/// The parser must be live, aligned, and exclusively accessible for the call.
+/// If `limit` is nonzero, `data` must point to `limit` initialized bytes in one
+/// allocation, with `limit <= isize::MAX`. Those bytes must remain valid and
+/// unchanged and must not overlap the parser or its owned buffers. If `limit`
+/// is zero, `data` may be null.
 #[unsafe(no_mangle)]
 pub unsafe fn parse(parser: *mut c_void, data: *const c_uchar, limit: usize) -> usize {
   let input = if limit == 0 {
     &[]
   } else {
-    // SAFETY: WebAssembly callers provide an in-bounds linear-memory range.
+    // SAFETY: The caller guarantees a valid, separate input buffer.
     unsafe { slice::from_raw_parts(data, limit) }
   };
+  // SAFETY: The caller guarantees exclusive access to a live parser.
   unsafe { (*(parser as *mut Parser)).parse(input) }
 }
 
@@ -121,14 +133,23 @@ pub unsafe fn finish(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).
 /// Marks the parser as failed.
 ///
 /// # Safety
-/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
+/// The parser must be live, aligned, and exclusively accessible for the call.
+/// If `description_ptr` is non-null and `description_len` is nonzero, the bytes
+/// must be initialized, readable in one allocation, and unchanged for the
+/// duration of the call. The length must not exceed `isize::MAX` and the bytes
+/// must not overlap the parser or its owned buffers.
 #[unsafe(no_mangle)]
 pub unsafe fn fail(parser: *mut c_void, code: u8, description_ptr: *const c_uchar, description_len: usize) {
   let description = if description_len == 0 {
     ""
+  } else if description_ptr.is_null() {
+    "Invalid error description pointer"
   } else {
-    unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(description_ptr, description_len)) }
+    // SAFETY: The caller guarantees a valid, separate description buffer.
+    let bytes = unsafe { slice::from_raw_parts(description_ptr, description_len) };
+    std::str::from_utf8(bytes).unwrap_or("Invalid UTF-8 error description")
   };
+  // SAFETY: The caller guarantees exclusive access to a live parser.
   unsafe {
     (*(parser as *mut Parser)).fail(code, description);
   }

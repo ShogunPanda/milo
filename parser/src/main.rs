@@ -110,7 +110,7 @@ fn event(parser: &mut Parser, offset: usize, size: usize, name: &str) {
   append_output(parser, format!("offset={offset} size={size} event={name}"));
 }
 
-fn on_error(parser: &mut Parser, offset: usize, size: usize) {
+extern "C" fn on_error(parser: &mut Parser, offset: usize, size: usize) {
   append_output(
     parser,
     format!(
@@ -121,65 +121,65 @@ fn on_error(parser: &mut Parser, offset: usize, size: usize) {
   );
 }
 
-fn on_finish(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "finish"); }
+extern "C" fn on_finish(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "finish"); }
 
-fn on_message_start(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "message_start"); }
+extern "C" fn on_message_start(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "message_start"); }
 
-fn on_message_complete(parser: &mut Parser, offset: usize, size: usize) {
+extern "C" fn on_message_complete(parser: &mut Parser, offset: usize, size: usize) {
   event(parser, offset, size, "message_complete");
 }
 
-fn on_request(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "request"); }
+extern "C" fn on_request(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "request"); }
 
-fn on_response(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "response"); }
+extern "C" fn on_response(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "response"); }
 
-fn on_reset(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "reset"); }
+extern "C" fn on_reset(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "reset"); }
 
-fn on_method(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "method"); }
+extern "C" fn on_method(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "method"); }
 
-fn on_url(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "url"); }
+extern "C" fn on_url(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "url"); }
 
-fn on_protocol(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "protocol"); }
+extern "C" fn on_protocol(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "protocol"); }
 
-fn on_version(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "version"); }
+extern "C" fn on_version(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "version"); }
 
-fn on_status(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "status"); }
+extern "C" fn on_status(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "status"); }
 
-fn on_reason(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "reason"); }
+extern "C" fn on_reason(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "reason"); }
 
-fn on_header_name(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "header_name"); }
+extern "C" fn on_header_name(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "header_name"); }
 
-fn on_header_value(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "header_value"); }
+extern "C" fn on_header_value(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "header_value"); }
 
-fn on_headers(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "headers"); }
+extern "C" fn on_headers(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "headers"); }
 
-fn on_connect(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "connect"); }
+extern "C" fn on_connect(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "connect"); }
 
-fn on_upgrade(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "upgrade"); }
+extern "C" fn on_upgrade(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "upgrade"); }
 
-fn on_chunk_length(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "chunk_length"); }
+extern "C" fn on_chunk_length(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "chunk_length"); }
 
-fn on_chunk_extension_name(parser: &mut Parser, offset: usize, size: usize) {
+extern "C" fn on_chunk_extension_name(parser: &mut Parser, offset: usize, size: usize) {
   event(parser, offset, size, "chunk_extension_name");
 }
 
-fn on_chunk_extension_value(parser: &mut Parser, offset: usize, size: usize) {
+extern "C" fn on_chunk_extension_value(parser: &mut Parser, offset: usize, size: usize) {
   event(parser, offset, size, "chunk_extension_value");
 }
 
-fn on_chunk(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "chunk"); }
+extern "C" fn on_chunk(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "chunk"); }
 
-fn on_body(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "body"); }
+extern "C" fn on_body(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "body"); }
 
-fn on_data(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "data"); }
+extern "C" fn on_data(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "data"); }
 
-fn on_trailer_name(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "trailer_name"); }
+extern "C" fn on_trailer_name(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "trailer_name"); }
 
-fn on_trailer_value(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "trailer_value"); }
+extern "C" fn on_trailer_value(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "trailer_value"); }
 
-fn on_trailers(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "trailers"); }
+extern "C" fn on_trailers(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "trailers"); }
 
-fn on_state_change(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "state_change"); }
+extern "C" fn on_state_change(parser: &mut Parser, offset: usize, size: usize) { event(parser, offset, size, "state_change"); }
 
 fn create_parser(mode: Mode) -> Parser {
   let mut parser = Parser::new();

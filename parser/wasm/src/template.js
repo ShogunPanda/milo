@@ -31,17 +31,35 @@ function parse (parser, data, limit) {
 }
 
 function fail (parser, code, description) {
-  const len = description.length
+  const bytes = textEncoder.encode(description)
+  const len = bytes.byteLength
   const ptr = this.alloc(len)
-  const buffer = new Uint8Array(this.memory.buffer, ptr, len)
-  textEncoder.encodeInto(description, buffer)
 
-  this.fail(parser, code, ptr, len)
-  this.dealloc(ptr, len)
+  try {
+    new Uint8Array(this.memory.buffer, ptr, len).set(bytes)
+    this.fail(parser, code, ptr, len)
+  } finally {
+    this.dealloc(ptr, len)
+  }
 }
 
 function hasDebug () {
   return this.milo_has_debug() !== 0
+}
+
+function wrapOnHeaders (callback) {
+  return (parser, at, methodOrStatus, keepAlive, shouldUpgrade, hasTrailers, bodyKind, contentLength) => {
+    callback(
+      parser,
+      at,
+      methodOrStatus,
+      keepAlive !== 0,
+      shouldUpgrade !== 0,
+      hasTrailers !== 0,
+      bodyKind,
+      BigInt.asUintN(64, contentLength)
+    )
+  }
 }
 
 /* REPLACE: enums */
@@ -75,6 +93,10 @@ export function setup (env = {}) {
     }
 
     logger = log.bind(context, logOption)
+  }
+
+  if (instanceEnvironment.on_headers) {
+    instanceEnvironment.on_headers = wrapOnHeaders(instanceEnvironment.on_headers)
   }
 
   // Create the WASM instance

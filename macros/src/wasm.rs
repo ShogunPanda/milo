@@ -47,7 +47,7 @@ pub fn generate_callbacks(callbacks: &[String]) -> TokenStream {
         should_upgrade: bool,
         has_trailers: bool,
         body_kind: u8,
-        content_length: f64,
+        content_length: u64,
       );
 
       #[cfg(any(debug_assertions, feature = "debug"))]
@@ -87,7 +87,7 @@ pub fn generate_callbacks(callbacks: &[String]) -> TokenStream {
               let should_upgrade = unsafe { *self.events.add(cursor + 8) } != 0;
               let has_trailers = unsafe { *self.events.add(cursor + 9) } != 0;
               let body_kind = unsafe { *self.events.add(cursor + 10) };
-              let content_length = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 11) as *const u64) }.to_le() as f64;
+              let content_length = unsafe { core::ptr::read_unaligned(self.events.add(cursor + 11) as *const u64) }.to_le();
 
               if self.active_callbacks & CALLBACK_ACTIVE_ON_HEADERS != 0 {
                 unsafe {

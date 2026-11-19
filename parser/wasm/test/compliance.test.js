@@ -221,6 +221,20 @@ it('compliance_head_body_rejected', t => {
   assertError(milo, parser)
 })
 
+// Milo rejects chunked framing on GET and HEAD even when the encoded body is empty.
+for (const method of ['GET', 'HEAD']) {
+  for (const [name, body] of [
+    ['empty', '0\r\n\r\n'],
+    ['non_empty', '1\r\nx\r\n0\r\n\r\n']
+  ]) {
+    it(`compliance_${method.toLowerCase()}_${name}_chunked_body_rejected`, t => {
+      const { milo, parser, parse } = requestParser(t)
+      parse(`${method} / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n${body}`)
+      assertError(milo, parser)
+    })
+  }
+}
+
 // Methods other than GET and HEAD can carry valid body framing.
 it('compliance_post_body_accepted', t => {
   const { milo, parser, parse } = requestParser(t)
@@ -472,6 +486,66 @@ it('compliance_chunked_must_be_final', t => {
   parse('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked, gzip\r\n\r\n')
   assertError(milo, parser)
 })
+
+// Transfer-coding names use HTTP token syntax.
+it('compliance_transfer_encoding_rejects_invalid_coding_name', t => {
+  const { milo, parser, parse } = responseParser(t)
+  parse('HTTP/1.1 200 OK\r\nTransfer-Encoding: bad@coding, chunked\r\n\r\n0\r\n\r\n')
+  assertError(milo, parser)
+  assert.equal(milo.hasTransferEncoding(parser), false)
+  assert.equal(milo.hasChunkedTransferEncoding(parser), false)
+})
+
+// Transfer-Encoding list members cannot be empty.
+for (const [name, value] of [
+  ['leading', ', chunked'],
+  ['repeated', 'gzip,, chunked'],
+  ['trailing', 'gzip, chunked,']
+]) {
+  it(`compliance_transfer_encoding_rejects_${name}_empty_list_member`, t => {
+    const { milo, parser, parse } = responseParser(t)
+    parse(`HTTP/1.1 200 OK\r\nTransfer-Encoding: ${value}\r\n\r\n0\r\n\r\n`)
+    assertError(milo, parser)
+  })
+}
+
+// Transfer parameters require token names and token or quoted-string values.
+for (const [name, value] of [
+  ['missing_value', 'gzip; level, chunked'],
+  ['missing_name', 'gzip; =9, chunked'],
+  ['empty_value', 'gzip; level=, chunked'],
+  ['invalid_token_value', 'gzip; level=bad@value, chunked'],
+  ['unterminated_quote', 'gzip; level="unterminated, chunked'],
+  ['invalid_quoted_character', 'gzip; level="bad\u0001", chunked'],
+  ['parameter_on_chunked', 'chunked; level=9']
+]) {
+  it(`compliance_transfer_encoding_rejects_${name}`, t => {
+    const { milo, parser, parse } = responseParser(t)
+    parse(`HTTP/1.1 200 OK\r\nTransfer-Encoding: ${value}\r\n\r\n0\r\n\r\n`)
+    assertError(milo, parser)
+  })
+}
+
+// Valid non-chunked parameters are preserved, including quoted commas, before final chunked.
+it('compliance_transfer_encoding_accepts_parameters_before_chunked', t => {
+  const { milo, parser, parse } = responseParser(t)
+  parse('HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip; level = 9; note="a,b\\"c\\\\d", ChUnKeD\r\n\r\n0\r\n\r\n')
+  assertOk(milo, parser)
+  assert.equal(milo.hasTransferEncoding(parser), true)
+  assert.equal(milo.hasChunkedTransferEncoding(parser), true)
+})
+
+// Chunked can occur only once, even across multiple field lines.
+for (const [name, headers] of [
+  ['same_field', 'Transfer-Encoding: gzip, chunked, chunked\r\n'],
+  ['multiple_fields', 'Transfer-Encoding: gzip, chunked\r\nTransfer-Encoding: chunked\r\n']
+]) {
+  it(`compliance_transfer_encoding_rejects_duplicate_chunked_${name}`, t => {
+    const { milo, parser, parse } = responseParser(t)
+    parse(`HTTP/1.1 200 OK\r\n${headers}\r\n0\r\n\r\n`)
+    assertError(milo, parser)
+  })
+}
 
 // Content-Length cannot be combined with Transfer-Encoding.
 it('compliance_content_length_transfer_encoding_conflict', t => {

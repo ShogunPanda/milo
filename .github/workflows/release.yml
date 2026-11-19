@@ -348,11 +348,17 @@ jobs:
         working-directory: parser
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+      # pnpm reads GITHUB_SHA for the source dependency in its provenance.
+      # Override it only for pnpm; GitHub still issues OIDC tokens for this run.
       - name: Publish WASM ESM package on npm
-        run: pnpm publish --access public --tag ${{ inputs.prerelease == true && 'next' || 'latest' }} --provenance --no-git-checks
+        run: |
+          env GITHUB_SHA="$RELEASE_SHA" pnpm publish --access public --tag ${{ inputs.prerelease == true && 'next' || 'latest' }} \
+            --provenance --no-git-checks
         working-directory: dist/wasm/release/package
       - name: Publish WASM CJS package on npm
-        run: pnpm publish --access public --tag ${{ inputs.prerelease == true && 'next' || 'latest' }} --provenance --no-git-checks
+        run: |
+          env GITHUB_SHA="$RELEASE_SHA" pnpm publish --access public --tag ${{ inputs.prerelease == true && 'next' || 'latest' }} \
+            --provenance --no-git-checks
         working-directory: dist/wasm/release/package-cjs
       - name: Publish on GitHub
         shell: bash

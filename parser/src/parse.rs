@@ -8,8 +8,8 @@ use core::cell::{Cell, RefCell};
 use core::ffi::{c_char, c_uchar, c_void};
 use core::fmt::Debug;
 use core::ptr;
+use core::slice::from_raw_parts;
 use core::str;
-use core::{slice, slice::from_raw_parts};
 use std::string;
 #[cfg(all(not(target_family = "wasm"), any(debug_assertions, feature = "debug")))]
 use std::time::Instant;
@@ -21,10 +21,20 @@ use crate::matchers::*;
 use crate::*;
 
 impl Parser {
-  /// Parses a slice of characters.
+  /// Parses a byte slice.
   ///
-  /// It returns the number of consumed characters.
-  pub fn parse(&mut self, input: *const c_uchar, limit: usize) -> usize {
+  /// It returns the number of consumed bytes.
+  ///
+  /// Raw pointers cannot be passed through this safe API:
+  ///
+  /// ```compile_fail
+  /// use milo_parser::Parser;
+  ///
+  /// let mut parser = Parser::new();
+  /// let input = b"GET / HTTP/1.1\r\n\r\n";
+  /// parser.parse(input.as_ptr(), input.len());
+  /// ```
+  pub fn parse(&mut self, input: &[u8]) -> usize {
     let mut event_cursor = 0usize;
     let mut failed = false;
     let active_events = self.active_events | self.active_callbacks;
@@ -47,11 +57,9 @@ impl Parser {
       return 0;
     }
 
-    let input = unsafe { from_raw_parts(input, limit) };
-
     // Set the data to analyze, prepending unconsumed data from previous iteration
     // if needed
-    let mut limit = limit;
+    let mut limit = input.len();
     let aggregate: Vec<c_uchar>;
     let unconsumed_len = self.unconsumed_len;
 

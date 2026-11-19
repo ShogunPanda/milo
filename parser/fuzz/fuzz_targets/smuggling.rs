@@ -128,7 +128,7 @@ fn parse_and_collect(data: &[u8], is_request: Option<bool>) -> Vec<MessageFramin
     ctx.input = data.to_vec();
   }
 
-  let _ = p.parse(data.as_ptr(), limit);
+  let _ = p.parse(&data[..limit]);
 
   // Recover the context Box so it is freed (no leak per fuzz iteration).
   let ctx = unsafe { Box::from_raw(p.context as *mut SmugContext) };

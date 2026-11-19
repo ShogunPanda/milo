@@ -75,7 +75,7 @@ fn undici_multibyte() {
     context.input = unsafe { String::from_utf8_unchecked(message.as_bytes()[offset..(offset + step)].to_vec()) };
     let _ = Box::into_raw(context);
 
-    parser.parse(unsafe { message.as_ptr().add(offset) }, step);
+    parser.parse(&message.as_bytes()[offset..offset + step]);
     assert_ne!(parser.state, STATE_ERROR);
 
     length -= step;

@@ -12,30 +12,22 @@ use milo_parser::{
 use crate::helpers::{context, create_parser, http, parse};
 
 #[test]
-fn basic_error_description_is_clamped_and_terminated() {
+fn basic_error_description_is_clamped_and_reset() {
   let mut parser = create_parser();
   let description = "a".repeat(300);
 
   parser.fail(ERROR_UNEXPECTED_CHARACTER, &description);
 
-  assert_eq!(parser.error_description_len, 254);
-  assert_eq!(parser.error_description[254], 0);
   assert_eq!(parser.error_description_str().len(), 254);
   assert!(parser.error_description_str().bytes().all(|byte| byte == b'a'));
 
   parser.reset(false);
 
-  assert_eq!(parser.error_description_len, 0);
-  assert_eq!(parser.error_description[0], 0);
+  assert_eq!(parser.error_description_str(), "");
 
   let description = format!("{}é", "a".repeat(253));
   parser.fail(ERROR_UNEXPECTED_CHARACTER, &description);
-  assert_eq!(parser.error_description_len, 253);
   assert_eq!(parser.error_description_str(), "a".repeat(253));
-
-  parser.error_description[0] = 0xff;
-  parser.error_description_len = 1;
-  assert_eq!(parser.error_description_str(), "");
 }
 
 #[test]
@@ -47,24 +39,31 @@ fn basic_ffi_error_description_rejects_invalid_utf8() {
     len: invalid.len(),
   };
 
-  milo_fail(&mut parser, ERROR_UNEXPECTED_CHARACTER, description);
+  // SAFETY: Both the parser and the separate input allocation are live.
+  unsafe { milo_fail(&mut parser, ERROR_UNEXPECTED_CHARACTER, description) };
   assert_eq!(parser.error_description_str(), "Invalid UTF-8 error description");
 
-  milo_fail(
-    &mut parser,
-    ERROR_UNEXPECTED_CHARACTER,
-    CStringWithLength {
-      ptr: std::ptr::null(),
-      len: 0,
-    },
-  );
+  // SAFETY: The parser is live and the null description has length zero.
+  unsafe {
+    milo_fail(
+      &mut parser,
+      ERROR_UNEXPECTED_CHARACTER,
+      CStringWithLength {
+        ptr: std::ptr::null(),
+        len: 0,
+      },
+    )
+  };
   assert_eq!(parser.error_description_str(), "");
 
   parser.fail(ERROR_UNEXPECTED_CHARACTER, "before\0after");
-  let output = milo_error_description_string(&mut parser);
+  // SAFETY: The parser is live and exclusively borrowed here.
+  let output = unsafe { milo_error_description_string(&mut parser) };
   assert_eq!(output.len, 6);
+  // SAFETY: Milo owns the returned string until milo_free_string is called.
   assert_eq!(unsafe { std::slice::from_raw_parts(output.ptr, output.len) }, b"before");
-  milo_free_string(output);
+  // SAFETY: The string was allocated by Milo and has not been freed.
+  unsafe { milo_free_string(output) };
 }
 
 #[test]
@@ -166,17 +165,17 @@ fn basic_incomplete_string_automanaged_1() {
   context.input = message.clone();
   let _ = Box::into_raw(context);
 
-  let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
+  let consumed1 = parser.parse(sample1.as_ref());
   assert_eq!(consumed1, 0);
-  let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
+  let consumed2 = parser.parse(sample2.as_ref());
   assert_eq!(consumed2, 16);
-  let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
+  let consumed3 = parser.parse(sample3.as_ref());
   assert_eq!(consumed3, 0);
-  let consumed4 = parser.parse(sample4.as_ptr(), sample4.len());
+  let consumed4 = parser.parse(sample4.as_ref());
   assert_eq!(consumed4, 0);
-  let consumed5 = parser.parse(sample5.as_ptr(), sample5.len());
+  let consumed5 = parser.parse(sample5.as_ref());
   assert_eq!(consumed5, 0);
-  let consumed6 = parser.parse(sample6.as_ptr(), sample6.len());
+  let consumed6 = parser.parse(sample6.as_ref());
   assert_eq!(consumed6, sample3.len() + sample4.len() + sample5.len() + sample6.len());
 
   assert_ne!(parser.state, STATE_ERROR);
@@ -185,17 +184,17 @@ fn basic_incomplete_string_automanaged_1() {
   // Verify the field is not reset
   parser.reset(true);
 
-  let consumed1 = parser.parse(sample1.as_ptr(), sample1.len());
+  let consumed1 = parser.parse(sample1.as_ref());
   assert_eq!(consumed1, 0);
-  let consumed2 = parser.parse(sample2.as_ptr(), sample2.len());
+  let consumed2 = parser.parse(sample2.as_ref());
   assert_eq!(consumed2, 16);
-  let consumed3 = parser.parse(sample3.as_ptr(), sample3.len());
+  let consumed3 = parser.parse(sample3.as_ref());
   assert_eq!(consumed3, 0);
-  let consumed4 = parser.parse(sample4.as_ptr(), sample4.len());
+  let consumed4 = parser.parse(sample4.as_ref());
   assert_eq!(consumed4, 0);
-  let consumed5 = parser.parse(sample5.as_ptr(), sample5.len());
+  let consumed5 = parser.parse(sample5.as_ref());
   assert_eq!(consumed5, 0);
-  let consumed6 = parser.parse(sample6.as_ptr(), sample6.len());
+  let consumed6 = parser.parse(sample6.as_ref());
   assert_eq!(consumed6, sample3.len() + sample4.len() + sample5.len() + sample6.len());
 
   assert_ne!(parser.state, STATE_ERROR);
@@ -218,8 +217,8 @@ fn basic_incomplete_string_automanaged_2() {
   let sample1 = &message[0..2].to_string(); // GE
   let sample2 = &message[2..].to_string(); // T / HTTP/1.1\r\nHost: foo\r\n\r\n
 
-  parser.parse(sample1.as_ptr(), sample1.len());
-  parser.parse(sample2.as_ptr(), sample2.len());
+  parser.parse(sample1.as_ref());
+  parser.parse(sample2.as_ref());
 
   assert_ne!(parser.state, STATE_ERROR);
   assert_eq!(parser.parsed, message.len() as u64);
@@ -236,11 +235,8 @@ fn basic_autodetect_fragmented_response() {
     context.input = message.clone();
     let _ = Box::into_raw(context);
 
-    assert_eq!(parser.parse(message[..split].as_ptr(), split), 0);
-    assert_eq!(
-      parser.parse(message[split..].as_ptr(), message.len() - split),
-      message.len()
-    );
+    assert_eq!(parser.parse(&message.as_bytes()[..split]), 0);
+    assert_eq!(parser.parse(&message.as_bytes()[split..]), message.len());
     assert!(!parser.is_request);
     assert_ne!(parser.state, STATE_ERROR);
   }
@@ -252,8 +248,8 @@ fn basic_autodetect_fragmented_response() {
   context.input = message.clone();
   let _ = Box::into_raw(context);
 
-  assert_eq!(parser.parse(message[..1].as_ptr(), 1), 0);
-  assert_eq!(parser.parse(message[1..].as_ptr(), message.len() - 1), message.len());
+  assert_eq!(parser.parse(&message.as_bytes()[..1]), 0);
+  assert_eq!(parser.parse(&message.as_bytes()[1..]), message.len());
   assert!(!parser.is_request);
   assert_ne!(parser.state, STATE_ERROR);
 }
@@ -326,7 +322,7 @@ fn basic_max_body_payload_content_length() {
   assert_eq!(parser.remaining_content_length, 3);
   assert!(!parser.paused);
 
-  let consumed = parser.parse(unsafe { message.as_ptr().add(body_start + 3) }, 3);
+  let consumed = parser.parse(&message.as_bytes()[body_start + 3..body_start + 6]);
   assert_eq!(consumed, 3);
   assert_eq!(parser.remaining_content_length, 0);
 }
@@ -347,7 +343,7 @@ fn basic_max_body_payload_chunked() {
   assert!(!parser.paused);
 
   let remaining = &message[chunk_data_start + 3..];
-  let consumed = parser.parse(remaining.as_ptr(), remaining.len());
+  let consumed = parser.parse(remaining.as_ref());
   assert_eq!(consumed, remaining.len());
   assert_eq!(parser.remaining_chunk_size, 0);
 }
@@ -366,7 +362,7 @@ fn basic_max_body_payload_no_length() {
   assert_eq!(consumed, body_start + 3);
   assert!(!parser.paused);
 
-  let consumed = parser.parse(unsafe { message.as_ptr().add(body_start + 3) }, 3);
+  let consumed = parser.parse(&message.as_bytes()[body_start + 3..body_start + 6]);
   assert_eq!(consumed, 3);
 }
 
@@ -396,7 +392,7 @@ fn basic_suspend_after_headers_content_length() {
   assert_eq!(parser.state, STATE_BODY_DECISION);
   assert!(!parser.paused);
 
-  let consumed = parser.parse(unsafe { message.as_ptr().add(body_start) }, message.len() - body_start);
+  let consumed = parser.parse(&message.as_bytes()[body_start..]);
   assert_eq!(consumed, message.len() - body_start);
   assert_eq!(parser.state, STATE_START);
 }
@@ -413,7 +409,7 @@ fn basic_suspend_after_headers_emits_headers_once() {
   let consumed = parse(&mut parser, &message);
   assert_eq!(consumed, body_start);
 
-  let consumed = parser.parse(unsafe { message.as_ptr().add(body_start) }, message.len() - body_start);
+  let consumed = parser.parse(&message.as_bytes()[body_start..]);
   assert_eq!(consumed, message.len() - body_start);
 
   let context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
@@ -434,7 +430,7 @@ fn basic_suspend_after_headers_zero_body_completes_on_empty_parse() {
   assert_eq!(consumed, message.len());
   assert_eq!(parser.state, STATE_BODY_DECISION);
 
-  let consumed = parser.parse(message.as_ptr(), 0);
+  let consumed = parser.parse(&[]);
   assert_eq!(consumed, 0);
   assert_eq!(parser.state, STATE_START);
 }
@@ -466,15 +462,13 @@ fn basic_managed_input_does_not_retain_tunnel_data() {
   let mut message = headers.to_vec();
   message.extend_from_slice(b"opaque tunnel data");
 
-  assert_eq!(parser.parse(message.as_ptr(), message.len()), headers.len());
+  assert_eq!(parser.parse(&message), headers.len());
   assert_eq!(parser.state, STATE_TUNNEL);
-  assert!(parser.unconsumed.is_null());
-  assert_eq!(parser.unconsumed_len, 0);
+  assert!(parser.unconsumed().is_empty());
 
   let payload = b"more tunnel data";
-  assert_eq!(parser.parse(payload.as_ptr(), payload.len()), 0);
-  assert!(parser.unconsumed.is_null());
-  assert_eq!(parser.unconsumed_len, 0);
+  assert_eq!(parser.parse(payload), 0);
+  assert!(parser.unconsumed().is_empty());
 
   let mut parser = Parser::new();
   parser.autodetect = false;
@@ -485,12 +479,11 @@ fn basic_managed_input_does_not_retain_tunnel_data() {
   let mut message = headers.to_vec();
   message.extend_from_slice(b"opaque tunnel data");
 
-  assert_eq!(parser.parse(message.as_ptr(), message.len()), headers.len());
-  assert!(parser.unconsumed_len > 0);
+  assert_eq!(parser.parse(&message), headers.len());
+  assert!(!parser.unconsumed().is_empty());
   parser.complete();
   assert_eq!(parser.state, STATE_TUNNEL);
-  assert!(parser.unconsumed.is_null());
-  assert_eq!(parser.unconsumed_len, 0);
+  assert!(parser.unconsumed().is_empty());
 }
 
 #[test]
@@ -517,7 +510,7 @@ fn basic_event_buffer_full_stops_parsing() {
   }
   message.push_str("\r\n");
 
-  let consumed = parser.parse(message.as_ptr(), message.len());
+  let consumed = parser.parse(message.as_ref());
   assert!(consumed < message.len());
   assert!(!parser.paused);
   assert_eq!(parser.error_code, ERROR_NONE);

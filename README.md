@@ -335,22 +335,11 @@ To see the initial disclosure of milo, check Paolo's talk at [NodeConf EU 2023][
 
 See [AGENTS.md](./AGENTS.md) for development setup, local and Docker builds, tests, and contribution guidelines.
 
-### Preparing a release
+### Publishing a release
 
-Run these commands from the repository root, replacing `X.Y.Z` with the release version:
+Dispatch **Publish release** on `main` with `patch`, `minor`, `major`, or an explicit version. For a prerelease, use an explicit prerelease version and select **Release as pre-release**.
 
-```sh
-version=X.Y.Z
-cargo install --locked --version '=0.7.0' cambi
-for manifest in macros/Cargo.toml parser/Cargo.toml references/rust/Cargo.toml; do
-  cargo fetch --locked --manifest-path "$manifest" || exit 1
-done
-cargo build --locked --release --manifest-path scripts/Cargo.toml --target-dir scripts/target --bin sync-versions
-scripts/target/release/sync-versions "$(cambi update --show "$version")"
-cambi update --changelog "$version"
-```
-
-Review the changelog, manifests, and lockfiles, then merge the release preparation changes into `main`. Dispatch **Publish release** on `main` with the same version. The workflow uses that commit's version and changelog and creates the release tag; do not create the tag during preparation.
+The workflow installs `cambi` from crates.io, pushes the version bump and changelog, builds all artifacts from that commit, and publishes the release. If a build job fails after the bump was pushed, re-run the failed jobs to reuse the same release commit.
 
 ## Copyright
 

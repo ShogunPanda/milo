@@ -8,7 +8,7 @@ use crate::helpers::{context, output};
 
 // Shared with the Rust reference executable; not every test target uses it.
 #[allow(dead_code)]
-pub fn on_state_change(parser: &mut Parser, from: usize, size: usize) {
+pub extern "C" fn on_state_change(parser: &mut Parser, from: usize, size: usize) {
   let state = States::try_from(size as u8).unwrap().as_str();
 
   // The state ID is not a payload length.
@@ -20,7 +20,7 @@ pub fn on_state_change(parser: &mut Parser, from: usize, size: usize) {
   );
 }
 
-pub fn on_message_start(parser: &mut Parser, from: usize, size: usize) {
+pub extern "C" fn on_message_start(parser: &mut Parser, from: usize, size: usize) {
   output::append_output(
     parser,
     format!(
@@ -33,11 +33,11 @@ pub fn on_message_start(parser: &mut Parser, from: usize, size: usize) {
   );
 }
 
-pub fn on_message_complete(parser: &mut Parser, from: usize, size: usize) {
+pub extern "C" fn on_message_complete(parser: &mut Parser, from: usize, size: usize) {
   output::event(parser, "complete", from, size);
 }
 
-pub fn on_error(parser: &mut Parser, from: usize, size: usize) {
+pub extern "C" fn on_error(parser: &mut Parser, from: usize, size: usize) {
   output::append_output(
     parser,
     format!(
@@ -53,33 +53,33 @@ pub fn on_error(parser: &mut Parser, from: usize, size: usize) {
   );
 }
 
-pub fn on_finish(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "finish", from, size); }
+pub extern "C" fn on_finish(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "finish", from, size); }
 
-pub fn on_request(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "request", from, size); }
+pub extern "C" fn on_request(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "request", from, size); }
 
-pub fn on_response(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "response", from, size); }
+pub extern "C" fn on_response(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "response", from, size); }
 
-pub fn on_method(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "method", from, size); }
+pub extern "C" fn on_method(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "method", from, size); }
 
-pub fn on_url(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "url", from, size); }
+pub extern "C" fn on_url(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "url", from, size); }
 
-pub fn on_protocol(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "protocol", from, size); }
+pub extern "C" fn on_protocol(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "protocol", from, size); }
 
-pub fn on_version(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "version", from, size); }
+pub extern "C" fn on_version(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "version", from, size); }
 
-pub fn on_status(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "status", from, size); }
+pub extern "C" fn on_status(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "status", from, size); }
 
-pub fn on_reason(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "reason", from, size); }
+pub extern "C" fn on_reason(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "reason", from, size); }
 
-pub fn on_header_name(parser: &mut Parser, from: usize, size: usize) {
+pub extern "C" fn on_header_name(parser: &mut Parser, from: usize, size: usize) {
   output::show_span(parser, "header_name", from, size);
 }
 
-pub fn on_header_value(parser: &mut Parser, from: usize, size: usize) {
+pub extern "C" fn on_header_value(parser: &mut Parser, from: usize, size: usize) {
   output::show_span(parser, "header_value", from, size);
 }
 
-pub fn on_headers(parser: &mut Parser, from: usize, size: usize) {
+pub extern "C" fn on_headers(parser: &mut Parser, from: usize, size: usize) {
   let context = unsafe { Box::from_raw(parser.context as *mut context::Context) };
 
   let position = from;
@@ -171,32 +171,32 @@ pub fn on_headers(parser: &mut Parser, from: usize, size: usize) {
   }
 }
 
-pub fn on_upgrade(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "upgrade", from, size); }
+pub extern "C" fn on_upgrade(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "upgrade", from, size); }
 
-pub fn on_chunk_length(parser: &mut Parser, from: usize, size: usize) {
+pub extern "C" fn on_chunk_length(parser: &mut Parser, from: usize, size: usize) {
   output::show_span(parser, "chunk_length", from, size);
 }
 
-pub fn on_chunk_extension_name(parser: &mut Parser, from: usize, size: usize) {
+pub extern "C" fn on_chunk_extension_name(parser: &mut Parser, from: usize, size: usize) {
   output::show_span(parser, "chunk_extensions_name", from, size);
 }
 
-pub fn on_chunk_extension_value(parser: &mut Parser, from: usize, size: usize) {
+pub extern "C" fn on_chunk_extension_value(parser: &mut Parser, from: usize, size: usize) {
   output::show_span(parser, "chunk_extension_value", from, size);
 }
 
-pub fn on_chunk(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "chunk", from, size); }
+pub extern "C" fn on_chunk(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "chunk", from, size); }
 
-pub fn on_data(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "data", from, size); }
+pub extern "C" fn on_data(parser: &mut Parser, from: usize, size: usize) { output::show_span(parser, "data", from, size); }
 
-pub fn on_body(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "body", from, size); }
+pub extern "C" fn on_body(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "body", from, size); }
 
-pub fn on_trailer_name(parser: &mut Parser, from: usize, size: usize) {
+pub extern "C" fn on_trailer_name(parser: &mut Parser, from: usize, size: usize) {
   output::show_span(parser, "trailer_name", from, size);
 }
 
-pub fn on_trailer_value(parser: &mut Parser, from: usize, size: usize) {
+pub extern "C" fn on_trailer_value(parser: &mut Parser, from: usize, size: usize) {
   output::show_span(parser, "trailer_value", from, size);
 }
 
-pub fn on_trailers(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "trailers", from, size); }
+pub extern "C" fn on_trailers(parser: &mut Parser, from: usize, size: usize) { output::event(parser, "trailers", from, size); }

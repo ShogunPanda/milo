@@ -36,9 +36,8 @@ fn issue_26__preserve_events_before_error() {
           for input in inputs {
             let mut remaining = input.as_bytes();
             while !remaining.is_empty() && parser.state != STATE_ERROR {
-              let consumed = parser.parse(remaining.as_ptr(), remaining.len());
-              // SAFETY: The live parser owns a 65536-byte event buffer.
-              let events = unsafe { std::slice::from_raw_parts(parser.events, 65536) };
+              let consumed = parser.parse(remaining.as_ref());
+              let events = parser.events();
               let mut cursor = 0;
               while events[cursor] != EVENT_END {
                 let event = events[cursor];
@@ -69,7 +68,7 @@ fn issue_26__preserve_events_before_error() {
           );
           assert_eq!(parser.error_code, ERROR_UNSUPPORTED_HTTP_VERSION);
           assert_eq!(parser.state, STATE_ERROR);
-          assert_eq!(parser.parse(suffix.as_ptr(), suffix.len()), 0);
+          assert_eq!(parser.parse(suffix.as_ref()), 0);
           assert_eq!(parser.state, STATE_ERROR);
         }
       }
@@ -148,14 +147,13 @@ fn issue_23__field_value_ows() {
               | EVENT_ACTIVE_ON_MESSAGE_COMPLETE;
           }
           assert_eq!(
-            parser.parse(message.as_ptr(), message.len()),
+            parser.parse(message.as_ref()),
             message.len(),
             "{message:?}"
           );
           assert_eq!(parser.error_code, ERROR_NONE, "{message:?}");
           if events_enabled {
-            // SAFETY: The live parser owns a 65536-byte event buffer.
-            let events = unsafe { std::slice::from_raw_parts(parser.events, 65536) };
+            let events = parser.events();
             let mut received = Vec::new();
             let mut cursor = 0;
             while events[cursor] != EVENT_END {
@@ -185,7 +183,7 @@ fn issue_23__field_value_ows() {
   for value in ["", " ", "\t", " \t ", "2 2", "2\t2"] {
     let mut parser = Parser::new();
     let message = format!("HTTP/1.1 200 OK\r\nContent-Length:{value}\r\n\r\n");
-    parser.parse(message.as_ptr(), message.len());
+    parser.parse(message.as_ref());
     let expected = if value.contains('2') {
       ERROR_INVALID_CONTENT_LENGTH
     } else {
@@ -210,7 +208,7 @@ fn issue_22__field_values_reject_controls() {
         value.extend(vec![b'a'; trailing]);
         for message in field_messages(&value) {
           parser.reset(false);
-          parser.parse(message.as_ptr(), message.len());
+          parser.parse(message.as_ref());
           assert_eq!(parser.state, STATE_ERROR, "Accepted invalid field: {message:?}");
         }
       }
@@ -234,7 +232,7 @@ fn issue_22__field_values_allow_tab_and_obs_text() {
         value.extend(vec![b'a'; trailing]);
         for message in field_messages(&value) {
           parser.reset(false);
-          parser.parse(message.as_ptr(), message.len());
+          parser.parse(message.as_ref());
           assert_ne!(parser.state, STATE_ERROR, "Rejected valid field: {message:?}");
           assert_eq!(parser.error_code, ERROR_NONE);
         }
@@ -289,14 +287,12 @@ fn issue_25__headers_upgrade_metadata() {
       parser.active_events = EVENT_ACTIVE_ON_HEADERS;
 
       assert_eq!(
-        parser.parse(message.as_ptr(), message.len()),
+        parser.parse(message.as_ref()),
         message.len(),
         "{message}"
       );
       assert_eq!(parser.error_code, ERROR_NONE, "{message}");
-      // SAFETY: The live parser owns the event buffer, and the complete headers emit
-      // a 19-byte event.
-      let events = unsafe { std::slice::from_raw_parts(parser.events, 19) };
+      let events = parser.events();
       assert_eq!(events[0], EVENT_HEADERS, "{message}");
       assert_eq!(
         u16::from_le_bytes([events[5], events[6]]),
@@ -311,7 +307,7 @@ fn issue_25__headers_upgrade_metadata() {
         parser.is_connect = true;
       }
       parser.suspend_after_headers = false;
-      parser.parse(message.as_ptr(), 0);
+      parser.parse(&[]);
       assert_eq!(parser.error_code, ERROR_NONE, "{message}");
       assert_eq!(parser.state == STATE_TUNNEL, connect || expected, "{message}");
     }

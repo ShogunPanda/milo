@@ -129,6 +129,15 @@ use core::slice;
 
 use milo_parser::{Parser, CALLBACK_ACTIVE_ON_DATA};
 
+extern "C" fn on_data(parser: &mut Parser, from: usize, size: usize) {
+  let message = unsafe {
+    std::str::from_utf8_unchecked(slice::from_raw_parts(parser.context.add(from) as *const u8, size))
+  };
+
+  // Use the callback data.
+  println!("Pos={} Body: {}", from, message);
+}
+
 fn main() {
   // Create the parser.
   let mut parser = Parser::new();
@@ -149,20 +158,14 @@ fn main() {
   // method.
   //
   // If the current callback has no payload, both values are set to 0.
-  parser.callbacks.on_data = |p: &mut Parser, from: usize, size: usize| {
-    let message =
-      unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(p.context.add(from) as *const u8, size)) };
-
-    // Use the callback data.
-    println!("Pos={} Body: {}", from, message);
-  };
+  parser.callbacks.on_data = on_data;
 
   // Toggle on the callbacks you want to receive
   parser.active_callbacks |= CALLBACK_ACTIVE_ON_DATA;
 
   // Now perform the main parsing using milo.parse. The method returns the number
   // of consumed characters.
-  parser.parse(message.as_ptr(), message.len());
+  parser.parse(message.as_bytes());
 }
 
 ```
@@ -188,6 +191,14 @@ Create a sample source file:
 #include <cstdio>
 #include <cstring>
 
+extern "C" void on_data(milo_parser::Parser* p, uintptr_t from, uintptr_t size) {
+  const char* payload = reinterpret_cast<const char*>(p->context) + from;
+
+  printf("Pos=%" PRIuPTR " Body: ", from);
+  fwrite(payload, 1, size, stdout);
+  putchar('\n');
+}
+
 int main() {
   // Create the parser.
   milo_parser::Parser* parser = milo_parser::milo_create();
@@ -210,11 +221,7 @@ int main() {
 
     If the current callback has no payload, both values are set to 0.
   */
-  parser->callbacks.on_data = [](milo_parser::Parser* p, uintptr_t from, uintptr_t size) {
-    const char* payload = reinterpret_cast<const char*>(p->context) + from;
-
-    printf("Pos=%" PRIuPTR " Body: %.*s\n", from, static_cast<int>(size), payload);
-  };
+  parser->callbacks.on_data = on_data;
 
   // Toggle on the callbacks you want to receive
   parser->active_callbacks |= milo_parser::CALLBACK_ACTIVE_ON_DATA;
@@ -327,6 +334,23 @@ To see the initial disclosure of milo, check Paolo's talk at [NodeConf EU 2023][
 ## Contributing to milo
 
 See [AGENTS.md](./AGENTS.md) for development setup, local and Docker builds, tests, and contribution guidelines.
+
+### Preparing a release
+
+Run these commands from the repository root, replacing `X.Y.Z` with the release version:
+
+```sh
+version=X.Y.Z
+cargo install --locked --version '=0.7.0' cambi
+for manifest in macros/Cargo.toml parser/Cargo.toml references/rust/Cargo.toml; do
+  cargo fetch --locked --manifest-path "$manifest" || exit 1
+done
+cargo build --locked --release --manifest-path scripts/Cargo.toml --target-dir scripts/target --bin sync-versions
+scripts/target/release/sync-versions "$(cambi update --show "$version")"
+cambi update --changelog "$version"
+```
+
+Review the changelog, manifests, and lockfiles, then merge the release preparation changes into `main`. Dispatch **Publish release** on `main` with the same version. The workflow uses that commit's version and changelog and creates the release tag; do not create the tag during preparation.
 
 ## Copyright
 

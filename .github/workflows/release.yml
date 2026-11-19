@@ -179,8 +179,11 @@ jobs:
       - build-binaries
       - build-wasm
     permissions:
+      attestations: write
       id-token: write
       contents: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -203,16 +206,34 @@ jobs:
       - name: Validate checked-in release metadata
         shell: bash
         run: |
-          set -euo pipefail
-          expected="${{ inputs.version }}"
-          test "$(node -p "JSON.parse(require('fs').readFileSync('package.json')).version")" = "$expected"
-          test "$(node -p "JSON.parse(require('fs').readFileSync('parser/wasm/src/package.json')).version")" = "$expected"
+          test "$(node -p "JSON.parse(require('fs').readFileSync('package.json')).version")" = "$RELEASE_VERSION"
+          test "$(node -p "JSON.parse(require('fs').readFileSync('parser/wasm/src/package.json')).version")" = "$RELEASE_VERSION"
           for manifest in macros/Cargo.toml parser/Cargo.toml references/rust/Cargo.toml; do
             actual=$(awk '$1 == "version" && $2 == "=" { gsub(/"/, "", $3); print $3; exit }' "$manifest")
-            test "$actual" = "$expected"
-            cargo metadata --locked --no-deps --format-version 1 --manifest-path "$manifest" >/dev/null
+            test "$actual" = "$RELEASE_VERSION"
+            cargo metadata --locked --format-version 1 --manifest-path "$manifest" >/dev/null
           done
-          grep -Fq "/ $expected" CHANGELOG.md
+          awk -v version="$RELEASE_VERSION" '
+            /^### / {
+              if (found) exit
+              if (split($0, heading, " / ") == 2) {
+                sub(/[[:space:]]+$/, "", heading[2])
+                found = heading[2] == version
+              }
+              next
+            }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.txt"
+          grep -q '[^[:space:]]' "$RUNNER_TEMP/release-notes.txt"
+      - name: Create release tag
+        shell: bash
+        run: |
+          tag="v$RELEASE_VERSION"
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            echo "Release tag $tag already exists" >&2
+            exit 1
+          fi
+          git tag "$tag"
       - name: Setup cargo OIDC
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1
         id: auth
@@ -233,8 +254,11 @@ jobs:
           mv /tmp/artifacts/milo-parser-bin-linux/milo-parser-bin-linux.tar.gz /tmp/release/
           mv /tmp/artifacts/milo-parser-bin-macos-arm/milo-parser-bin-macos-arm.tar.gz /tmp/release/
           mv /tmp/artifacts/milo-parser-bin-macos-intel/milo-parser-bin-macos-intel.tar.gz /tmp/release/
-      - name: Create release tag
-        run: git tag -f "v${{ inputs.version }}"
+          (cd /tmp/release && sha256sum *.tar.gz > SHA256SUMS)
+      - name: Attest native release assets
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: '/tmp/release/*.tar.gz'
       - name: Publish macros on crates.io
         run: cargo publish --locked --no-verify
         working-directory: macros
@@ -252,13 +276,11 @@ jobs:
         run: pnpm publish --access public --tag ${{ inputs.prerelease == true && 'next' || 'latest' }} --provenance --no-git-checks
         working-directory: dist/wasm/release/package-cjs
       - name: Publish on GitHub
+        shell: bash
         run: |
-          awk -v heading="/ ${{ inputs.version }}" '
-            /^### / { if (found) exit; found = index($0, heading) > 0; next }
-            found { print }
-          ' CHANGELOG.md > /tmp/release-notes.txt
-          test -s /tmp/release-notes.txt
-          git push origin -f --tags
-          gh release create "v${{ inputs.version }}" -t "${{ inputs.version }}" ${{ github.event.inputs.prerelease == 'true' && '--prerelease' || '' }} -F /tmp/release-notes.txt /tmp/release/*
+          tag="v$RELEASE_VERSION"
+          git push origin "refs/tags/$tag:refs/tags/$tag"
+          gh release create "$tag" --verify-tag -t "$RELEASE_VERSION" ${{ inputs.prerelease && '--prerelease' || '' }} \
+            -F "$RUNNER_TEMP/release-notes.txt" /tmp/release/*
         env:
           GH_TOKEN: ${{ github.token }}

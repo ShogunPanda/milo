@@ -8,13 +8,13 @@ use milo_parser::{CALLBACK_ACTIVE_ALL, Parser};
 // Layer 1: raw byte-level fuzzing of the parser entry point, with every config
 // toggle that changes control flow exercised. This is the crash/UB target.
 fuzz_target!(|data: &[u8]| {
-  let limit = data.len().min(MAX_FEED);
+  let data = &data[..data.len().min(MAX_FEED)];
 
   // (a) autodetect mode, all events enabled.
   {
     let mut p = Parser::new();
     p.active_events = CALLBACK_ACTIVE_ALL;
-    let _ = p.parse(data.as_ptr(), limit);
+    let _ = p.parse(data);
   }
 
   // (b) forced request and response modes, with unconsumed management enabled so
@@ -29,10 +29,10 @@ fuzz_target!(|data: &[u8]| {
     if data.len() > 1 {
       let (a, b) = data.split_at(data.len() / 2);
       // The second call prepends any bytes retained by the first.
-      let _ = p.parse(a.as_ptr(), a.len());
-      let _ = p.parse(b.as_ptr(), b.len());
+      let _ = p.parse(a.as_ref());
+      let _ = p.parse(b.as_ref());
     } else {
-      let _ = p.parse(data.as_ptr(), limit);
+      let _ = p.parse(data);
     }
   }
 
@@ -42,7 +42,7 @@ fuzz_target!(|data: &[u8]| {
     p.active_events = CALLBACK_ACTIVE_ALL;
     p.skip_body = true;
     p.suspend_after_headers = true;
-    let _ = p.parse(data.as_ptr(), limit);
+    let _ = p.parse(data);
   }
 
   // (d) body payload cap.
@@ -50,6 +50,6 @@ fuzz_target!(|data: &[u8]| {
     let mut p = Parser::new();
     p.active_events = CALLBACK_ACTIVE_ALL;
     p.max_body_payload = 1;
-    let _ = p.parse(data.as_ptr(), limit);
+    let _ = p.parse(data);
   }
 });

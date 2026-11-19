@@ -16,7 +16,7 @@ fn error_code(data: &[u8], is_request: bool) -> u8 {
   let mut p = Parser::new();
   p.autodetect = false;
   p.is_request = is_request;
-  let _ = p.parse(data.as_ptr(), data.len());
+  let _ = p.parse(data.as_ref());
   p.error_code
 }
 
@@ -24,7 +24,7 @@ fn accepted(data: &[u8], is_request: bool) -> bool {
   let mut p = Parser::new();
   p.autodetect = false;
   p.is_request = is_request;
-  let _ = p.parse(data.as_ptr(), data.len());
+  let _ = p.parse(data.as_ref());
   p.state != STATE_ERROR
 }
 
@@ -79,17 +79,17 @@ struct Ctx {
   name: Vec<u8>,
 }
 
-fn on_headers(p: &mut Parser, _from: usize, _size: usize) {
+extern "C" fn on_headers(p: &mut Parser, _from: usize, _size: usize) {
   let c = unsafe { &mut *(p.context as *mut Ctx) };
   c.cur = (p.has_content_length, p.has_transfer_encoding, p.has_chunked_transfer_encoding, c.cur.3.clone());
 }
 
-fn on_header_name(p: &mut Parser, from: usize, size: usize) {
+extern "C" fn on_header_name(p: &mut Parser, from: usize, size: usize) {
   let c = unsafe { &mut *(p.context as *mut Ctx) };
   c.name = c.input.get(from..from + size).unwrap_or_default().to_vec();
 }
 
-fn on_header_value(p: &mut Parser, from: usize, size: usize) {
+extern "C" fn on_header_value(p: &mut Parser, from: usize, size: usize) {
   let c = unsafe { &mut *(p.context as *mut Ctx) };
   let value = c.input.get(from..from + size).unwrap_or_default();
   if c.name.eq_ignore_ascii_case(b"content-length") {
@@ -115,7 +115,7 @@ fn callback_framing_collection() {
   p.callbacks.on_header_name = on_header_name;
   p.callbacks.on_header_value = on_header_value;
 
-  let _ = p.parse(input.as_ptr(), input.len());
+  let _ = p.parse(input.as_ref());
 
   let ctx = unsafe { Box::from_raw(p.context as *mut Ctx) };
   let (has_cl, has_te, has_chunked, cls) = ctx.cur.clone();

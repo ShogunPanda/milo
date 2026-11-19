@@ -75,6 +75,61 @@ pub fn validate_token(data: &[u8], start: usize, end: usize) -> bool {
 }
 
 #[inline(always)]
+pub fn is_forbidden_trailer_name(name: &[u8]) -> bool {
+  const FORBIDDEN: &[&[u8]] = &[
+    b"accept-ranges",
+    b"age",
+    b"allow",
+    b"authorization",
+    b"cache-control",
+    b"connection",
+    b"content-disposition",
+    b"content-encoding",
+    b"content-length",
+    b"content-range",
+    b"content-type",
+    b"cookie",
+    b"date",
+    b"etag",
+    b"expect",
+    b"expires",
+    b"forwarded",
+    b"host",
+    b"if-match",
+    b"if-modified-since",
+    b"if-none-match",
+    b"if-range",
+    b"if-unmodified-since",
+    b"keep-alive",
+    b"last-modified",
+    b"location",
+    b"max-forwards",
+    b"pragma",
+    b"proxy-authenticate",
+    b"proxy-authorization",
+    b"proxy-connection",
+    b"range",
+    b"referer",
+    b"retry-after",
+    b"server",
+    b"set-cookie",
+    b"te",
+    b"trailer",
+    b"transfer-encoding",
+    b"upgrade",
+    b"vary",
+    b"via",
+    b"warning",
+    b"www-authenticate",
+    b"x-forwarded-for",
+    b"x-forwarded-host",
+    b"x-forwarded-proto",
+  ];
+
+  FORBIDDEN.iter().any(|forbidden| name.eq_ignore_ascii_case(forbidden))
+}
+
+#[inline(always)]
 pub fn validate_quoted_string(data: &[u8], start: usize, end: usize) -> bool {
   let mut i = start;
   while i < end {

@@ -16,7 +16,7 @@ fn error_code(data: &[u8], is_request: bool) -> u8 {
   let mut p = Parser::new();
   p.autodetect = false;
   p.is_request = is_request;
-  let _ = p.parse(data.as_ptr(), data.len());
+  let _ = p.parse(data.as_ref());
   p.error_code
 }
 
@@ -25,7 +25,7 @@ fn accepted(data: &[u8], is_request: bool) -> bool {
   let mut p = Parser::new();
   p.autodetect = false;
   p.is_request = is_request;
-  let _ = p.parse(data.as_ptr(), data.len());
+  let _ = p.parse(data.as_ref());
   p.state != STATE_ERROR
 }
 
@@ -79,6 +79,28 @@ fn rejects_transfer_encoding_not_ending_in_chunked() {
   }
 }
 
+#[test]
+fn rejects_invalid_transfer_encoding_syntax() {
+  for input in [
+    &b"POST / HTTP/1.1\r\nTransfer-Encoding: bad@coding, chunked\r\n\r\n0\r\n\r\n"[..],
+    &b"POST / HTTP/1.1\r\nTransfer-Encoding: gzip,, chunked\r\n\r\n0\r\n\r\n"[..],
+    &b"POST / HTTP/1.1\r\nTransfer-Encoding: gzip; level=bad@value, chunked\r\n\r\n0\r\n\r\n"[..],
+    &b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked; level=9\r\n\r\n0\r\n\r\n"[..],
+  ] {
+    assert_ne!(error_code(input, true), ERROR_NONE, "invalid TE syntax must be rejected: {input:?}");
+  }
+}
+
+#[test]
+fn rejects_chunked_get_and_head_requests() {
+  for input in [
+    &b"GET / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n"[..],
+    &b"HEAD / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nx\r\n0\r\n\r\n"[..],
+  ] {
+    assert_ne!(error_code(input, true), ERROR_NONE, "chunked GET/HEAD must be rejected: {input:?}");
+  }
+}
+
 // --- Well-formed messages must still be accepted. ---
 
 #[test]
@@ -103,7 +125,7 @@ struct Ctx {
   name: Vec<u8>,
 }
 
-fn on_headers(p: &mut Parser, _f: usize, _s: usize) {
+extern "C" fn on_headers(p: &mut Parser, _f: usize, _s: usize) {
   let c = unsafe { &mut *(p.context as *mut Ctx) };
   c.cur = (
     p.has_content_length,
@@ -113,12 +135,12 @@ fn on_headers(p: &mut Parser, _f: usize, _s: usize) {
   );
 }
 
-fn on_header_name(p: &mut Parser, from: usize, size: usize) {
+extern "C" fn on_header_name(p: &mut Parser, from: usize, size: usize) {
   let c = unsafe { &mut *(p.context as *mut Ctx) };
   c.name = c.input.get(from..from + size).unwrap_or_default().to_vec();
 }
 
-fn on_header_value(p: &mut Parser, from: usize, size: usize) {
+extern "C" fn on_header_value(p: &mut Parser, from: usize, size: usize) {
   let c = unsafe { &mut *(p.context as *mut Ctx) };
   let value = c.input.get(from..from + size).unwrap_or_default();
   if c.name.eq_ignore_ascii_case(b"content-length") {
@@ -130,7 +152,7 @@ fn on_header_value(p: &mut Parser, from: usize, size: usize) {
   }
 }
 
-fn on_message_complete(p: &mut Parser, _f: usize, _s: usize) {
+extern "C" fn on_message_complete(p: &mut Parser, _f: usize, _s: usize) {
   let c = unsafe { &mut *(p.context as *mut Ctx) };
   c.completed.push(c.cur.clone());
   c.cur = Default::default();
@@ -150,7 +172,7 @@ fn callback_framing_collection() {
   p.callbacks.on_header_name = on_header_name;
   p.callbacks.on_header_value = on_header_value;
   p.callbacks.on_message_complete = on_message_complete;
-  let _ = p.parse(input.as_ptr(), input.len());
+  let _ = p.parse(input.as_ref());
 
   let ctx = unsafe { Box::from_raw(p.context as *mut Ctx) };
   assert_eq!(ctx.completed.len(), 1, "one completed message expected");

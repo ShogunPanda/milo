@@ -8,8 +8,8 @@ use core::cell::{Cell, RefCell};
 use core::ffi::{c_char, c_uchar, c_void};
 use core::fmt::Debug;
 use core::ptr;
+use core::slice::from_raw_parts;
 use core::str;
-use core::{slice, slice::from_raw_parts};
 use std::string;
 #[cfg(all(not(target_family = "wasm"), any(debug_assertions, feature = "debug")))]
 use std::time::Instant;
@@ -21,10 +21,20 @@ use crate::matchers::*;
 use crate::*;
 
 impl Parser {
-  /// Parses a slice of characters.
+  /// Parses a byte slice.
   ///
-  /// It returns the number of consumed characters.
-  pub fn parse(&mut self, input: *const c_uchar, limit: usize) -> usize {
+  /// It returns the number of consumed bytes.
+  ///
+  /// Raw pointers cannot be passed through this safe API:
+  ///
+  /// ```compile_fail
+  /// use milo_parser::Parser;
+  ///
+  /// let mut parser = Parser::new();
+  /// let input = b"GET / HTTP/1.1\r\n\r\n";
+  /// parser.parse(input.as_ptr(), input.len());
+  /// ```
+  pub fn parse(&mut self, input: &[u8]) -> usize {
     let mut event_cursor = 0usize;
     let mut failed = false;
     let active_events = self.active_events | self.active_callbacks;
@@ -47,11 +57,9 @@ impl Parser {
       return 0;
     }
 
-    let input = unsafe { from_raw_parts(input, limit) };
-
     // Set the data to analyze, prepending unconsumed data from previous iteration
     // if needed
-    let mut limit = limit;
+    let mut limit = input.len();
     let aggregate: Vec<c_uchar>;
     let unconsumed_len = self.unconsumed_len;
 
@@ -177,6 +185,10 @@ impl Parser {
                 event_with_range!(on_message_start, 0, 0);
               }
               move_to!(status_line);
+            } else if data == b"\r" || (data.len() < 5 && b"HTTP".starts_with(data)) {
+              // Keep autodetection undecided until a fragmented response prefix or
+              // leading CRLF can be distinguished from a request.
+              suspend!();
             } else if data.len() >= 5 && data[4] == b'/' && data.starts_with(b"HTTP") {
               self.is_request = false;
               if has_response_start_events {
@@ -584,75 +596,31 @@ impl Parser {
                         fail!(UNEXPECTED_CHARACTER, "Expected Transfer-Encoding header value");
                       }
 
-                      self.has_transfer_encoding = true;
-
-                      if &data[header_value_start..header_value_end] == b"chunked" {
-                        // If this is true, it means the Transfer-Encoding header was specified more
-                        // than once. This is the second repetition and therefore, the previous one is
-                        // no longer the last one, making it invalid.
-                        if self.has_chunked_transfer_encoding {
-                          fail!(
-                            INVALID_TRANSFER_ENCODING,
-                            "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can \
-                             be provided only once"
-                          );
-                        }
-
-                        self.has_chunked_transfer_encoding = true;
+                      let header_has_chunked = if &data[header_value_start..header_value_end] == b"chunked" {
+                        true
                       } else {
-                        let mut token_start = header_value_start;
-                        loop {
-                          while token_start < header_value_end && is_ws(data[token_start]) {
-                            token_start += 1;
-                          }
-
-                          if token_start == header_value_end {
-                            break;
-                          }
-
-                          let token_end_raw = match find_char(data, token_start, header_value_end, b',') {
-                            Some(comma) => comma,
-                            None => header_value_end,
-                          };
-                          let mut token_end = token_end_raw;
-
-                          if !strip_ows_fast(data, &mut token_start, &mut token_end, false) {
-                            fail!(UNEXPECTED_CHARACTER, "Expected Transfer-Encoding header value");
-                          }
-
-                          self.has_transfer_encoding = true;
-
-                          if let case_insensitive_string!("chunked") = data[token_start..token_end] {
-                            // If this is true, it means the Transfer-Encoding header was specified more
-                            // than once. This is the second repetition and therefore, the previous one is
-                            // no longer the last one, making it invalid.
-                            if self.has_chunked_transfer_encoding {
-                              fail!(
-                                INVALID_TRANSFER_ENCODING,
-                                "The value \"chunked\" in the Transfer-Encoding header must be the last provided and \
-                                 can be provided only once"
-                              );
-                            }
-
-                            self.has_chunked_transfer_encoding = true;
-                          } else {
-                            if self.has_chunked_transfer_encoding {
-                              // Any other value when chunked was already specified is invalid as the previous
-                              // chunked would not be the last one anymore
-                              fail!(
-                                INVALID_TRANSFER_ENCODING,
-                                "The value \"chunked\" in the Transfer-Encoding header must be the last provided"
-                              );
-                            }
-                          }
-
-                          if token_end_raw == header_value_end {
-                            break;
-                          } else {
-                            token_start = token_end_raw + 1;
+                        match validate_transfer_encoding(data, header_value_start, header_value_end) {
+                          Some(has_chunked) => has_chunked,
+                          None => {
+                            fail!(INVALID_TRANSFER_ENCODING, "Invalid Transfer-Encoding header value");
                           }
                         }
+                      };
+
+                      // A later field value would make a previously observed chunked coding
+                      // non-final.
+                      if self.has_chunked_transfer_encoding {
+                        fail!(
+                          INVALID_TRANSFER_ENCODING,
+                          "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can be \
+                           provided only once"
+                        );
                       }
+
+                      // Do not update framing state until every coding and parameter in this field
+                      // value has been validated.
+                      self.has_transfer_encoding = true;
+                      self.has_chunked_transfer_encoding = header_has_chunked;
                     }
                     // RFC 9112 section 9.6
                     (10, case_insensitive_string!("connection")) => {
@@ -836,7 +804,12 @@ impl Parser {
                 UNEXPECTED_TRAILERS,
                 "Trailers are not allowed when not using chunked transfer encoding"
               );
-            } else if self.is_request && (method == METHOD_GET || method == METHOD_HEAD) && self.content_length > 0 {
+            } else if self.is_request && self.is_connect && (self.has_content_length || self.has_transfer_encoding) {
+              fail!(UNEXPECTED_CONTENT, "Body framing is not allowed for CONNECT requests");
+            } else if self.is_request
+              && (method == METHOD_GET || method == METHOD_HEAD)
+              && (self.content_length > 0 || self.has_transfer_encoding)
+            {
               fail!(UNEXPECTED_CONTENT, "Unexpected content for the request (GET or HEAD)");
             }
 
@@ -1343,6 +1316,10 @@ impl Parser {
                   fail!(UNEXPECTED_CHARACTER, "Invalid trailer field name character");
                 }
 
+                if is_forbidden_trailer_name(&data[trailer_name_start..trailer_name_end]) {
+                  fail!(UNEXPECTED_TRAILERS, "Forbidden trailer field");
+                }
+
                 if has_trailer_name_event {
                   event_with_range!(
                     on_trailer_name,
@@ -1448,14 +1425,20 @@ impl Parser {
     }
 
     let consumed = self.position;
+    if consumed < limit && self.state == STATE_START {
+      self.remember_pending_start(data);
+    }
     self.parsed += consumed as u64;
 
     if self.manage_unconsumed {
       self.clear_unconsumed();
 
+      // Tunnel bytes belong to the upgraded protocol and must remain with the
+      // caller rather than being retained by the HTTP parser.
+      //
       // Use a boxed slice so the length also determines the allocation layout
       // when releasing retained input; Vec capacity is not stored in the ABI.
-      if consumed < limit {
+      if self.state != STATE_TUNNEL && consumed < limit {
         let retained = data.to_vec().into_boxed_slice();
         self.unconsumed_len = retained.len();
         self.unconsumed = Box::into_raw(retained) as *const c_uchar;
@@ -1528,6 +1511,8 @@ impl Parser {
       &mut event_cursor,
     ) {
       self.paused = true;
+    } else if self.state == STATE_TUNNEL {
+      self.clear_unconsumed();
     }
 
     unsafe {

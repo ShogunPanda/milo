@@ -64,7 +64,7 @@ Trailers are parsed only after chunked framing.
 
 ## Trailers
 
-The `Trailer` header requires chunked transfer coding. This validation is independent from `Upgrade`. `Trailer` field-name semantics and forbidden trailer field-name enforcement are out of scope.
+The `Trailer` header requires chunked transfer coding. This validation is independent from `Upgrade`. Milo rejects trailer fields that can change framing, routing, authentication, connection handling, request conditions, response control data, or payload processing. The case-insensitive denylist is: `Accept-Ranges`, `Age`, `Allow`, `Authorization`, `Cache-Control`, `Connection`, `Content-Disposition`, `Content-Encoding`, `Content-Length`, `Content-Range`, `Content-Type`, `Cookie`, `Date`, `ETag`, `Expect`, `Expires`, `Forwarded`, `Host`, `If-Match`, `If-Modified-Since`, `If-None-Match`, `If-Range`, `If-Unmodified-Since`, `Keep-Alive`, `Last-Modified`, `Location`, `Max-Forwards`, `Pragma`, `Proxy-Authenticate`, `Proxy-Authorization`, `Proxy-Connection`, `Range`, `Referer`, `Retry-After`, `Server`, `Set-Cookie`, `TE`, `Trailer`, `Transfer-Encoding`, `Upgrade`, `Vary`, `Via`, `Warning`, `WWW-Authenticate`, `X-Forwarded-For`, `X-Forwarded-Host`, and `X-Forwarded-Proto`. Other valid field names are delivered as trailers; applications should keep them separate from initial headers rather than merge them blindly.
 
 Request upgrade may include a chunked body and trailers before entering tunnel. Response upgrade cannot use trailers because `101` cannot use HTTP body framing.
 
@@ -102,4 +102,4 @@ CONNECT response behavior requires application context and is not inferred by Mi
 
 Milo does not aim for llhttp behavioral compatibility when it conflicts with Milo policy.
 
-Milo does not implement full URI semantic validation, URI normalization, percent-triplet validation, `Host` validation, method-specific request-target validation, CONNECT authority-form validation, `Transfer-Encoding` coding semantics beyond framing ambiguity checks, `Trailer` field-name semantics, forbidden trailer field-name enforcement, method registry enforcement beyond token validity and known-method mapping, request/response pairing, HTTP/0.9, HTTP/1.0, RTSP, or obs-fold compatibility.
+Milo does not implement full URI semantic validation, URI normalization, percent-triplet validation, `Host` validation, method-specific request-target validation, CONNECT authority-form validation, `Transfer-Encoding` coding semantics beyond framing ambiguity checks, agreement between `Trailer` declarations and received trailer fields, method registry enforcement beyond token validity and known-method mapping, request/response pairing, HTTP/0.9, HTTP/1.0, RTSP, or obs-fold compatibility.

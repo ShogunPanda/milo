@@ -1,6 +1,9 @@
 mod helpers;
 
-use milo_parser::{ERROR_NONE, METHOD_OTHER, Parser, STATE_ERROR, STATE_FINISH, STATE_START, STATE_TUNNEL};
+use milo_parser::{
+  ERROR_NONE, ERROR_UNEXPECTED_TRAILERS, EVENT_ACTIVE_ON_TRAILER_NAME, EVENT_ACTIVE_ON_TRAILER_VALUE, EVENT_END,
+  METHOD_OTHER, Parser, STATE_ERROR, STATE_FINISH, STATE_START, STATE_TUNNEL,
+};
 
 use crate::helpers::{create_parser, parse};
 
@@ -71,6 +74,98 @@ fn compliance_trailer_name_rejects_comma() {
   parse(&mut parser, &message);
 
   assert_error(&parser);
+}
+
+// RFC 9110 section 6.5.1 forbids trailer fields that affect framing,
+// routing, authentication, connection handling, or payload processing.
+#[test]
+fn compliance_forbidden_trailer_fields_rejected() {
+  for name in [
+    "Accept-Ranges",
+    "Age",
+    "Allow",
+    "Authorization",
+    "Cache-Control",
+    "Connection",
+    "Content-Disposition",
+    "Content-Encoding",
+    "Content-Length",
+    "Content-Range",
+    "Content-Type",
+    "Cookie",
+    "Date",
+    "ETag",
+    "Expect",
+    "Expires",
+    "Forwarded",
+    "Host",
+    "If-Match",
+    "If-Modified-Since",
+    "If-None-Match",
+    "If-Range",
+    "If-Unmodified-Since",
+    "Keep-Alive",
+    "Last-Modified",
+    "Location",
+    "Max-Forwards",
+    "Pragma",
+    "Proxy-Authenticate",
+    "Proxy-Authorization",
+    "Proxy-Connection",
+    "Range",
+    "Referer",
+    "Retry-After",
+    "Server",
+    "Set-Cookie",
+    "TE",
+    "Trailer",
+    "Transfer-Encoding",
+    "Upgrade",
+    "Vary",
+    "Via",
+    "Warning",
+    "WWW-Authenticate",
+    "X-Forwarded-For",
+    "X-Forwarded-Host",
+    "X-Forwarded-Proto",
+  ] {
+    let mut parser = response_parser();
+    let message = wire(&format!(
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: {name}\r\n\r\n0\r\n{name}: value\r\n\r\n"
+    ));
+
+    parse(&mut parser, &message);
+
+    assert_error(&parser);
+    assert_eq!(parser.error_code, ERROR_UNEXPECTED_TRAILERS);
+  }
+}
+
+#[test]
+fn compliance_forbidden_trailer_is_case_insensitive_and_not_delivered() {
+  let mut parser = request_parser();
+  parser.active_callbacks = 0;
+  parser.active_events = EVENT_ACTIVE_ON_TRAILER_NAME | EVENT_ACTIVE_ON_TRAILER_VALUE;
+  let message = wire(
+    "POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nTrailer: cOnTeNt-LeNgTh\r\n\r\n0\r\ncOnTeNt-LeNgTh: 1\r\n\r\n",
+  );
+
+  parse(&mut parser, &message);
+
+  assert_error(&parser);
+  assert_eq!(parser.error_code, ERROR_UNEXPECTED_TRAILERS);
+  assert_eq!(parser.events()[0], EVENT_END);
+}
+
+#[test]
+fn compliance_safe_trailer_field_accepted() {
+  let mut parser = response_parser();
+  let message =
+    wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: Digest\r\n\r\n0\r\nDigest: sha-256=:abc:\r\n\r\n");
+
+  parse(&mut parser, &message);
+
+  assert_ok(&parser);
 }
 
 // Unknown valid method tokens are accepted as extension methods.
@@ -196,7 +291,46 @@ fn compliance_head_body_rejected() {
   assert_error(&parser);
 }
 
-// Methods other than GET and HEAD can carry valid body framing.
+// Milo rejects chunked framing on GET and HEAD even when the encoded body is empty.
+#[test]
+fn compliance_get_head_chunked_body_rejected() {
+  for method in ["GET", "HEAD"] {
+    for body in ["0\r\n\r\n", "1\r\nx\r\n0\r\n\r\n"] {
+      let mut parser = request_parser();
+      let message = wire(&format!(
+        "{method} / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n{body}"
+      ));
+
+      parse(&mut parser, &message);
+
+      assert_error(&parser);
+    }
+  }
+}
+
+// CONNECT switches immediately to tunnel mode, so any request-body framing
+// would make intermediaries disagree about where the tunnel data begins.
+#[test]
+fn compliance_connect_content_length_rejected() {
+  let mut parser = request_parser();
+  let message = wire("CONNECT example.com:443 HTTP/1.1\r\nContent-Length: 0\r\n\r\n");
+
+  parse(&mut parser, &message);
+
+  assert_error(&parser);
+}
+
+#[test]
+fn compliance_connect_transfer_encoding_rejected() {
+  let mut parser = request_parser();
+  let message = wire("CONNECT example.com:443 HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n");
+
+  parse(&mut parser, &message);
+
+  assert_error(&parser);
+}
+
+// Methods other than GET, HEAD, and CONNECT can carry valid body framing.
 #[test]
 fn compliance_post_body_accepted() {
   let mut parser = request_parser();
@@ -586,6 +720,88 @@ fn compliance_chunked_must_be_final() {
   parse(&mut parser, &message);
 
   assert_error(&parser);
+}
+
+// Transfer-coding names use HTTP token syntax.
+#[test]
+fn compliance_transfer_encoding_rejects_invalid_coding_name() {
+  let mut parser = response_parser();
+  let message = wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: bad@coding, chunked\r\n\r\n0\r\n\r\n");
+
+  parse(&mut parser, &message);
+
+  assert_error(&parser);
+  assert!(!parser.has_transfer_encoding);
+  assert!(!parser.has_chunked_transfer_encoding);
+}
+
+// Transfer-Encoding list members cannot be empty.
+#[test]
+fn compliance_transfer_encoding_rejects_empty_list_members() {
+  for value in [", chunked", "gzip,, chunked", "gzip, chunked,"] {
+    let mut parser = response_parser();
+    let message = wire(&format!(
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: {value}\r\n\r\n0\r\n\r\n"
+    ));
+
+    parse(&mut parser, &message);
+
+    assert_error(&parser);
+  }
+}
+
+// Transfer parameters require token names and token or quoted-string values.
+#[test]
+fn compliance_transfer_encoding_rejects_invalid_parameters() {
+  for value in [
+    "gzip; level, chunked",
+    "gzip; =9, chunked",
+    "gzip; level=, chunked",
+    "gzip; level=bad@value, chunked",
+    "gzip; level=\"unterminated, chunked",
+    "gzip; level=\"bad\u{1}\", chunked",
+    "chunked; level=9",
+  ] {
+    let mut parser = response_parser();
+    let message = wire(&format!(
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: {value}\r\n\r\n0\r\n\r\n"
+    ));
+
+    parse(&mut parser, &message);
+
+    assert_error(&parser);
+  }
+}
+
+// Valid non-chunked parameters are preserved, including quoted commas, before
+// final chunked.
+#[test]
+fn compliance_transfer_encoding_accepts_parameters_before_chunked() {
+  let mut parser = response_parser();
+  let message =
+    wire("HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip; level = 9; note=\"a,b\\\"c\\\\d\", ChUnKeD\r\n\r\n0\r\n\r\n");
+
+  parse(&mut parser, &message);
+
+  assert_ok(&parser);
+  assert!(parser.has_transfer_encoding);
+  assert!(parser.has_chunked_transfer_encoding);
+}
+
+// Chunked can occur only once, even across multiple field lines.
+#[test]
+fn compliance_transfer_encoding_rejects_duplicate_chunked() {
+  for headers in [
+    "Transfer-Encoding: gzip, chunked, chunked\r\n",
+    "Transfer-Encoding: gzip, chunked\r\nTransfer-Encoding: chunked\r\n",
+  ] {
+    let mut parser = response_parser();
+    let message = wire(&format!("HTTP/1.1 200 OK\r\n{headers}\r\n0\r\n\r\n"));
+
+    parse(&mut parser, &message);
+
+    assert_error(&parser);
+  }
 }
 
 // Content-Length cannot be combined with Transfer-Encoding.

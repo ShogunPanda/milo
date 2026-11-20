@@ -83,7 +83,7 @@ fn run(bytes: &[u8]) {
   let limit = bytes.len().min(MAX_FEED);
   let mut p = Parser::new();
   p.active_events = CALLBACK_ACTIVE_ALL;
-  let _ = p.parse(bytes.as_ptr(), limit);
+  let _ = p.parse(&bytes[..limit]);
 }
 
 fuzz_target!(|data: &[u8]| {

@@ -8,11 +8,19 @@ use alloc::{boxed::Box, format};
 use core::cell::{Cell, RefCell};
 use core::ffi::{c_char, c_uchar, c_void};
 use core::fmt::Debug;
+use core::ptr;
 use core::slice;
 use core::str;
-use core::{mem, ptr};
 
 use milo_macros::generate;
+
+// Keep the public event bytes at offset zero and the EOF marker outside the
+// exported Parser layout.
+#[repr(C)]
+struct EventStorage {
+  bytes: [u8; EVENTS_BUFFER_SIZE],
+  pending_start_at: Option<u64>,
+}
 
 #[repr(C)]
 #[derive(Debug)]
@@ -91,9 +99,11 @@ generate!();
 impl Parser {
   /// Creates a new parser
   pub fn new() -> Parser {
-    let mut events = Box::new([0u8; 65536]);
-    let events_ptr = events.as_mut_ptr();
-    mem::forget(events);
+    let events = Box::new(EventStorage {
+      bytes: [0; EVENTS_BUFFER_SIZE],
+      pending_start_at: None,
+    });
+    let events_ptr = Box::into_raw(events).cast();
 
     Parser {
       // User writable
@@ -177,7 +187,9 @@ impl Parser {
 
     self.clear();
     self.skip_body = false;
+    // SAFETY: The parser owns EventStorage, with event bytes at offset zero.
     unsafe {
+      (*self.events.cast::<EventStorage>()).pending_start_at = None;
       *self.events = EVENT_END;
     }
   }
@@ -267,8 +279,8 @@ impl Parser {
   /// parser.events = core::ptr::null_mut();
   /// ```
   pub fn events(&self) -> &[u8; EVENTS_BUFFER_SIZE] {
-    // SAFETY: `events` is allocated by `new` with this exact array type, cannot
-    // be replaced by safe Rust, and remains valid for the parser's lifetime.
+    // SAFETY: The event array is at offset zero in the parser-owned EventStorage
+    // allocation and remains valid for the parser's lifetime.
     unsafe { &*(self.events as *const [u8; EVENTS_BUFFER_SIZE]) }
   }
 
@@ -289,14 +301,34 @@ impl Parser {
   /// Resumes the parser.
   pub fn resume(&mut self) { self.paused = false; }
 
+  #[cold]
+  #[inline(never)]
+  fn remember_pending_start(&mut self, data: &[u8]) {
+    if self.autodetect && !self.paused && (data == b"\r" || (data.len() < 5 && b"HTTP".starts_with(data))) {
+      // A complete prefix or message advances the stream past this offset.
+      // An empty parse must not overwrite an outstanding prefix.
+      let offset = self.parsed.wrapping_add(self.position as u64);
+      // SAFETY: The parser owns EventStorage, with event bytes at offset zero.
+      unsafe {
+        (*self.events.cast::<EventStorage>()).pending_start_at = Some(offset);
+      }
+    }
+  }
+
   /// Marks the parser as finished. Any new data received via `parse` will
   /// put the parser in the error state.
   pub fn finish(&mut self) {
     match self.state {
-      // If the parser is one of the initial states, simply jump to finish
-      STATE_START | STATE_REQUEST_LINE | STATE_STATUS_LINE | STATE_FINISH => {
-        self.state = STATE_FINISH;
+      STATE_START => {
+        // SAFETY: The parser owns EventStorage, with event bytes at offset zero.
+        let pending = unsafe { (*self.events.cast::<EventStorage>()).pending_start_at };
+        if pending == Some(self.parsed) {
+          self.fail(ERROR_UNEXPECTED_EOF, "Unexpected end of data");
+        } else {
+          self.state = STATE_FINISH;
+        }
       }
+      STATE_FINISH => (),
       STATE_BODY_WITH_NO_LENGTH => {
         // Notify that the message has been completed
         let active_events = self.active_events | self.active_callbacks;
@@ -369,8 +401,9 @@ impl Drop for Parser {
   fn drop(&mut self) {
     self.clear_unconsumed();
     if !self.events.is_null() {
+      // SAFETY: This is the original pointer returned by Box::into_raw.
       unsafe {
-        let _ = Box::from_raw(self.events as *mut [u8; 65536]);
+        drop(Box::from_raw(self.events.cast::<EventStorage>()));
       }
       self.events = ptr::null_mut();
     }

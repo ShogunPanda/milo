@@ -1425,6 +1425,9 @@ impl Parser {
     }
 
     let consumed = self.position;
+    if consumed < limit && self.state == STATE_START {
+      self.remember_pending_start(data);
+    }
     self.parsed += consumed as u64;
 
     if self.manage_unconsumed {

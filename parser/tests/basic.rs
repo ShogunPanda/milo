@@ -4,9 +4,10 @@ mod helpers;
 use std::ffi::c_uchar;
 
 use milo_parser::{
-  CALLBACK_ACTIVE_ON_HEADERS, CStringWithLength, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER, ERROR_UNEXPECTED_STATE,
-  EVENT_ACTIVE_ON_HEADER_NAME, EVENT_ACTIVE_ON_HEADER_VALUE, Parser, STATE_BODY_DECISION, STATE_ERROR, STATE_FINISH,
-  STATE_HEADER, STATE_START, STATE_TUNNEL, milo_error_description_string, milo_fail, milo_free_string,
+  CALLBACK_ACTIVE_ON_HEADERS, CStringWithLength, ERROR_NONE, ERROR_UNEXPECTED_CHARACTER, ERROR_UNEXPECTED_EOF,
+  ERROR_UNEXPECTED_STATE, EVENT_ACTIVE_ON_HEADER_NAME, EVENT_ACTIVE_ON_HEADER_VALUE, Parser, STATE_BODY_DECISION,
+  STATE_ERROR, STATE_FINISH, STATE_HEADER, STATE_START, STATE_TUNNEL, milo_error_description_string, milo_fail,
+  milo_free_string,
 };
 
 use crate::helpers::{context, create_parser, http, parse};
@@ -779,6 +780,68 @@ fn basic_finish_logic() {
   assert_eq!(parser.state, STATE_HEADER);
   parser.finish();
   assert_eq!(parser.state, STATE_ERROR);
+}
+
+#[test]
+fn basic_finish_rejects_truncated_start_lines() {
+  for (input, autodetect) in [
+    (b"G".as_slice(), true),
+    (b"GET / HTTP/1.", true),
+    (b"HTTP/1.1 20", true),
+    (b"HTTP", false),
+  ] {
+    let mut parser = Parser::new();
+    parser.autodetect = autodetect;
+    assert_eq!(parser.parse(input), 0);
+    parser.finish();
+    assert_eq!(parser.state, STATE_ERROR);
+    assert_eq!(parser.error_code, ERROR_UNEXPECTED_EOF);
+  }
+}
+
+#[test]
+fn basic_finish_remembers_pending_autodetect_prefix() {
+  let request = b"GET / HTTP/1.1\r\n\r\n";
+
+  for managed in [false, true] {
+    for prefix in [b"HT".as_slice(), b"\r"] {
+      let mut parser = Parser::new();
+      parser.manage_unconsumed = managed;
+      assert_eq!(parser.parse(&[request.as_slice(), prefix].concat()), request.len());
+      assert_eq!(parser.state, STATE_START);
+      assert_eq!(parser.parse(b""), 0);
+      parser.finish();
+      assert_eq!(parser.state, STATE_ERROR);
+      assert_eq!(parser.error_code, ERROR_UNEXPECTED_EOF);
+
+      parser.reset(true);
+      parser.finish();
+      assert_eq!(parser.state, STATE_FINISH);
+    }
+  }
+}
+
+#[test]
+fn basic_finish_accepts_resolved_autodetect_prefix() {
+  for (prefix, suffix) in [
+    (b"\r".as_slice(), b"\n".as_slice()),
+    (b"HTTP".as_slice(), b"/1.1 204 No Content\r\n\r\n".as_slice()),
+  ] {
+    for managed in [false, true] {
+      let mut parser = Parser::new();
+      parser.manage_unconsumed = managed;
+      assert_eq!(parser.parse(prefix), 0);
+      let input = if managed {
+        suffix.to_vec()
+      } else {
+        [prefix, suffix].concat()
+      };
+      assert_eq!(parser.parse(&input), prefix.len() + suffix.len());
+      assert_eq!(parser.state, STATE_START);
+      parser.finish();
+      assert_eq!(parser.state, STATE_FINISH);
+    }
+  }
 }
 
 #[test]

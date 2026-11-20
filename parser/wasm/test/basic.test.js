@@ -554,6 +554,55 @@ it('basic_finish_logic', t => {
   assert.equal(milo.getState(parser), milo.STATE_ERROR)
 })
 
+it('basic_finish_rejects_truncated_start_lines', t => {
+  const { milo, parser, parse } = createParser(t, setup)
+  for (const [input, autodetect] of [['G', true], ['GET / HTTP/1.', true], ['HTTP/1.1 20', true], ['HTTP', false]]) {
+    milo.setShouldAutodetect(parser, autodetect)
+    milo.setIsRequest(parser, false)
+    assert.equal(parse(input), 0)
+    milo.finish(parser)
+    assert.equal(milo.getState(parser), milo.STATE_ERROR)
+    assert.equal(milo.getErrorCode(parser), milo.ERROR_UNEXPECTED_EOF)
+    milo.reset(parser, false)
+  }
+})
+
+it('basic_finish_remembers_pending_autodetect_prefix', t => {
+  const { milo, parser, parse } = createParser(t, setup)
+  const request = 'GET / HTTP/1.1\r\n\r\n'
+  for (const managed of [false, true]) {
+    milo.setShouldManageUnconsumed(parser, managed)
+    for (const prefix of ['HT', '\r']) {
+      assert.equal(parse(request + prefix), request.length)
+      assert.equal(milo.getState(parser), milo.STATE_START)
+      assert.equal(parse(''), 0)
+      milo.finish(parser)
+      assert.equal(milo.getState(parser), milo.STATE_ERROR)
+      assert.equal(milo.getErrorCode(parser), milo.ERROR_UNEXPECTED_EOF)
+
+      milo.reset(parser, true)
+      milo.finish(parser)
+      assert.equal(milo.getState(parser), milo.STATE_FINISH)
+      milo.reset(parser, false)
+    }
+  }
+})
+
+it('basic_finish_accepts_resolved_autodetect_prefix', t => {
+  const { milo, parser, parse } = createParser(t, setup)
+  for (const [prefix, suffix] of [['\r', '\n'], ['HTTP', '/1.1 204 No Content\r\n\r\n']]) {
+    for (const managed of [false, true]) {
+      milo.setShouldManageUnconsumed(parser, managed)
+      assert.equal(parse(prefix), 0)
+      assert.equal(parse(managed ? suffix : prefix + suffix), prefix.length + suffix.length)
+      assert.equal(milo.getState(parser), milo.STATE_START)
+      milo.finish(parser)
+      assert.equal(milo.getState(parser), milo.STATE_FINISH)
+      milo.reset(parser, false)
+    }
+  }
+})
+
 it('basic_empty_fields', t => {
   const { milo, parser, parse } = createParser(t, setup)
   parse(

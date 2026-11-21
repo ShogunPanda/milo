@@ -22,8 +22,10 @@ function create () {
   return this.create() >>> 0
 }
 
-function destroy (parser) {
-  this.destroy(parser)
+function destroy (onDestroy, parser) {
+  if (this.destroy(parser) && onDestroy) {
+    onDestroy(parser)
+  }
 }
 
 function parse (parser, data, limit) {
@@ -88,10 +90,9 @@ function simpleCreate (spans, spanOverflow, create) {
   return parser
 }
 
-function simpleDestroy (spans, spanOverflow, destroy, parser) {
+function clearSpans (spans, spanOverflow, parser) {
   delete spans[parser]
   delete spanOverflow[parser]
-  destroy(parser)
 }
 
 function simpleDrain (spans, spanOverflow, parser) {
@@ -109,6 +110,10 @@ function simpleDrain (spans, spanOverflow, parser) {
 export function noop () {}
 
 export function setup (env = {}) {
+  return setupInstance(env)
+}
+
+function setupInstance (env, onDestroy) {
   let { logger: logOption, ...instanceEnvironment } = env
   let logger = noop
   const context = {}
@@ -148,7 +153,7 @@ export function setup (env = {}) {
     alloc: alloc.bind(wasm),
     dealloc: dealloc.bind(wasm),
     create: create.bind(wasm),
-    destroy: destroy.bind(wasm),
+    destroy: destroy.bind(wasm, onDestroy),
     parse: parse.bind(wasm),
     fail: fail.bind(wasm),
     hasDebug: hasDebug.bind(wasm),
@@ -173,15 +178,15 @@ export function simple ({ maxSpans = 65536 } = {}) {
   const spanOverflow = Object.create(null)
 
   /* prettier-ignore */
-  const milo = setup({
+  const env = {
     /* REPLACE: callbacks:simple */
-  })
+  }
+  const milo = setupInstance(env, clearSpans.bind(undefined, spans, spanOverflow))
 
   milo.spans = spans
   milo.spanOverflow = spanOverflow
   milo.maxSpans = maxSpans
   milo.create = simpleCreate.bind(milo, spans, spanOverflow, milo.create)
-  milo.destroy = simpleDestroy.bind(milo, spans, spanOverflow, milo.destroy)
   milo.drain = simpleDrain.bind(undefined, spans, spanOverflow)
 
   return milo

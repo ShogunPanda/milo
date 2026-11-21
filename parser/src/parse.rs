@@ -40,6 +40,16 @@ impl Parser {
   /// parser.parse(input.as_ptr(), input.len());
   /// ```
   pub fn parse(&mut self, input: &[u8]) -> usize {
+    if self.parsing {
+      return 0;
+    }
+    self.parse_body(input)
+  }
+
+  // Keep the entry checks out of the compiled parsing loop. Callers must
+  // check the replay guard before entering this method.
+  #[inline(never)]
+  pub(crate) fn parse_body(&mut self, input: &[u8]) -> usize {
     let mut event_cursor = 0usize;
     let mut failed = false;
     let active_events = self.active_events | self.active_callbacks;
@@ -253,7 +263,7 @@ impl Parser {
                 }
 
                 // The line is potentially valid, clear the parser
-                self.clear();
+                self.clear_message();
 
                 // RFC 9112 section 3.1
                 let method_start = 0;
@@ -402,7 +412,7 @@ impl Parser {
                 }
 
                 // The line is potentially valid, clear the parser
-                self.clear();
+                self.clear_message();
 
                 let protocol_start = 0;
                 let protocol_end = 4;
@@ -1501,7 +1511,9 @@ impl Parser {
     }
 
     if self.active_callbacks != 0 {
+      self.parsing = true;
       self.invoke_callbacks();
+      self.parsing = false;
     }
 
     // Return the number of consumed bytes
@@ -1542,10 +1554,16 @@ impl Parser {
 
   #[cold]
   pub(crate) fn reject_oversized_input(&mut self, description: &str) -> usize {
+    if self.parsing {
+      return 0;
+    }
+
     self.position = 0;
     self.fail(ERROR_INPUT_TOO_LARGE, description);
     if self.active_callbacks != 0 {
+      self.parsing = true;
       self.invoke_callbacks();
+      self.parsing = false;
     }
     0
   }
@@ -1556,6 +1574,10 @@ impl Parser {
   /// Milo after headers were parsed, then need Milo to perform the normal
   /// completion transition and emit completion events.
   pub fn complete(&mut self) {
+    if self.parsing {
+      return;
+    }
+
     match self.state {
       STATE_BODY_DECISION
       | STATE_TUNNEL

@@ -48,20 +48,28 @@ pub fn create() -> *mut c_void {
   ptr
 }
 
-/// Destroys a parser.
+/// Destroys a parser. During callback replay this is a no-op.
+///
+/// Returns whether destruction occurred so the JS Simple API only clears collected
+/// spans and overflow state after the parser has been destroyed.
 ///
 /// # Safety
 /// `parser` must be null or a live pointer returned by `create`. The caller
-/// must have exclusive access to it and must not use it after this call.
+/// must have exclusive access except during its callback replay.
+/// Do not use the parser after successful destruction.
 #[unsafe(no_mangle)]
-pub unsafe fn destroy(parser: *mut c_void) {
-  if parser.is_null() {
-    return;
+pub unsafe fn destroy(parser: *mut c_void) -> bool {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: A non-null parser must be live by contract.
+  if parser.is_null() || unsafe { (*parser).parsing } {
+    return false;
   }
 
+  // SAFETY: The parser is owned by the caller and is not in replay.
   unsafe {
-    let _ = Box::from_raw(parser as *mut Parser);
+    let _ = Box::from_raw(parser);
   }
+  true
 }
 
 /// Resets a parser. The second parameters specifies if to also reset the
@@ -70,7 +78,15 @@ pub unsafe fn destroy(parser: *mut c_void) {
 /// # Safety
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub unsafe fn reset(parser: *mut c_void, keep_parsed: bool) { unsafe { (*(parser as *mut Parser)).reset(keep_parsed) } }
+pub unsafe fn reset(parser: *mut c_void, keep_parsed: bool) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller provides a live parser. Borrow only outside replay.
+  unsafe {
+    if !(*parser).parsing {
+      (*parser).reset(keep_parsed);
+    }
+  }
+}
 
 /// Clears all values in the parser.
 ///
@@ -79,7 +95,15 @@ pub unsafe fn reset(parser: *mut c_void, keep_parsed: bool) { unsafe { (*(parser
 /// # Safety
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub unsafe fn clear(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).clear() } }
+pub unsafe fn clear(parser: *mut c_void) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller provides a live parser. Borrow only outside replay.
+  unsafe {
+    if !(*parser).parsing {
+      (*parser).clear();
+    }
+  }
+}
 
 /// Parses a byte range. It returns the number of consumed bytes.
 ///
@@ -91,6 +115,12 @@ pub unsafe fn clear(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).c
 /// is zero, `data` may be null.
 #[unsafe(no_mangle)]
 pub unsafe fn parse(parser: *mut c_void, data: *const c_uchar, limit: usize) -> usize {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller provides a live parser.
+  if unsafe { (*parser).parsing } {
+    return 0;
+  }
+
   let input = if limit == 0 {
     &[]
   } else {
@@ -98,7 +128,7 @@ pub unsafe fn parse(parser: *mut c_void, data: *const c_uchar, limit: usize) -> 
     unsafe { slice::from_raw_parts(data, limit) }
   };
   // SAFETY: The caller guarantees exclusive access to a live parser.
-  unsafe { (*(parser as *mut Parser)).parse(input) }
+  unsafe { (*parser).parse_body(input) }
 }
 
 /// Pauses the parser. It will have to be resumed via `resume`.
@@ -120,7 +150,15 @@ pub unsafe fn resume(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).
 /// # Safety
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub unsafe fn complete(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).complete() } }
+pub unsafe fn complete(parser: *mut c_void) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller provides a live parser. Borrow only outside replay.
+  unsafe {
+    if !(*parser).parsing {
+      (*parser).complete();
+    }
+  }
+}
 
 /// Marks the parser as finished. Any new data received via `parse` will
 /// put the parser in the error state.
@@ -128,7 +166,15 @@ pub unsafe fn complete(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)
 /// # Safety
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub unsafe fn finish(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).finish() } }
+pub unsafe fn finish(parser: *mut c_void) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller provides a live parser. Borrow only outside replay.
+  unsafe {
+    if !(*parser).parsing {
+      (*parser).finish();
+    }
+  }
+}
 
 /// Marks the parser as failed.
 ///
@@ -140,6 +186,12 @@ pub unsafe fn finish(parser: *mut c_void) { unsafe { (*(parser as *mut Parser)).
 /// must not overlap the parser or its owned buffers.
 #[unsafe(no_mangle)]
 pub unsafe fn fail(parser: *mut c_void, code: u8, description_ptr: *const c_uchar, description_len: usize) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller provides a live parser.
+  if unsafe { (*parser).parsing } {
+    return;
+  }
+
   let description = if description_len == 0 {
     ""
   } else if description_ptr.is_null() {
@@ -151,7 +203,7 @@ pub unsafe fn fail(parser: *mut c_void, code: u8, description_ptr: *const c_ucha
   };
   // SAFETY: The caller guarantees exclusive access to a live parser.
   unsafe {
-    (*(parser as *mut Parser)).fail(code, description);
+    (*parser).fail(code, description);
   }
 }
 
@@ -399,8 +451,12 @@ pub unsafe fn get_error_description_raw(parser: *mut c_void) -> u64 {
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
 pub unsafe fn set_should_autodetect(parser: *mut c_void, value: bool) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*(parser as *mut Parser)).autodetect = value;
+    if !(*parser).parsing {
+      (*parser).autodetect = value;
+    }
   }
 }
 
@@ -408,8 +464,12 @@ pub unsafe fn set_should_autodetect(parser: *mut c_void, value: bool) {
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
 pub unsafe fn set_is_request(parser: *mut c_void, value: bool) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*(parser as *mut Parser)).is_request = value;
+    if !(*parser).parsing {
+      (*parser).is_request = value;
+    }
   }
 }
 
@@ -417,8 +477,12 @@ pub unsafe fn set_is_request(parser: *mut c_void, value: bool) {
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
 pub unsafe fn set_should_manage_unconsumed(parser: *mut c_void, value: bool) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*(parser as *mut Parser)).manage_unconsumed = value;
+    if !(*parser).parsing {
+      (*parser).manage_unconsumed = value;
+    }
   }
 }
 
@@ -426,8 +490,12 @@ pub unsafe fn set_should_manage_unconsumed(parser: *mut c_void, value: bool) {
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
 pub unsafe fn set_should_suspend_after_headers(parser: *mut c_void, value: bool) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*(parser as *mut Parser)).suspend_after_headers = value;
+    if !(*parser).parsing {
+      (*parser).suspend_after_headers = value;
+    }
   }
 }
 
@@ -435,8 +503,12 @@ pub unsafe fn set_should_suspend_after_headers(parser: *mut c_void, value: bool)
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
 pub unsafe fn set_max_start_line_length(parser: *mut c_void, value: usize) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*(parser as *mut Parser)).max_start_line_length = value;
+    if !(*parser).parsing {
+      (*parser).max_start_line_length = value;
+    }
   }
 }
 
@@ -444,8 +516,12 @@ pub unsafe fn set_max_start_line_length(parser: *mut c_void, value: usize) {
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
 pub unsafe fn set_max_header_length(parser: *mut c_void, value: usize) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*(parser as *mut Parser)).max_header_length = value;
+    if !(*parser).parsing {
+      (*parser).max_header_length = value;
+    }
   }
 }
 
@@ -453,8 +529,12 @@ pub unsafe fn set_max_header_length(parser: *mut c_void, value: usize) {
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
 pub unsafe fn set_max_body_payload(parser: *mut c_void, value: u64) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*(parser as *mut Parser)).max_body_payload = value;
+    if !(*parser).parsing {
+      (*parser).max_body_payload = value;
+    }
   }
 }
 
@@ -462,8 +542,12 @@ pub unsafe fn set_max_body_payload(parser: *mut c_void, value: u64) {
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
 pub unsafe fn set_should_continue_without_data(parser: *mut c_void, value: bool) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*(parser as *mut Parser)).continue_without_data = value;
+    if !(*parser).parsing {
+      (*parser).continue_without_data = value;
+    }
   }
 }
 
@@ -471,8 +555,12 @@ pub unsafe fn set_should_continue_without_data(parser: *mut c_void, value: bool)
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
 pub unsafe fn set_should_skip_body(parser: *mut c_void, value: bool) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*(parser as *mut Parser)).skip_body = value;
+    if !(*parser).parsing {
+      (*parser).skip_body = value;
+    }
   }
 }
 
@@ -480,8 +568,12 @@ pub unsafe fn set_should_skip_body(parser: *mut c_void, value: bool) {
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
 pub unsafe fn set_is_connect(parser: *mut c_void, value: bool) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*(parser as *mut Parser)).is_connect = value;
+    if !(*parser).parsing {
+      (*parser).is_connect = value;
+    }
   }
 }
 
@@ -489,8 +581,12 @@ pub unsafe fn set_is_connect(parser: *mut c_void, value: bool) {
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
 pub unsafe fn set_debug(parser: *mut c_void, value: bool) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*(parser as *mut Parser)).debug = value;
+    if !(*parser).parsing {
+      (*parser).debug = value;
+    }
   }
 }
 
@@ -498,8 +594,12 @@ pub unsafe fn set_debug(parser: *mut c_void, value: bool) {
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
 pub unsafe fn set_active_callbacks(parser: *mut c_void, value: u64) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*(parser as *mut Parser)).active_callbacks = value;
+    if !(*parser).parsing {
+      (*parser).active_callbacks = value;
+    }
   }
 }
 
@@ -507,7 +607,11 @@ pub unsafe fn set_active_callbacks(parser: *mut c_void, value: u64) {
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
 pub unsafe fn set_active_events(parser: *mut c_void, value: u64) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*(parser as *mut Parser)).active_events = value;
+    if !(*parser).parsing {
+      (*parser).active_events = value;
+    }
   }
 }

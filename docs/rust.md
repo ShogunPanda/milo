@@ -18,6 +18,12 @@ If length is `0`, it means the callback has no payload associated.
 
 Callbacks must not panic or otherwise unwind across the C ABI boundary.
 
+During a callback, `parse()` on the same parser returns `0` and mutating
+methods are ignored, except `pause()` and `resume()`. Those two methods
+only change the pause flag. Call `reset()`, `finish()` or the FFI
+`milo_destroy()` again after parsing returns. A callback can use another
+parser, but must not replace the current parser or write its fields directly.
+
 Callbacks are dispatched only when the corresponding `CALLBACK_ACTIVE_*` flag is set in the parser `active_callbacks` field.
 
 Callbacks are disabled by default.

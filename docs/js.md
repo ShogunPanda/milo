@@ -39,6 +39,15 @@ Callbacks are dispatched only when enabled with `setActiveCallbacks`.
 
 Callbacks are disabled by default.
 
+During a callback, `parse()` on the same parser returns `0`. `pause()` and
+`resume()` change only the pause flag; event delivery continues. `reset()`,
+`finish()`, `destroy()` and other mutators have no effect. They are not
+deferred: call them again after `parse()` returns. A callback can
+use another parser. Do not write directly to parser-owned memory.
+
+Callbacks must handle their own exceptions. An exception that escapes a
+callback may leave the parser unusable.
+
 ### Constants
 
 The module exports several constants (`*` is used to denote a family prefix):
@@ -307,7 +316,12 @@ Creates a new parser.
 
 #### `destroy(parser)`
 
-Destroys a parser.
+Destroys a parser and returns `undefined` in both `setup()` and `simple()`.
+During callback replay, destruction is ignored.
+
+The underlying WASM export returns whether destruction occurred. The `simple()`
+wrapper uses this result to preserve collected spans and overflow state when
+destruction is ignored.
 
 #### `parse(parser, data, limit)`
 
@@ -567,7 +581,7 @@ It is equivalent to calling `setup(...)` with all callbacks wired to collect par
 Differences from a plain `setup()` instance:
 
 - `create()` enables all callbacks automatically (`CALLBACK_ACTIVE_ALL`).
-- `destroy(parser)` also clears collected spans and overflow state for that parser.
+- `destroy(parser)` clears collected spans and overflow state only when the parser is destroyed.
 - A `spans` object is exposed on the module, keyed by parser id.
 - Callbacks append `[callbackType, offset, length]` until `maxSpans` is reached. Further spans are dropped and `spanOverflow[parser]` becomes `true`.
 - `drain(parser)` atomically returns `{ spans, truncated }` and resets that parser's collection. Drain long-lived parsers regularly; `truncated` reports whether spans were dropped since the previous drain.

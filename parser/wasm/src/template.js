@@ -52,12 +52,14 @@ function hasDebug () {
 
 // The postbuild step injects generated callback references.
 // eslint-disable-next-line no-unused-vars
-function collectSpan (spans, spanOverflow, maxSpans, parser, span) {
-  if (spans[parser].length < maxSpans) {
-    spans[parser].push(span)
-  } else {
+function collectSpan (spans, spanOverflow, maxSpans, parser, type, at, len) {
+  const batch = spans[parser]
+  if (batch.length >= maxSpans) {
     spanOverflow[parser] = true
+    return
   }
+
+  batch.push([type, at, len])
 }
 
 function simpleCreate (spans, spanOverflow, create) {

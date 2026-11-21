@@ -210,7 +210,7 @@ fn generate_simple_callbacks(info: &BuildInfo) -> String {
     .map(|(key, value)| {
       let name = key.replacen("CALLBACK_", "", 1).to_lowercase();
       format!(
-        "{name} (parser, at, len) {{\n  collectSpan(spans, spanOverflow, maxSpans, parser, [{value}, at, len])\n}}"
+        "{name} (parser, at, len) {{\n  collectSpan(spans, spanOverflow, maxSpans, parser, {value}, at, len)\n}}"
       )
     })
     .collect::<Vec<_>>()

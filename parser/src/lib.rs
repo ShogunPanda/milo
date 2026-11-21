@@ -14,12 +14,14 @@ use core::str;
 
 use milo_macros::generate;
 
-// Keep the public event bytes at offset zero and the EOF marker outside the
+// Keep the public event bytes at offset zero and private metadata outside the
 // exported Parser layout.
 #[repr(C)]
 struct EventStorage {
   bytes: [u8; EVENTS_BUFFER_SIZE],
   pending_start_at: Option<u64>,
+  retained_capacity: usize,
+  incomplete_line: Option<u8>,
 }
 
 #[repr(C)]
@@ -102,6 +104,8 @@ impl Parser {
     let events = Box::new(EventStorage {
       bytes: [0; EVENTS_BUFFER_SIZE],
       pending_start_at: None,
+      retained_capacity: 0,
+      incomplete_line: None,
     });
     let events_ptr = Box::into_raw(events).cast();
 
@@ -195,18 +199,62 @@ impl Parser {
   }
 
   pub(crate) fn clear_unconsumed(&mut self) {
-    if self.unconsumed_len > 0 {
-      // SAFETY: Retained input is allocated as a boxed slice with exactly this
-      // length, and the parser owns it until replacement, reset, or destruction.
-      unsafe {
-        drop(Box::from_raw(ptr::slice_from_raw_parts_mut(
-          self.unconsumed as *mut c_uchar,
-          self.unconsumed_len,
-        )));
-      }
+    if self.unconsumed_len != 0 {
+      drop(self.take_retained_input());
     }
-    self.unconsumed = ptr::null();
-    self.unconsumed_len = 0;
+  }
+
+  fn take_retained_input(&mut self) -> Vec<u8> {
+    // SAFETY: The parser owns EventStorage and the Vec allocation described by
+    // its pointer, length, and capacity. Clear ownership before returning it.
+    unsafe {
+      let storage = &mut *self.events.cast::<EventStorage>();
+      storage.incomplete_line = None;
+      let capacity = core::mem::take(&mut storage.retained_capacity);
+      let data = core::mem::replace(&mut self.unconsumed, ptr::null()).cast_mut();
+      let len = core::mem::take(&mut self.unconsumed_len);
+      Vec::from_raw_parts(data, len, capacity)
+    }
+  }
+
+  fn put_retained_input(&mut self, data: Vec<u8>, incomplete_line: Option<u8>) {
+    let mut data = core::mem::ManuallyDrop::new(data);
+    self.unconsumed = data.as_mut_ptr();
+    self.unconsumed_len = data.len();
+    // SAFETY: The parser owns EventStorage, which tracks this Vec allocation.
+    unsafe {
+      let storage = &mut *self.events.cast::<EventStorage>();
+      storage.retained_capacity = data.capacity();
+      storage.incomplete_line = incomplete_line;
+    }
+  }
+
+  fn append_retained_input(&mut self, input: &[u8]) {
+    if input.is_empty() {
+      return;
+    }
+    // SAFETY: The parser owns EventStorage and has nonempty retained input.
+    let incomplete_line = unsafe { (*self.events.cast::<EventStorage>()).incomplete_line };
+    let mut retained = self.take_retained_input();
+    retained.extend_from_slice(input);
+    self.put_retained_input(retained, incomplete_line);
+  }
+
+  fn keep_retained_suffix(&mut self, suffix: &[u8], incomplete_line: Option<u8>) {
+    if self.unconsumed_len == 0 {
+      self.put_retained_input(suffix.to_vec(), incomplete_line);
+      return;
+    }
+
+    let len = suffix.len();
+    if suffix.as_ptr() != self.unconsumed {
+      // SAFETY: suffix is a subslice of the retained allocation, its last use
+      // is as a pointer here, and the destination can hold the entire suffix.
+      unsafe { ptr::copy(suffix.as_ptr(), self.unconsumed.cast_mut(), len) };
+    }
+    self.unconsumed_len = len;
+    // SAFETY: The parser owns EventStorage.
+    unsafe { (*self.events.cast::<EventStorage>()).incomplete_line = incomplete_line };
   }
 
   /// Clears all values about the message in the parser.

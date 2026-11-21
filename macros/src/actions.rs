@@ -15,11 +15,8 @@ pub fn event_with_range(input: TokenStream) -> TokenStream {
   let length = definition.length.as_ref().expect("event_with_range requires length");
   let needed = quote! { EVENT_RANGE_SIZE };
   let emit = quote! {
-    let at = self.position + #offset;
-    let len = #length;
-    debug_assert!(u32::try_from(at).is_ok() && u32::try_from(len).is_ok());
-    let at = at as u32;
-    let len = len as u32;
+    let at = (self.position + #offset) as u32;
+    let len = (#length) as u32;
     // SAFETY: The caller has reserved space for the entire range event.
     unsafe {
       *self.events.add(event_cursor) = #event_type;
@@ -90,9 +87,7 @@ pub fn event_with_metadata(input: TokenStream) -> TokenStream {
   let offset = definition.offset.unwrap_or_else(|| syn::parse_quote! { 0 });
   let needed = quote! { EVENT_METADATA_SIZE };
   let emit = quote! {
-    let at = self.position + #offset;
-    debug_assert!(u32::try_from(at).is_ok());
-    let at = at as u32;
+    let at = (self.position + #offset) as u32;
     let status_or_method = if self.is_request { self.method as u16 } else { self.status as u16 };
     let body_kind = if self.has_content_length { 0u8 } else if self.has_chunked_transfer_encoding { 1u8 } else { 2u8 };
     let should_keep_alive = (!self.has_connection_close) as u8;

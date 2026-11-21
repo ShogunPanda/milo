@@ -1398,11 +1398,11 @@ impl Parser {
       #[cfg(any(debug_assertions, feature = "debug"))]
       if previous_state != self.state {
         if active_events & EVENT_ACTIVE_ON_STATE_CHANGE != 0
-          && !self.try_emit_event_range::<true>(
+          && !self.try_emit_event_range(
             &mut event_cursor,
             EVENT_STATE_CHANGE,
-            self.position,
-            self.state as usize,
+            self.position as u32,
+            self.state as u32,
           )
         {
           parsing = false;
@@ -1471,7 +1471,7 @@ impl Parser {
 
     // Append only errors raised by this call, after all preceding events.
     if failed && active_events & EVENT_ACTIVE_ON_ERROR != 0 {
-      self.try_emit_event_error::<true>(&mut event_cursor);
+      self.try_emit_event_error(&mut event_cursor, consumed as u32);
     }
 
     if has_active_events {
@@ -1555,10 +1555,14 @@ impl Parser {
       return false;
     }
     if has_complete_events {
+      let at = self.position + offset;
+      if !VALIDATED && at > u32::MAX as usize {
+        return false;
+      }
       if (active_events & EVENT_ACTIVE_ON_MESSAGE_COMPLETE != 0
-        && !self.try_emit_event_range::<VALIDATED>(event_cursor, EVENT_MESSAGE_COMPLETE, self.position + offset, 0))
+        && !self.try_emit_event_range(event_cursor, EVENT_MESSAGE_COMPLETE, at as u32, 0))
         || (active_events & EVENT_ACTIVE_ON_RESET != 0
-          && !self.try_emit_event_range::<VALIDATED>(event_cursor, EVENT_RESET, self.position + offset, 0))
+          && !self.try_emit_event_range(event_cursor, EVENT_RESET, at as u32, 0))
       {
         return false;
       }
@@ -1570,7 +1574,10 @@ impl Parser {
     if self.has_upgrade && self.is_request {
       move_to!(tunnel);
     } else if self.has_connection_close {
-      if has_finish_event && !self.try_emit_event_range::<VALIDATED>(event_cursor, EVENT_FINISH, self.position, 0) {
+      if has_finish_event
+        && ((!VALIDATED && self.position > u32::MAX as usize)
+          || !self.try_emit_event_range(event_cursor, EVENT_FINISH, self.position as u32, 0))
+      {
         return false;
       }
       move_to!(finish);
@@ -1607,11 +1614,16 @@ mod tests {
   fn event_writers_preserve_the_coordinate_limit() {
     let max = u32::MAX as usize;
     let mut parser = Parser::new();
-    let mut cursor = 0;
-    assert!(!parser.try_emit_event_range::<false>(&mut cursor, EVENT_MESSAGE_COMPLETE, max + 1, 0));
-    assert_eq!(cursor, 0);
-    assert!(parser.try_emit_event_range::<true>(&mut cursor, EVENT_MESSAGE_COMPLETE, max, 0));
+    parser.active_events = EVENT_ACTIVE_ON_MESSAGE_COMPLETE;
+    parser.state = STATE_BODY_WITH_NO_LENGTH;
+    parser.position = max;
+    parser.finish();
     assert_eq!(&parser.events()[1..5], &u32::MAX.to_le_bytes());
+
+    parser.state = STATE_BODY_WITH_NO_LENGTH;
+    parser.position = max + 1;
+    parser.finish();
+    assert_eq!(parser.events()[0], EVENT_END);
   }
 
   #[test]

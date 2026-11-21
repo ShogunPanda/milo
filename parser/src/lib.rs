@@ -48,6 +48,8 @@ pub struct Parser {
   pub state: u8,
   pub paused: bool,
   pub error_code: u8,
+  // Fits in the padding before the message fields.
+  parsing: bool,
 
   // Current message flags
   pub content_length: u64,
@@ -130,6 +132,7 @@ impl Parser {
       state: STATE_START,
       paused: false,
       error_code: ERROR_NONE,
+      parsing: false,
       // Current message flags
       content_length: 0,
       chunk_size: 0,
@@ -175,6 +178,10 @@ impl Parser {
   ///   * debug
   ///   * context
   pub fn reset(&mut self, keep_parsed: bool) {
+    if self.parsing {
+      return;
+    }
+
     self.state = STATE_START;
     self.paused = false;
 
@@ -259,6 +266,14 @@ impl Parser {
 
   /// Clears all values about the message in the parser.
   pub fn clear(&mut self) {
+    if self.parsing {
+      return;
+    }
+
+    self.clear_message();
+  }
+
+  fn clear_message(&mut self) {
     self.is_connect = false;
     self.method = 0;
     self.status = 0;
@@ -359,6 +374,10 @@ impl Parser {
   /// Marks the parser as finished. Any new data received via `parse` will
   /// put the parser in the error state.
   pub fn finish(&mut self) {
+    if self.parsing {
+      return;
+    }
+
     match self.state {
       STATE_START => {
         // SAFETY: The parser owns EventStorage, with event bytes at offset zero.
@@ -397,6 +416,10 @@ impl Parser {
   /// Marks parsing as failed and starts a standalone error event batch.
   #[inline(always)]
   pub fn fail(&mut self, code: u8, description: &str) {
+    if self.parsing {
+      return;
+    }
+
     self.set_error(code, description);
     let mut event_cursor = 0usize;
     if (self.active_events | self.active_callbacks) & EVENT_ACTIVE_ON_ERROR != 0

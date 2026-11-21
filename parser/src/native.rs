@@ -63,11 +63,12 @@ pub unsafe extern "C" fn milo_free_string(s: CStringWithLength) {
 #[unsafe(no_mangle)]
 pub extern "C" fn milo_create() -> *mut Parser { Box::into_raw(Box::new(Parser::new())) }
 
-/// Destroys a parser.
+/// Destroys a parser. During callback replay this is a no-op.
 ///
 /// # Safety
 /// `parser` must be null or a live pointer returned by [`milo_create`]. The
-/// caller must have exclusive access to it and must not use it after this call.
+/// caller must have exclusive access except during its callback replay.
+/// Do not use the parser after successful destruction.
 ///
 /// Calling raw FFI helpers requires an explicit unsafe block:
 ///
@@ -79,10 +80,12 @@ pub extern "C" fn milo_create() -> *mut Parser { Box::into_raw(Box::new(Parser::
 /// ```
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn milo_destroy(parser: *mut Parser) {
-  if parser.is_null() {
+  // SAFETY: A non-null parser must be live by contract.
+  if parser.is_null() || unsafe { (*parser).parsing } {
     return;
   }
 
+  // SAFETY: The parser is owned by the caller and is not in replay.
   unsafe {
     let _ = Box::from_raw(parser);
   }
@@ -99,11 +102,22 @@ pub unsafe extern "C" fn milo_destroy(parser: *mut Parser) {
 /// is zero, `data` may be null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn milo_parse(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize {
+  // SAFETY: The caller provides a live parser.
+  if unsafe { (*parser).parsing } {
+    return 0;
+  }
+
+  // SAFETY: The caller supplies valid pointers and the parser is not replaying.
+  unsafe { parse_ffi_body(parser, data, limit) }
+}
+
+#[inline(never)]
+unsafe extern "C" fn parse_ffi_body(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize {
   if limit > u32::MAX as usize {
     // SAFETY: The FFI contract guarantees exclusive access to a live parser.
     let parser = unsafe { &mut *parser };
     if parser.paused || parser.state == crate::STATE_ERROR {
-      return parser.parse(&[]);
+      return parser.parse_body(&[]);
     }
     return parser.reject_oversized_input("Input exceeds the 32-bit event coordinate limit");
   }
@@ -115,7 +129,7 @@ pub unsafe extern "C" fn milo_parse(parser: *mut Parser, data: *const c_uchar, l
     unsafe { slice::from_raw_parts(data, limit) }
   };
   // SAFETY: Required by this function's contract.
-  unsafe { (*parser).parse(input) }
+  unsafe { (*parser).parse_body(input) }
 }
 
 /// Sets the parser event bitmask.
@@ -124,8 +138,11 @@ pub unsafe extern "C" fn milo_parse(parser: *mut Parser, data: *const c_uchar, l
 /// The parser must be live, aligned, and exclusively accessible.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn milo_set_active_events(parser: *mut Parser, value: u64) {
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*parser).active_events = value;
+    if !(*parser).parsing {
+      (*parser).active_events = value;
+    }
   }
 }
 
@@ -135,8 +152,11 @@ pub unsafe extern "C" fn milo_set_active_events(parser: *mut Parser, value: u64)
 /// The parser must be live, aligned, and exclusively accessible.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn milo_set_max_body_payload(parser: *mut Parser, value: u64) {
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*parser).max_body_payload = value;
+    if !(*parser).parsing {
+      (*parser).max_body_payload = value;
+    }
   }
 }
 
@@ -146,8 +166,11 @@ pub unsafe extern "C" fn milo_set_max_body_payload(parser: *mut Parser, value: u
 /// The parser must be live, aligned, and exclusively accessible.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn milo_set_suspend_after_headers(parser: *mut Parser, value: bool) {
+  // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
-    (*parser).suspend_after_headers = value;
+    if !(*parser).parsing {
+      (*parser).suspend_after_headers = value;
+    }
   }
 }
 
@@ -169,7 +192,14 @@ pub unsafe extern "C" fn milo_set_suspend_after_headers(parser: *mut Parser, val
 /// # Safety
 /// The parser must be live, aligned, and exclusively accessible.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn milo_reset(parser: *mut Parser, keep_parsed: bool) { unsafe { (*parser).reset(keep_parsed) } }
+pub unsafe extern "C" fn milo_reset(parser: *mut Parser, keep_parsed: bool) {
+  // SAFETY: The caller provides a live parser. Borrow only outside replay.
+  unsafe {
+    if !(*parser).parsing {
+      (*parser).reset(keep_parsed);
+    }
+  }
+}
 
 /// Clears all values about the message in the parser.
 ///
@@ -178,7 +208,14 @@ pub unsafe extern "C" fn milo_reset(parser: *mut Parser, keep_parsed: bool) { un
 /// # Safety
 /// The parser must be live, aligned, and exclusively accessible.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn milo_clear(parser: *mut Parser) { unsafe { (*parser).clear() } }
+pub unsafe extern "C" fn milo_clear(parser: *mut Parser) {
+  // SAFETY: The caller provides a live parser. Borrow only outside replay.
+  unsafe {
+    if !(*parser).parsing {
+      (*parser).clear();
+    }
+  }
+}
 
 /// Pauses the parser. It will have to be resumed via `milo_resume`.
 ///
@@ -199,7 +236,14 @@ pub unsafe extern "C" fn milo_resume(parser: *mut Parser) { unsafe { (*parser).r
 /// # Safety
 /// The parser must be live, aligned, and exclusively accessible.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn milo_complete(parser: *mut Parser) { unsafe { (*parser).complete() } }
+pub unsafe extern "C" fn milo_complete(parser: *mut Parser) {
+  // SAFETY: The caller provides a live parser. Borrow only outside replay.
+  unsafe {
+    if !(*parser).parsing {
+      (*parser).complete();
+    }
+  }
+}
 
 /// Marks the parser as finished. Any new data received via `milo_parse` will
 /// put the parser in the error state.
@@ -207,7 +251,14 @@ pub unsafe extern "C" fn milo_complete(parser: *mut Parser) { unsafe { (*parser)
 /// # Safety
 /// The parser must be live, aligned, and exclusively accessible.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn milo_finish(parser: *mut Parser) { unsafe { (*parser).finish() } }
+pub unsafe extern "C" fn milo_finish(parser: *mut Parser) {
+  // SAFETY: The caller provides a live parser. Borrow only outside replay.
+  unsafe {
+    if !(*parser).parsing {
+      (*parser).finish();
+    }
+  }
+}
 
 /// Marks the parsing a failed, setting a error code and and error message.
 ///
@@ -219,6 +270,11 @@ pub unsafe extern "C" fn milo_finish(parser: *mut Parser) { unsafe { (*parser).f
 /// must not overlap the parser or its owned buffers.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn milo_fail(parser: *mut Parser, code: u8, description: CStringWithLength) {
+  // SAFETY: The caller provides a live parser.
+  if unsafe { (*parser).parsing } {
+    return;
+  }
+
   let description = if description.len == 0 {
     ""
   } else if description.ptr.is_null() {

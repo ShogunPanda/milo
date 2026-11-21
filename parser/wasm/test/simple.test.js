@@ -39,3 +39,30 @@ it('simple_span_collection_is_bounded_and_drainable', () => {
   assert.equal(parser in milo.spans, false)
   assert.equal(parser in milo.spanOverflow, false)
 })
+
+it('simple_destroy_during_replay_preserves_span_state', () => {
+  const milo = simple({ maxSpans: 2 })
+  const parser = milo.create()
+  const batch = milo.spans[parser]
+  let duringReplay
+
+  // Span collection calls push synchronously from inside the WASM callback.
+  batch.push = function (span) {
+    const length = Array.prototype.push.call(this, span)
+    if (length === 1) {
+      const result = milo.destroy(parser)
+      duringReplay = [result, milo.spans[parser] === batch, milo.spanOverflow[parser]]
+    }
+    return length
+  }
+
+  assert.equal(parse(milo, parser, 'GET / HTTP/1.1\r\n\r\n'), 18)
+  assert.deepEqual(duringReplay, [undefined, true, false])
+  const drained = milo.drain(parser)
+  assert.equal(drained.spans.length, 2)
+  assert.equal(drained.truncated, true)
+
+  assert.equal(milo.destroy(parser), undefined)
+  assert.equal(parser in milo.spans, false)
+  assert.equal(parser in milo.spanOverflow, false)
+})

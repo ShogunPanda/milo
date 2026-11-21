@@ -2,15 +2,26 @@ language      = "C++"
 include_guard = "MILO_H"
 namespace     = "milo_parser"
 
+# cbindgen emits function pointer aliases without preserving C linkage in C++.
+after_includes = """
+namespace milo_parser {
+struct Parser;
+
+extern "C" {
+using Callback = void (*)(Parser*, uintptr_t, uintptr_t);
+}
+}
+"""
+
 [parse.expand]
   crates = ["milo-parser"]
 
 [export]
+  exclude = ["Callback"]
   include = [
     "Parser",
     "ParserCallbacks",
     "CStringWithLength",
-    "Callback",
     "MessageTypes",
     "Connections",
     "Methods",

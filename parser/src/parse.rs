@@ -8,8 +8,8 @@ use core::cell::{Cell, RefCell};
 use core::ffi::{c_char, c_uchar, c_void};
 use core::fmt::Debug;
 use core::ptr;
+use core::slice::from_raw_parts;
 use core::str;
-use core::{slice, slice::from_raw_parts};
 use std::string;
 #[cfg(all(not(target_family = "wasm"), any(debug_assertions, feature = "debug")))]
 use std::time::Instant;
@@ -21,10 +21,20 @@ use crate::matchers::*;
 use crate::*;
 
 impl Parser {
-  /// Parses a slice of characters.
+  /// Parses a byte slice.
   ///
-  /// It returns the number of consumed characters.
-  pub fn parse(&mut self, input: *const c_uchar, limit: usize) -> usize {
+  /// It returns the number of consumed bytes.
+  ///
+  /// Raw pointers cannot be passed through this safe API:
+  ///
+  /// ```compile_fail
+  /// use milo_parser::Parser;
+  ///
+  /// let mut parser = Parser::new();
+  /// let input = b"GET / HTTP/1.1\r\n\r\n";
+  /// parser.parse(input.as_ptr(), input.len());
+  /// ```
+  pub fn parse(&mut self, input: &[u8]) -> usize {
     let mut event_cursor = 0usize;
     let mut failed = false;
     let active_events = self.active_events | self.active_callbacks;
@@ -47,39 +57,20 @@ impl Parser {
       return 0;
     }
 
-    // Event offsets and lengths are encoded as u32. Reject oversized native
-    // ranges before constructing a slice or narrowing event coordinates.
-    if limit > u32::MAX as usize {
-      self.position = 0;
-      self.fail(ERROR_INPUT_TOO_LARGE, "Input exceeds the 32-bit event coordinate limit");
-      if self.active_callbacks != 0 {
-        self.invoke_callbacks();
-      }
-      return 0;
+    // Event offsets and lengths are encoded as u32.
+    if input.len() > u32::MAX as usize {
+      return self.reject_oversized_input("Input exceeds the 32-bit event coordinate limit");
     }
-
-    let input = unsafe { from_raw_parts(input, limit) };
 
     // Set the data to analyze, prepending unconsumed data from previous iteration
     // if needed
-    let mut limit = limit;
+    let mut limit = input.len();
     let aggregate: Vec<c_uchar>;
     let unconsumed_len = self.unconsumed_len;
 
     let mut data = if self.manage_unconsumed && unconsumed_len > 0 {
-      let Some(aggregate_limit) = limit
-        .checked_add(unconsumed_len)
-        .filter(|size| *size <= u32::MAX as usize)
-      else {
-        self.position = 0;
-        self.fail(
-          ERROR_INPUT_TOO_LARGE,
-          "Managed input exceeds the 32-bit event coordinate limit",
-        );
-        if self.active_callbacks != 0 {
-          self.invoke_callbacks();
-        }
-        return 0;
+      let Some(aggregate_limit) = checked_event_input_len(limit, unconsumed_len) else {
+        return self.reject_oversized_input("Managed input exceeds the 32-bit event coordinate limit");
       };
 
       unsafe {
@@ -203,6 +194,10 @@ impl Parser {
                 event_with_range!(on_message_start, 0, 0);
               }
               move_to!(status_line);
+            } else if data == b"\r" || (data.len() < 5 && b"HTTP".starts_with(data)) {
+              // Keep autodetection undecided until a fragmented response prefix or
+              // leading CRLF can be distinguished from a request.
+              suspend!();
             } else if data.len() >= 5 && data[4] == b'/' && data.starts_with(b"HTTP") {
               self.is_request = false;
               if has_response_start_events {
@@ -610,75 +605,31 @@ impl Parser {
                         fail!(UNEXPECTED_CHARACTER, "Expected Transfer-Encoding header value");
                       }
 
-                      self.has_transfer_encoding = true;
-
-                      if &data[header_value_start..header_value_end] == b"chunked" {
-                        // If this is true, it means the Transfer-Encoding header was specified more
-                        // than once. This is the second repetition and therefore, the previous one is
-                        // no longer the last one, making it invalid.
-                        if self.has_chunked_transfer_encoding {
-                          fail!(
-                            INVALID_TRANSFER_ENCODING,
-                            "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can \
-                             be provided only once"
-                          );
-                        }
-
-                        self.has_chunked_transfer_encoding = true;
+                      let header_has_chunked = if &data[header_value_start..header_value_end] == b"chunked" {
+                        true
                       } else {
-                        let mut token_start = header_value_start;
-                        loop {
-                          while token_start < header_value_end && is_ws(data[token_start]) {
-                            token_start += 1;
-                          }
-
-                          if token_start == header_value_end {
-                            break;
-                          }
-
-                          let token_end_raw = match find_char(data, token_start, header_value_end, b',') {
-                            Some(comma) => comma,
-                            None => header_value_end,
-                          };
-                          let mut token_end = token_end_raw;
-
-                          if !strip_ows_fast(data, &mut token_start, &mut token_end, false) {
-                            fail!(UNEXPECTED_CHARACTER, "Expected Transfer-Encoding header value");
-                          }
-
-                          self.has_transfer_encoding = true;
-
-                          if let case_insensitive_string!("chunked") = data[token_start..token_end] {
-                            // If this is true, it means the Transfer-Encoding header was specified more
-                            // than once. This is the second repetition and therefore, the previous one is
-                            // no longer the last one, making it invalid.
-                            if self.has_chunked_transfer_encoding {
-                              fail!(
-                                INVALID_TRANSFER_ENCODING,
-                                "The value \"chunked\" in the Transfer-Encoding header must be the last provided and \
-                                 can be provided only once"
-                              );
-                            }
-
-                            self.has_chunked_transfer_encoding = true;
-                          } else {
-                            if self.has_chunked_transfer_encoding {
-                              // Any other value when chunked was already specified is invalid as the previous
-                              // chunked would not be the last one anymore
-                              fail!(
-                                INVALID_TRANSFER_ENCODING,
-                                "The value \"chunked\" in the Transfer-Encoding header must be the last provided"
-                              );
-                            }
-                          }
-
-                          if token_end_raw == header_value_end {
-                            break;
-                          } else {
-                            token_start = token_end_raw + 1;
+                        match validate_transfer_encoding(data, header_value_start, header_value_end) {
+                          Some(has_chunked) => has_chunked,
+                          None => {
+                            fail!(INVALID_TRANSFER_ENCODING, "Invalid Transfer-Encoding header value");
                           }
                         }
+                      };
+
+                      // A later field value would make a previously observed chunked coding
+                      // non-final.
+                      if self.has_chunked_transfer_encoding {
+                        fail!(
+                          INVALID_TRANSFER_ENCODING,
+                          "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can be \
+                           provided only once"
+                        );
                       }
+
+                      // Do not update framing state until every coding and parameter in this field
+                      // value has been validated.
+                      self.has_transfer_encoding = true;
+                      self.has_chunked_transfer_encoding = header_has_chunked;
                     }
                     // RFC 9112 section 9.6
                     (10, case_insensitive_string!("connection")) => {
@@ -862,7 +813,12 @@ impl Parser {
                 UNEXPECTED_TRAILERS,
                 "Trailers are not allowed when not using chunked transfer encoding"
               );
-            } else if self.is_request && (method == METHOD_GET || method == METHOD_HEAD) && self.content_length > 0 {
+            } else if self.is_request && self.is_connect && (self.has_content_length || self.has_transfer_encoding) {
+              fail!(UNEXPECTED_CONTENT, "Body framing is not allowed for CONNECT requests");
+            } else if self.is_request
+              && (method == METHOD_GET || method == METHOD_HEAD)
+              && (self.content_length > 0 || self.has_transfer_encoding)
+            {
               fail!(UNEXPECTED_CONTENT, "Unexpected content for the request (GET or HEAD)");
             }
 
@@ -1369,6 +1325,10 @@ impl Parser {
                   fail!(UNEXPECTED_CHARACTER, "Invalid trailer field name character");
                 }
 
+                if is_forbidden_trailer_name(&data[trailer_name_start..trailer_name_end]) {
+                  fail!(UNEXPECTED_TRAILERS, "Forbidden trailer field");
+                }
+
                 if has_trailer_name_event {
                   event_with_range!(
                     on_trailer_name,
@@ -1474,14 +1434,20 @@ impl Parser {
     }
 
     let consumed = self.position;
+    if consumed < limit && self.state == STATE_START {
+      self.remember_pending_start(data);
+    }
     self.parsed += consumed as u64;
 
     if self.manage_unconsumed {
       self.clear_unconsumed();
 
+      // Tunnel bytes belong to the upgraded protocol and must remain with the
+      // caller rather than being retained by the HTTP parser.
+      //
       // Use a boxed slice so the length also determines the allocation layout
       // when releasing retained input; Vec capacity is not stored in the ABI.
-      if consumed < limit {
+      if self.state != STATE_TUNNEL && consumed < limit {
         let retained = data.to_vec().into_boxed_slice();
         self.unconsumed_len = retained.len();
         self.unconsumed = Box::into_raw(retained) as *const c_uchar;
@@ -1522,6 +1488,16 @@ impl Parser {
     consumed
   }
 
+  #[cold]
+  pub(crate) fn reject_oversized_input(&mut self, description: &str) -> usize {
+    self.position = 0;
+    self.fail(ERROR_INPUT_TOO_LARGE, description);
+    if self.active_callbacks != 0 {
+      self.invoke_callbacks();
+    }
+    0
+  }
+
   /// Completes the current message without consuming more input.
   ///
   /// This is intended for integrations that consume opaque body bytes outside
@@ -1554,6 +1530,8 @@ impl Parser {
       &mut event_cursor,
     ) {
       self.paused = true;
+    } else if self.state == STATE_TUNNEL {
+      self.clear_unconsumed();
     }
 
     unsafe {
@@ -1600,5 +1578,44 @@ impl Parser {
     }
 
     true
+  }
+}
+
+#[inline]
+fn checked_event_input_len(input: usize, retained: usize) -> Option<usize> {
+  input.checked_add(retained).filter(|size| *size <= u32::MAX as usize)
+}
+
+#[cfg(all(test, target_pointer_width = "64"))]
+mod tests {
+  use core::sync::atomic::{AtomicUsize, Ordering};
+
+  use super::*;
+
+  #[test]
+  fn event_coordinate_limit() {
+    let max = u32::MAX as usize;
+    assert_eq!(checked_event_input_len(max, 0), Some(max));
+    assert_eq!(checked_event_input_len(max + 1, 0), None);
+    assert_eq!(checked_event_input_len(max - 1, 1), Some(max));
+    assert_eq!(checked_event_input_len(1, max), None);
+    assert_eq!(checked_event_input_len(usize::MAX, 1), None);
+  }
+
+  #[test]
+  fn oversized_input_error_is_delivered_once() {
+    static CALLS: AtomicUsize = AtomicUsize::new(0);
+    extern "C" fn count_error(_: &mut Parser, _: usize, _: usize) { CALLS.fetch_add(1, Ordering::Relaxed); }
+
+    let mut parser = Parser::new();
+    parser.active_callbacks = CALLBACK_ACTIVE_ON_ERROR;
+    parser.callbacks.on_error = count_error;
+    assert_eq!(
+      parser.reject_oversized_input("Input exceeds the event coordinate limit"),
+      0
+    );
+    assert_eq!(parser.state, STATE_ERROR);
+    assert_eq!(parser.error_code, ERROR_INPUT_TOO_LARGE);
+    assert_eq!(CALLS.load(Ordering::Relaxed), 1);
   }
 }

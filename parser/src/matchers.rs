@@ -75,6 +75,61 @@ pub fn validate_token(data: &[u8], start: usize, end: usize) -> bool {
 }
 
 #[inline(always)]
+pub fn is_forbidden_trailer_name(name: &[u8]) -> bool {
+  const FORBIDDEN: &[&[u8]] = &[
+    b"accept-ranges",
+    b"age",
+    b"allow",
+    b"authorization",
+    b"cache-control",
+    b"connection",
+    b"content-disposition",
+    b"content-encoding",
+    b"content-length",
+    b"content-range",
+    b"content-type",
+    b"cookie",
+    b"date",
+    b"etag",
+    b"expect",
+    b"expires",
+    b"forwarded",
+    b"host",
+    b"if-match",
+    b"if-modified-since",
+    b"if-none-match",
+    b"if-range",
+    b"if-unmodified-since",
+    b"keep-alive",
+    b"last-modified",
+    b"location",
+    b"max-forwards",
+    b"pragma",
+    b"proxy-authenticate",
+    b"proxy-authorization",
+    b"proxy-connection",
+    b"range",
+    b"referer",
+    b"retry-after",
+    b"server",
+    b"set-cookie",
+    b"te",
+    b"trailer",
+    b"transfer-encoding",
+    b"upgrade",
+    b"vary",
+    b"via",
+    b"warning",
+    b"www-authenticate",
+    b"x-forwarded-for",
+    b"x-forwarded-host",
+    b"x-forwarded-proto",
+  ];
+
+  FORBIDDEN.iter().any(|forbidden| name.eq_ignore_ascii_case(forbidden))
+}
+
+#[inline(always)]
 pub fn validate_quoted_string(data: &[u8], start: usize, end: usize) -> bool {
   let mut i = start;
   while i < end {
@@ -92,6 +147,116 @@ pub fn validate_quoted_string(data: &[u8], start: usize, end: usize) -> bool {
   }
 
   true
+}
+
+/// Validates a Transfer-Encoding field value and reports whether its final
+/// coding is `chunked`. List separators inside quoted parameter values are not
+/// treated as coding separators.
+#[inline(always)]
+pub fn validate_transfer_encoding(data: &[u8], start: usize, end: usize) -> Option<bool> {
+  let mut i = start;
+
+  loop {
+    while i < end && is_ws(data[i]) {
+      i += 1;
+    }
+
+    let coding_start = i;
+    while i < end && TOKEN_TABLE[data[i] as usize] {
+      i += 1;
+    }
+    if coding_start == i {
+      return None;
+    }
+
+    let is_chunked = data[coding_start..i].eq_ignore_ascii_case(b"chunked");
+
+    while i < end && is_ws(data[i]) {
+      i += 1;
+    }
+
+    while i < end && data[i] == b';' {
+      if is_chunked {
+        return None;
+      }
+      i += 1;
+
+      while i < end && is_ws(data[i]) {
+        i += 1;
+      }
+
+      let parameter_name_start = i;
+      while i < end && TOKEN_TABLE[data[i] as usize] {
+        i += 1;
+      }
+      if parameter_name_start == i {
+        return None;
+      }
+
+      while i < end && is_ws(data[i]) {
+        i += 1;
+      }
+      if i == end || data[i] != b'=' {
+        return None;
+      }
+      i += 1;
+
+      while i < end && is_ws(data[i]) {
+        i += 1;
+      }
+      if i == end {
+        return None;
+      }
+
+      if data[i] == b'"' {
+        i += 1;
+        loop {
+          if i == end {
+            return None;
+          }
+
+          let byte = data[i];
+          i += 1;
+          match byte {
+            b'"' => {
+              break;
+            }
+            b'\\' => {
+              if i == end || !QUOTED_PAIR_TABLE[data[i] as usize] {
+                return None;
+              }
+              i += 1;
+            }
+            _ if !QUOTED_STRING_TABLE[byte as usize] => {
+              return None;
+            }
+            _ => {}
+          }
+        }
+      } else {
+        let value_start = i;
+        while i < end && TOKEN_TABLE[data[i] as usize] {
+          i += 1;
+        }
+        if value_start == i {
+          return None;
+        }
+      }
+
+      while i < end && is_ws(data[i]) {
+        i += 1;
+      }
+    }
+
+    if i == end {
+      return Some(is_chunked);
+    }
+    if data[i] != b',' || is_chunked {
+      return None;
+    }
+
+    i += 1;
+  }
 }
 
 #[inline(always)]

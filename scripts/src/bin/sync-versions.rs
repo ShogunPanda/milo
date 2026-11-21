@@ -15,7 +15,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 
   for folder in folders {
     let path = root.join(folder);
-    env::set_current_dir(path)?;
+    env::set_current_dir(&path)?;
+
+    if folder == "parser" {
+      // Align the local dependency before cambi updates the parser lockfile.
+      let manifest = path.join("Cargo.toml");
+      let content = fs::read_to_string(&manifest)?;
+      let matcher = Regex::new(r#"(?m)^(\s+milo-macros = \{ version = ")([^"]+)(")"#)?;
+      let content = matcher.replace(&content, |captures: &Captures<'_>| {
+        format!("{}{version}{}", &captures[1], &captures[3])
+      });
+      fs::write(manifest, content.as_bytes())?;
+    }
+
     // Like execFileSync, wait for each update and discard its stdout.
     let output = Command::new("cambi")
       .args(["update", &version])
@@ -26,14 +38,5 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
   }
 
-  // Dependency of milo-macros.
-  // Update it without reformatting the manifest.
-  let main_cargo = root.join("parser/Cargo.toml");
-  let main_cargo_content = fs::read_to_string(&main_cargo)?;
-  let matcher = Regex::new(r#"(?m)^(\s+milo-macros = \{ version = ")([^"]+)(")"#)?;
-  let main_cargo_content = matcher.replace(&main_cargo_content, |captures: &Captures<'_>| {
-    format!("{}{version}{}", &captures[1], &captures[3])
-  });
-  fs::write(main_cargo, main_cargo_content.as_bytes())?;
   Ok(())
 }

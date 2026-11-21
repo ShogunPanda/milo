@@ -19,7 +19,7 @@ When downloading Milo, you can choose between `debug` or `release` version:
 All callbacks in Milo have the following signature (`Callback`):
 
 ```cpp
-void(*)(milo_parser::Parser*, uintptr_t, uintptr_t)
+extern "C" void on_data(milo_parser::Parser* parser, uintptr_t from, uintptr_t size);
 ```
 
 where the parameters have the following meaning:
@@ -29,6 +29,8 @@ where the parameters have the following meaning:
 3. The data length. Can be `0`.
 
 If length is `0`, it means the callback has no payload associated.
+
+Declare callback functions with `extern "C"` and do not let exceptions unwind across Milo's C ABI boundary.
 
 Callbacks are dispatched only when the corresponding `CALLBACK_ACTIVE_*` flag is set in the parser `active_callbacks` field.
 

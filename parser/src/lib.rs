@@ -228,7 +228,7 @@ impl Parser {
   }
 
   #[inline(always)]
-  pub(crate) fn try_emit_event_range(
+  pub(crate) fn try_emit_event_range<const VALIDATED: bool>(
     &mut self,
     event_cursor: &mut usize,
     event_type: u8,
@@ -240,32 +240,39 @@ impl Parser {
       return false;
     }
 
-    let (Ok(at), Ok(len)) = (u32::try_from(at), u32::try_from(len)) else {
+    if !VALIDATED && (u32::try_from(at).is_err() || u32::try_from(len).is_err()) {
       return false;
-    };
+    }
+    debug_assert!(u32::try_from(at).is_ok() && u32::try_from(len).is_ok());
 
+    // SAFETY: The capacity check covers the entire range event.
     unsafe {
       *self.events.add(*event_cursor) = event_type;
-      core::ptr::write_unaligned(self.events.add(*event_cursor + 1) as *mut u32, at.to_le());
-      core::ptr::write_unaligned(self.events.add(*event_cursor + 5) as *mut u32, len.to_le());
+      core::ptr::write_unaligned(self.events.add(*event_cursor + 1) as *mut u32, (at as u32).to_le());
+      core::ptr::write_unaligned(self.events.add(*event_cursor + 5) as *mut u32, (len as u32).to_le());
     }
     *event_cursor += EVENT_RANGE_SIZE;
     true
   }
 
   #[inline(always)]
-  pub(crate) fn try_emit_event_error(&mut self, event_cursor: &mut usize) -> bool {
+  pub(crate) fn try_emit_event_error<const VALIDATED: bool>(&mut self, event_cursor: &mut usize) -> bool {
     if *event_cursor + EVENT_ERROR_SIZE + EVENT_END_SIZE > EVENTS_BUFFER_SIZE {
       return false;
     }
 
-    let Ok(position) = u32::try_from(self.position) else {
+    if !VALIDATED && u32::try_from(self.position).is_err() {
       return false;
-    };
+    }
+    debug_assert!(u32::try_from(self.position).is_ok());
 
+    // SAFETY: The capacity check covers the entire error event.
     unsafe {
       *self.events.add(*event_cursor) = EVENT_ERROR;
-      core::ptr::write_unaligned(self.events.add(*event_cursor + 1) as *mut u32, position.to_le());
+      core::ptr::write_unaligned(
+        self.events.add(*event_cursor + 1) as *mut u32,
+        (self.position as u32).to_le(),
+      );
       *self.events.add(*event_cursor + 5) = self.error_code;
     }
     *event_cursor += EVENT_ERROR_SIZE;
@@ -339,7 +346,7 @@ impl Parser {
         let active_events = self.active_events | self.active_callbacks;
         let mut event_cursor = 0usize;
         if active_events & EVENT_ACTIVE_ON_MESSAGE_COMPLETE != 0 {
-          self.try_emit_event_range(&mut event_cursor, EVENT_MESSAGE_COMPLETE, self.position, 0);
+          self.try_emit_event_range::<false>(&mut event_cursor, EVENT_MESSAGE_COMPLETE, self.position, 0);
         }
         unsafe {
           *self.events.add(event_cursor) = EVENT_END;
@@ -362,7 +369,7 @@ impl Parser {
     self.set_error(code, description);
     let mut event_cursor = 0usize;
     if (self.active_events | self.active_callbacks) & EVENT_ACTIVE_ON_ERROR != 0 {
-      self.try_emit_event_error(&mut event_cursor);
+      self.try_emit_event_error::<false>(&mut event_cursor);
     }
     // SAFETY: The cursor follows at most one error event in the owned event buffer.
     unsafe {

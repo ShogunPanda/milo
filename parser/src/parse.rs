@@ -103,8 +103,8 @@ impl Parser {
     #[cfg(any(debug_assertions, feature = "debug"))]
     let previous_position = self.position;
 
-    // States will advance position manually, the parser has to explicitly
-    // track it
+    // Event offsets are relative to the validated input. Position starts at
+    // zero, and state handlers derive event coordinates from the remaining data.
     self.position = 0;
     let mut advanced: usize;
     let mut parsing = true;
@@ -838,7 +838,7 @@ impl Parser {
                 );
               } else if self.skip_body {
                 self.continue_without_data = true;
-                if !self.complete_message(
+                if !self.complete_message::<true>(
                   0,
                   active_events,
                   has_complete_events,
@@ -851,7 +851,7 @@ impl Parser {
                 // RFC 9110 section 6.3
                 if self.content_length == 0 {
                   self.continue_without_data = true;
-                  if !self.complete_message(
+                  if !self.complete_message::<true>(
                     0,
                     active_events,
                     has_complete_events,
@@ -865,7 +865,7 @@ impl Parser {
                 }
               } else if !self.has_chunked_transfer_encoding {
                 self.continue_without_data = true;
-                if !self.complete_message(
+                if !self.complete_message::<true>(
                   0,
                   active_events,
                   has_complete_events,
@@ -882,7 +882,7 @@ impl Parser {
               // RFC 9110 section 15.4.5
               if self.skip_body || (status < 200 && status != 101) || status == 204 || status == 205 || status == 304 {
                 self.continue_without_data = true;
-                if !self.complete_message(
+                if !self.complete_message::<true>(
                   0,
                   active_events,
                   has_complete_events,
@@ -894,7 +894,7 @@ impl Parser {
               } else if self.has_content_length {
                 if self.content_length == 0 {
                   self.continue_without_data = true;
-                  if !self.complete_message(
+                  if !self.complete_message::<true>(
                     0,
                     active_events,
                     has_complete_events,
@@ -950,7 +950,7 @@ impl Parser {
 
               self.continue_without_data = true;
 
-              if !self.complete_message(
+              if !self.complete_message::<true>(
                 to_consume_usize,
                 active_events,
                 has_complete_events,
@@ -1293,7 +1293,7 @@ impl Parser {
                   }
                   event_with_range!(on_trailers, 2, 0);
                   self.continue_without_data = true;
-                  if !self.complete_message(
+                  if !self.complete_message::<true>(
                     2,
                     active_events,
                     has_complete_events,
@@ -1398,7 +1398,7 @@ impl Parser {
       #[cfg(any(debug_assertions, feature = "debug"))]
       if previous_state != self.state {
         if active_events & EVENT_ACTIVE_ON_STATE_CHANGE != 0
-          && !self.try_emit_event_range(
+          && !self.try_emit_event_range::<true>(
             &mut event_cursor,
             EVENT_STATE_CHANGE,
             self.position,
@@ -1471,7 +1471,7 @@ impl Parser {
 
     // Append only errors raised by this call, after all preceding events.
     if failed && active_events & EVENT_ACTIVE_ON_ERROR != 0 {
-      self.try_emit_event_error(&mut event_cursor);
+      self.try_emit_event_error::<true>(&mut event_cursor);
     }
 
     if has_active_events {
@@ -1522,7 +1522,8 @@ impl Parser {
     let has_finish_event = active_events & EVENT_ACTIVE_ON_FINISH != 0;
     let mut event_cursor = 0usize;
 
-    if !self.complete_message(
+    // Standalone calls can observe a position set by the caller.
+    if !self.complete_message::<false>(
       0,
       active_events,
       has_complete_events,
@@ -1541,7 +1542,7 @@ impl Parser {
 
   // RFC 9110 section 6.4.1 - Message completed.
   #[inline(always)]
-  fn complete_message(
+  fn complete_message<const VALIDATED: bool>(
     &mut self,
     offset: usize,
     active_events: u64,
@@ -1555,9 +1556,9 @@ impl Parser {
     }
     if has_complete_events {
       if (active_events & EVENT_ACTIVE_ON_MESSAGE_COMPLETE != 0
-        && !self.try_emit_event_range(event_cursor, EVENT_MESSAGE_COMPLETE, self.position + offset, 0))
+        && !self.try_emit_event_range::<VALIDATED>(event_cursor, EVENT_MESSAGE_COMPLETE, self.position + offset, 0))
         || (active_events & EVENT_ACTIVE_ON_RESET != 0
-          && !self.try_emit_event_range(event_cursor, EVENT_RESET, self.position + offset, 0))
+          && !self.try_emit_event_range::<VALIDATED>(event_cursor, EVENT_RESET, self.position + offset, 0))
       {
         return false;
       }
@@ -1569,7 +1570,7 @@ impl Parser {
     if self.has_upgrade && self.is_request {
       move_to!(tunnel);
     } else if self.has_connection_close {
-      if has_finish_event && !self.try_emit_event_range(event_cursor, EVENT_FINISH, self.position, 0) {
+      if has_finish_event && !self.try_emit_event_range::<VALIDATED>(event_cursor, EVENT_FINISH, self.position, 0) {
         return false;
       }
       move_to!(finish);
@@ -1600,6 +1601,17 @@ mod tests {
     assert_eq!(checked_event_input_len(max - 1, 1), Some(max));
     assert_eq!(checked_event_input_len(1, max), None);
     assert_eq!(checked_event_input_len(usize::MAX, 1), None);
+  }
+
+  #[test]
+  fn event_writers_preserve_the_coordinate_limit() {
+    let max = u32::MAX as usize;
+    let mut parser = Parser::new();
+    let mut cursor = 0;
+    assert!(!parser.try_emit_event_range::<false>(&mut cursor, EVENT_MESSAGE_COMPLETE, max + 1, 0));
+    assert_eq!(cursor, 0);
+    assert!(parser.try_emit_event_range::<true>(&mut cursor, EVENT_MESSAGE_COMPLETE, max, 0));
+    assert_eq!(&parser.events()[1..5], &u32::MAX.to_le_bytes());
   }
 
   #[test]

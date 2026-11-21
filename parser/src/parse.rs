@@ -2,8 +2,7 @@
 
 extern crate alloc;
 
-use alloc::vec::Vec;
-use alloc::{boxed::Box, format};
+use alloc::format;
 use core::cell::{Cell, RefCell};
 use core::ffi::{c_char, c_uchar, c_void};
 use core::fmt::Debug;
@@ -19,6 +18,12 @@ use milo_macros::*;
 use crate::Methods::CONNECT;
 use crate::matchers::*;
 use crate::*;
+
+enum RetainedLine {
+  Unchecked,
+  Incomplete,
+  Cr(usize),
+}
 
 impl Parser {
   /// Parses a byte slice.
@@ -62,34 +67,36 @@ impl Parser {
       return self.reject_oversized_input("Input exceeds the 32-bit event coordinate limit");
     }
 
-    // Set the data to analyze, prepending unconsumed data from previous iteration
-    // if needed
-    let mut limit = input.len();
-    let aggregate: Vec<c_uchar>;
-    let unconsumed_len = self.unconsumed_len;
-
-    let mut data = if self.manage_unconsumed && unconsumed_len > 0 {
-      let Some(aggregate_limit) = checked_event_input_len(limit, unconsumed_len) else {
+    let mut cached_cr = None;
+    let retained_len = self.unconsumed_len;
+    let mut data = if self.manage_unconsumed && retained_len > 0 {
+      let Some(aggregate_limit) = checked_event_input_len(input.len(), retained_len) else {
         return self.reject_oversized_input("Managed input exceeds the 32-bit event coordinate limit");
       };
 
-      unsafe {
-        limit = aggregate_limit;
-        let unconsumed = from_raw_parts(self.unconsumed, unconsumed_len);
-
-        // Rebuild a contiguous view so state handlers can scan across parse-call
-        // boundaries.
-        aggregate = [unconsumed, input].concat();
-        &aggregate[..]
+      self.append_retained_input(input);
+      // SAFETY: The parser owns the contiguous aggregate of the checked length.
+      let aggregate = unsafe { from_raw_parts(self.unconsumed, aggregate_limit) };
+      match self.scan_retained_line(aggregate, retained_len) {
+        RetainedLine::Unchecked => {}
+        RetainedLine::Incomplete => {
+          self.position = 0;
+          if active_events != 0 {
+            // SAFETY: No events were produced and the parser owns the event buffer.
+            unsafe { *self.events = EVENT_END };
+          }
+          return 0;
+        }
+        RetainedLine::Cr(cr) => cached_cr = Some(cr),
       }
+      aggregate
     } else {
       input
     };
 
-    // Limit the data that is currently analyzed
-    data = &data[..limit];
-
-    let mut available = data.len();
+    let limit = data.len();
+    let mut available = limit;
+    let mut incomplete_line = false;
 
     #[cfg(all(not(target_family = "wasm"), any(debug_assertions, feature = "debug")))]
     let mut last = Instant::now();
@@ -221,12 +228,13 @@ impl Parser {
           }
 
           STATE_REQUEST_LINE => {
-            match find_cr(data, available) {
+            match cached_cr.take().or_else(|| find_cr(data, available)) {
               // // RFC 9112 section 3
               Some(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
                   MatchResult::Suspend => {
+                    incomplete_line = true;
                     suspend!();
                   }
                   MatchResult::Stop => {
@@ -361,6 +369,7 @@ impl Parser {
                 if available >= self.max_start_line_length {
                   fail!(UNEXPECTED_CHARACTER, "Request line too long");
                 } else {
+                  incomplete_line = true;
                   suspend!();
                 }
               }
@@ -369,11 +378,12 @@ impl Parser {
 
           // RFC 9112 section 4
           STATE_STATUS_LINE => {
-            match find_cr(data, available) {
+            match cached_cr.take().or_else(|| find_cr(data, available)) {
               Some(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
                   MatchResult::Suspend => {
+                    incomplete_line = true;
                     suspend!();
                   }
                   MatchResult::Stop => {
@@ -460,6 +470,7 @@ impl Parser {
                 if available >= self.max_start_line_length {
                   fail!(UNEXPECTED_CHARACTER, "Status line too long");
                 } else {
+                  incomplete_line = true;
                   suspend!();
                 }
               }
@@ -478,11 +489,15 @@ impl Parser {
           }
 
           STATE_HEADER => {
-            match find_header_line_end(data.as_ptr(), available) {
+            match cached_cr.take().map_or_else(
+              || find_header_line_end(data.as_ptr(), available),
+              HeaderLineScanResult::Cr,
+            ) {
               HeaderLineScanResult::Cr(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
                   MatchResult::Suspend => {
+                    incomplete_line = true;
                     suspend!();
                   }
                   MatchResult::Stop => {
@@ -789,6 +804,7 @@ impl Parser {
                 if available >= self.max_header_length {
                   fail!(UNEXPECTED_CHARACTER, "Header line too long");
                 } else {
+                  incomplete_line = true;
                   suspend!();
                 }
               }
@@ -991,11 +1007,12 @@ impl Parser {
 
           // RFC 9112 section 7.1
           STATE_CHUNK_HEADER => {
-            match find_cr(data, available) {
+            match cached_cr.take().or_else(|| find_cr(data, available)) {
               Some(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
                   MatchResult::Suspend => {
+                    incomplete_line = true;
                     suspend!();
                   }
                   MatchResult::Stop => {
@@ -1066,6 +1083,7 @@ impl Parser {
                 if available >= self.max_header_length {
                   fail!(UNEXPECTED_CHARACTER, "Chunk header too long");
                 } else {
+                  incomplete_line = true;
                   suspend!();
                 }
               }
@@ -1073,11 +1091,12 @@ impl Parser {
           }
 
           STATE_CHUNK_EXTENSIONS => {
-            match find_cr(data, available) {
+            match cached_cr.take().or_else(|| find_cr(data, available)) {
               Some(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
                   MatchResult::Suspend => {
+                    incomplete_line = true;
                     suspend!();
                   }
                   MatchResult::Stop => {
@@ -1221,6 +1240,7 @@ impl Parser {
                 if available >= self.max_header_length {
                   fail!(UNEXPECTED_CHARACTER, "Chunk header too long");
                 } else {
+                  incomplete_line = true;
                   suspend!();
                 }
               }
@@ -1273,11 +1293,15 @@ impl Parser {
 
           // RFC 9112 section 7.1.2
           STATE_TRAILER => {
-            match find_header_line_end(data.as_ptr(), available) {
+            match cached_cr.take().map_or_else(
+              || find_header_line_end(data.as_ptr(), available),
+              HeaderLineScanResult::Cr,
+            ) {
               HeaderLineScanResult::Cr(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
                   MatchResult::Suspend => {
+                    incomplete_line = true;
                     suspend!();
                   }
                   MatchResult::Stop => {
@@ -1360,6 +1384,7 @@ impl Parser {
                 if available >= self.max_header_length {
                   fail!(UNEXPECTED_CHARACTER, "Trailer line too long");
                 } else {
+                  incomplete_line = true;
                   suspend!();
                 }
               }
@@ -1440,17 +1465,12 @@ impl Parser {
     self.parsed += consumed as u64;
 
     if self.manage_unconsumed {
-      self.clear_unconsumed();
-
       // Tunnel bytes belong to the upgraded protocol and must remain with the
       // caller rather than being retained by the HTTP parser.
-      //
-      // Use a boxed slice so the length also determines the allocation layout
-      // when releasing retained input; Vec capacity is not stored in the ABI.
       if self.state != STATE_TUNNEL && consumed < limit {
-        let retained = data.to_vec().into_boxed_slice();
-        self.unconsumed_len = retained.len();
-        self.unconsumed = Box::into_raw(retained) as *const c_uchar;
+        self.keep_retained_suffix(data, incomplete_line.then_some(self.state));
+      } else {
+        self.clear_unconsumed();
       }
     }
 
@@ -1486,6 +1506,38 @@ impl Parser {
 
     // Return the number of consumed bytes
     consumed
+  }
+
+  #[cold]
+  fn scan_retained_line(&self, data: &[u8], retained_len: usize) -> RetainedLine {
+    // SAFETY: The parser owns EventStorage and its private metadata.
+    if unsafe { (*self.events.cast::<EventStorage>()).incomplete_line } != Some(self.state) {
+      return RetainedLine::Unchecked;
+    }
+
+    // The previous scan reached the end, or stopped on a final CR.
+    let start = retained_len - usize::from(data[retained_len - 1] == b'\r');
+    let tail = &data[start..];
+    let limit = if matches!(self.state, STATE_REQUEST_LINE | STATE_STATUS_LINE) {
+      self.max_start_line_length
+    } else {
+      self.max_header_length
+    };
+
+    let result = if matches!(self.state, STATE_HEADER | STATE_TRAILER) {
+      find_header_line_end(tail.as_ptr(), tail.len())
+    } else {
+      find_cr(tail, tail.len()).map_or(HeaderLineScanResult::Incomplete, HeaderLineScanResult::Cr)
+    };
+
+    // Only the CR search has finished. The parse loop still validates LF and
+    // processes the whole line, or handles an error in the usual way.
+    match result {
+      HeaderLineScanResult::Cr(cr) if cr + 1 == tail.len() => RetainedLine::Incomplete,
+      HeaderLineScanResult::Cr(cr) => RetainedLine::Cr(start + cr),
+      HeaderLineScanResult::Incomplete if data.len() < limit => RetainedLine::Incomplete,
+      _ => RetainedLine::Unchecked,
+    }
   }
 
   #[cold]

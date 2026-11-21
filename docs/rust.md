@@ -261,6 +261,8 @@ Creates a new parser.
 
 Parses `data` and returns the number of consumed bytes.
 
+Event coordinates use 32-bit offsets and lengths. On 64-bit native targets, `parse()` rejects a current input or managed aggregate larger than `u32::MAX` with `ERROR_INPUT_TOO_LARGE` before reading the input.
+
 After a parser error, subsequent calls return `0`, emit no events or callbacks, and do not copy or retain new input. The original error and any previously retained input remain available until reset or destruction. Call `reset()` before reusing the parser.
 
 #### `Parser::reset(&mut self, keep_parsed: bool)`
@@ -376,6 +378,9 @@ The caller must have exclusive access to a live, properly aligned parser. A
 nonempty input must be a readable range of initialized bytes in one allocation
 and must remain valid and unchanged during the call. It must not overlap the
 parser or its owned buffers. `data` may be null only when `limit` is zero.
+
+On 64-bit native targets, parsing rejects current inputs or managed aggregates
+larger than `u32::MAX` with `ERROR_INPUT_TOO_LARGE` before reading input bytes.
 
 ### `milo_reset(parser: *mut Parser, keep_parsed: bool)`
 

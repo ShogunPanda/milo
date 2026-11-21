@@ -94,6 +94,8 @@ CONNECT response behavior requires application context and is not inferred by Mi
 
 `max_body_payload` limits how many body payload bytes a single parse invocation can consume. `0` means unlimited. When the limit is reached, parsing returns normally with unconsumed input left for the caller's next parse invocation. Framing bytes such as chunk headers, chunk CRLFs, and trailers are not counted.
 
+Event offsets and lengths use an unsigned 32-bit wire format. Native parsing rejects a current input or managed aggregate larger than `u32::MAX`; WebAssembly linear memory already has 32-bit coordinates.
+
 `suspend_after_headers` stops parsing after the final header terminator has been consumed and headers metadata has been emitted. The parser is not paused; the next parse invocation continues with body decision and body parsing.
 
 `autodetect` and `is_request` control parser direction. Milo also supports managed unconsumed data, start-line and header length limits, event activation flags, and callback activation flags.

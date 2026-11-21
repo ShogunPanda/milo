@@ -57,6 +57,11 @@ impl Parser {
       return 0;
     }
 
+    // Event offsets and lengths are encoded as u32.
+    if input.len() > u32::MAX as usize {
+      return self.reject_oversized_input("Input exceeds the 32-bit event coordinate limit");
+    }
+
     // Set the data to analyze, prepending unconsumed data from previous iteration
     // if needed
     let mut limit = input.len();
@@ -64,8 +69,12 @@ impl Parser {
     let unconsumed_len = self.unconsumed_len;
 
     let mut data = if self.manage_unconsumed && unconsumed_len > 0 {
+      let Some(aggregate_limit) = checked_event_input_len(limit, unconsumed_len) else {
+        return self.reject_oversized_input("Managed input exceeds the 32-bit event coordinate limit");
+      };
+
       unsafe {
-        limit += unconsumed_len;
+        limit = aggregate_limit;
         let unconsumed = from_raw_parts(self.unconsumed, unconsumed_len);
 
         // Rebuild a contiguous view so state handlers can scan across parse-call
@@ -94,8 +103,8 @@ impl Parser {
     #[cfg(any(debug_assertions, feature = "debug"))]
     let previous_position = self.position;
 
-    // States will advance position manually, the parser has to explicitly
-    // track it
+    // Event offsets are relative to the validated input. Position starts at
+    // zero, and state handlers derive event coordinates from the remaining data.
     self.position = 0;
     let mut advanced: usize;
     let mut parsing = true;
@@ -829,7 +838,7 @@ impl Parser {
                 );
               } else if self.skip_body {
                 self.continue_without_data = true;
-                if !self.complete_message(
+                if !self.complete_message::<true>(
                   0,
                   active_events,
                   has_complete_events,
@@ -842,7 +851,7 @@ impl Parser {
                 // RFC 9110 section 6.3
                 if self.content_length == 0 {
                   self.continue_without_data = true;
-                  if !self.complete_message(
+                  if !self.complete_message::<true>(
                     0,
                     active_events,
                     has_complete_events,
@@ -856,7 +865,7 @@ impl Parser {
                 }
               } else if !self.has_chunked_transfer_encoding {
                 self.continue_without_data = true;
-                if !self.complete_message(
+                if !self.complete_message::<true>(
                   0,
                   active_events,
                   has_complete_events,
@@ -873,7 +882,7 @@ impl Parser {
               // RFC 9110 section 15.4.5
               if self.skip_body || (status < 200 && status != 101) || status == 204 || status == 205 || status == 304 {
                 self.continue_without_data = true;
-                if !self.complete_message(
+                if !self.complete_message::<true>(
                   0,
                   active_events,
                   has_complete_events,
@@ -885,7 +894,7 @@ impl Parser {
               } else if self.has_content_length {
                 if self.content_length == 0 {
                   self.continue_without_data = true;
-                  if !self.complete_message(
+                  if !self.complete_message::<true>(
                     0,
                     active_events,
                     has_complete_events,
@@ -941,7 +950,7 @@ impl Parser {
 
               self.continue_without_data = true;
 
-              if !self.complete_message(
+              if !self.complete_message::<true>(
                 to_consume_usize,
                 active_events,
                 has_complete_events,
@@ -1284,7 +1293,7 @@ impl Parser {
                   }
                   event_with_range!(on_trailers, 2, 0);
                   self.continue_without_data = true;
-                  if !self.complete_message(
+                  if !self.complete_message::<true>(
                     2,
                     active_events,
                     has_complete_events,
@@ -1392,8 +1401,8 @@ impl Parser {
           && !self.try_emit_event_range(
             &mut event_cursor,
             EVENT_STATE_CHANGE,
-            self.position,
-            self.state as usize,
+            self.position as u32,
+            self.state as u32,
           )
         {
           parsing = false;
@@ -1462,7 +1471,7 @@ impl Parser {
 
     // Append only errors raised by this call, after all preceding events.
     if failed && active_events & EVENT_ACTIVE_ON_ERROR != 0 {
-      self.try_emit_event_error(&mut event_cursor);
+      self.try_emit_event_error(&mut event_cursor, consumed as u32);
     }
 
     if has_active_events {
@@ -1477,6 +1486,16 @@ impl Parser {
 
     // Return the number of consumed bytes
     consumed
+  }
+
+  #[cold]
+  pub(crate) fn reject_oversized_input(&mut self, description: &str) -> usize {
+    self.position = 0;
+    self.fail(ERROR_INPUT_TOO_LARGE, description);
+    if self.active_callbacks != 0 {
+      self.invoke_callbacks();
+    }
+    0
   }
 
   /// Completes the current message without consuming more input.
@@ -1503,7 +1522,8 @@ impl Parser {
     let has_finish_event = active_events & EVENT_ACTIVE_ON_FINISH != 0;
     let mut event_cursor = 0usize;
 
-    if !self.complete_message(
+    // Standalone calls can observe a position set by the caller.
+    if !self.complete_message::<false>(
       0,
       active_events,
       has_complete_events,
@@ -1522,7 +1542,7 @@ impl Parser {
 
   // RFC 9110 section 6.4.1 - Message completed.
   #[inline(always)]
-  fn complete_message(
+  fn complete_message<const VALIDATED: bool>(
     &mut self,
     offset: usize,
     active_events: u64,
@@ -1535,10 +1555,14 @@ impl Parser {
       return false;
     }
     if has_complete_events {
+      let at = self.position + offset;
+      if !VALIDATED && at > u32::MAX as usize {
+        return false;
+      }
       if (active_events & EVENT_ACTIVE_ON_MESSAGE_COMPLETE != 0
-        && !self.try_emit_event_range(event_cursor, EVENT_MESSAGE_COMPLETE, self.position + offset, 0))
+        && !self.try_emit_event_range(event_cursor, EVENT_MESSAGE_COMPLETE, at as u32, 0))
         || (active_events & EVENT_ACTIVE_ON_RESET != 0
-          && !self.try_emit_event_range(event_cursor, EVENT_RESET, self.position + offset, 0))
+          && !self.try_emit_event_range(event_cursor, EVENT_RESET, at as u32, 0))
       {
         return false;
       }
@@ -1550,7 +1574,10 @@ impl Parser {
     if self.has_upgrade && self.is_request {
       move_to!(tunnel);
     } else if self.has_connection_close {
-      if has_finish_event && !self.try_emit_event_range(event_cursor, EVENT_FINISH, self.position, 0) {
+      if has_finish_event
+        && ((!VALIDATED && self.position > u32::MAX as usize)
+          || !self.try_emit_event_range(event_cursor, EVENT_FINISH, self.position as u32, 0))
+      {
         return false;
       }
       move_to!(finish);
@@ -1559,5 +1586,60 @@ impl Parser {
     }
 
     true
+  }
+}
+
+#[inline]
+fn checked_event_input_len(input: usize, retained: usize) -> Option<usize> {
+  input.checked_add(retained).filter(|size| *size <= u32::MAX as usize)
+}
+
+#[cfg(all(test, target_pointer_width = "64"))]
+mod tests {
+  use core::sync::atomic::{AtomicUsize, Ordering};
+
+  use super::*;
+
+  #[test]
+  fn event_coordinate_limit() {
+    let max = u32::MAX as usize;
+    assert_eq!(checked_event_input_len(max, 0), Some(max));
+    assert_eq!(checked_event_input_len(max + 1, 0), None);
+    assert_eq!(checked_event_input_len(max - 1, 1), Some(max));
+    assert_eq!(checked_event_input_len(1, max), None);
+    assert_eq!(checked_event_input_len(usize::MAX, 1), None);
+  }
+
+  #[test]
+  fn event_writers_preserve_the_coordinate_limit() {
+    let max = u32::MAX as usize;
+    let mut parser = Parser::new();
+    parser.active_events = EVENT_ACTIVE_ON_MESSAGE_COMPLETE;
+    parser.state = STATE_BODY_WITH_NO_LENGTH;
+    parser.position = max;
+    parser.finish();
+    assert_eq!(&parser.events()[1..5], &u32::MAX.to_le_bytes());
+
+    parser.state = STATE_BODY_WITH_NO_LENGTH;
+    parser.position = max + 1;
+    parser.finish();
+    assert_eq!(parser.events()[0], EVENT_END);
+  }
+
+  #[test]
+  fn oversized_input_error_is_delivered_once() {
+    static CALLS: AtomicUsize = AtomicUsize::new(0);
+    extern "C" fn count_error(_: &mut Parser, _: usize, _: usize) { CALLS.fetch_add(1, Ordering::Relaxed); }
+
+    let mut parser = Parser::new();
+    parser.active_callbacks = CALLBACK_ACTIVE_ON_ERROR;
+    parser.callbacks.on_error = count_error;
+    assert_eq!(
+      parser.reject_oversized_input("Input exceeds the event coordinate limit"),
+      0
+    );
+    assert_eq!(parser.state, STATE_ERROR);
+    assert_eq!(parser.error_code, ERROR_INPUT_TOO_LARGE);
+    assert_eq!(CALLS.load(Ordering::Relaxed), 1);
   }
 }

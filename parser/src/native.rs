@@ -99,6 +99,15 @@ pub unsafe extern "C" fn milo_destroy(parser: *mut Parser) {
 /// is zero, `data` may be null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn milo_parse(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize {
+  if limit > u32::MAX as usize {
+    // SAFETY: The FFI contract guarantees exclusive access to a live parser.
+    let parser = unsafe { &mut *parser };
+    if parser.paused || parser.state == crate::STATE_ERROR {
+      return parser.parse(&[]);
+    }
+    return parser.reject_oversized_input("Input exceeds the 32-bit event coordinate limit");
+  }
+
   let input = if limit == 0 {
     &[]
   } else {

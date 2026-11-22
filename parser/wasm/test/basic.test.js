@@ -323,6 +323,33 @@ it('basic_complete_rejects_invalid_state', t => {
   assert.equal(milo.getErrorDescription(parser), 'Invalid state')
 })
 
+it('basic_control_methods_dispatch_callbacks', t => {
+  const events = []
+  const { milo, parser, parse } = createParser(t, () => setup({
+    on_error (parser) { events.push(['error', milo.getState(parser)]) },
+    on_message_complete (parser) { events.push(['complete', milo.getState(parser)]) },
+    on_finish (parser) { events.push(['finish', milo.getState(parser)]) }
+  }))
+
+  milo.fail(parser, milo.ERROR_UNEXPECTED_CHARACTER, 'explicit failure')
+  assert.deepEqual(events.splice(0), [['error', milo.STATE_ERROR]])
+
+  milo.reset(parser, false)
+  milo.setShouldSuspendAfterHeaders(parser, true)
+  const request = 'POST / HTTP/1.1\r\nContent-Length: 1\r\n\r\nx'
+  assert.equal(parse(request), request.length - 1)
+  milo.complete(parser)
+  assert.deepEqual(events.splice(0), [['complete', milo.STATE_START]])
+
+  milo.reset(parser, false)
+  milo.setShouldSuspendAfterHeaders(parser, false)
+  const response = 'HTTP/1.1 200 OK\r\n\r\nbody'
+  assert.equal(parse(response), response.length)
+  milo.finish(parser)
+  milo.finish(parser)
+  assert.deepEqual(events, [['complete', milo.STATE_FINISH], ['finish', milo.STATE_FINISH]])
+})
+
 it('basic_event_buffer_full_stops_parsing', t => {
   const { milo, parser, parse } = createParser(t, setup)
   milo.setShouldAutodetect(parser, false)

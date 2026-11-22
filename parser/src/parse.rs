@@ -1570,11 +1570,6 @@ impl Parser {
 
     self.position = 0;
     self.fail(ERROR_INPUT_TOO_LARGE, description);
-    if self.active_callbacks != 0 {
-      self.parsing = true;
-      self.invoke_callbacks();
-      self.parsing = false;
-    }
     0
   }
 
@@ -1622,6 +1617,7 @@ impl Parser {
     unsafe {
       *self.events.add(event_cursor) = EVENT_END;
     }
+    self.replay_control_callbacks();
   }
 
   // RFC 9110 section 6.4.1 - Message completed.
@@ -1687,7 +1683,7 @@ fn header_events_fit(event_cursor: usize, has_name: bool, has_value: bool) -> bo
 
 #[cfg(all(test, target_pointer_width = "64"))]
 mod tests {
-  use core::sync::atomic::{AtomicUsize, Ordering};
+  use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
   use super::*;
 
@@ -1720,7 +1716,11 @@ mod tests {
   #[test]
   fn oversized_input_error_is_delivered_once() {
     static CALLS: AtomicUsize = AtomicUsize::new(0);
-    extern "C" fn count_error(_: &mut Parser, _: usize, _: usize) { CALLS.fetch_add(1, Ordering::Relaxed); }
+    static GUARDED: AtomicBool = AtomicBool::new(false);
+    extern "C" fn count_error(parser: &mut Parser, _: usize, _: usize) {
+      CALLS.fetch_add(1, Ordering::Relaxed);
+      GUARDED.store(parser.parsing, Ordering::Relaxed);
+    }
 
     let mut parser = Parser::new();
     parser.active_callbacks = CALLBACK_ACTIVE_ON_ERROR;
@@ -1732,5 +1732,7 @@ mod tests {
     assert_eq!(parser.state, STATE_ERROR);
     assert_eq!(parser.error_code, ERROR_INPUT_TOO_LARGE);
     assert_eq!(CALLS.load(Ordering::Relaxed), 1);
+    assert!(GUARDED.load(Ordering::Relaxed));
+    assert!(!parser.parsing);
   }
 }

@@ -390,20 +390,23 @@ impl Parser {
       }
       STATE_FINISH => (),
       STATE_BODY_WITH_NO_LENGTH => {
-        // Notify that the message has been completed
         let active_events = self.active_events | self.active_callbacks;
         let mut event_cursor = 0usize;
-        if active_events & EVENT_ACTIVE_ON_MESSAGE_COMPLETE != 0
-          && let Ok(position) = u32::try_from(self.position)
-        {
-          self.try_emit_event_range(&mut event_cursor, EVENT_MESSAGE_COMPLETE, position, 0);
+        if let Ok(position) = u32::try_from(self.position) {
+          if active_events & EVENT_ACTIVE_ON_MESSAGE_COMPLETE != 0 {
+            self.try_emit_event_range(&mut event_cursor, EVENT_MESSAGE_COMPLETE, position, 0);
+          }
+          if active_events & EVENT_ACTIVE_ON_FINISH != 0 {
+            self.try_emit_event_range(&mut event_cursor, EVENT_FINISH, position, 0);
+          }
         }
+        // SAFETY: The cursor follows at most two range events in the owned buffer.
         unsafe {
           *self.events.add(event_cursor) = EVENT_END;
         }
 
-        // Set the state to be finished
         self.state = STATE_FINISH;
+        self.replay_control_callbacks();
       }
       STATE_ERROR => (),
       // In another other state, this is an error
@@ -430,6 +433,15 @@ impl Parser {
     // SAFETY: The cursor follows at most one error event in the owned event buffer.
     unsafe {
       *self.events.add(event_cursor) = EVENT_END;
+    }
+    self.replay_control_callbacks();
+  }
+
+  fn replay_control_callbacks(&mut self) {
+    if self.active_callbacks != 0 {
+      self.parsing = true;
+      self.invoke_callbacks();
+      self.parsing = false;
     }
   }
 

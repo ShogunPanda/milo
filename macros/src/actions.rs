@@ -17,6 +17,7 @@ pub fn event_with_range(input: TokenStream) -> TokenStream {
   let emit = quote! {
     let at = (self.position + #offset) as u32;
     let len = (#length) as u32;
+    // SAFETY: The caller has reserved space for the entire range event.
     unsafe {
       *self.events.add(event_cursor) = #event_type;
       core::ptr::write_unaligned(
@@ -52,7 +53,8 @@ pub fn event_with_error(input: TokenStream) -> TokenStream {
   let bitmask = format_ident!("EVENT_ACTIVE_{}", definition.identifier.to_string().to_uppercase());
   let needed = quote! { EVENT_ERROR_SIZE };
   let emit = quote! {
-    let at = self.position as u32;
+    let at = u32::try_from(self.position)
+      .expect("error offset exceeds the validated 32-bit coordinate range");
     unsafe {
       *self.events.add(event_cursor) = #event_type;
       core::ptr::write_unaligned(
@@ -94,6 +96,7 @@ pub fn event_with_metadata(input: TokenStream) -> TokenStream {
     let has_trailers = self.has_trailers as u8;
     let content_length = if self.has_content_length { self.content_length } else { 0 };
 
+    // SAFETY: The caller has reserved space for the entire metadata event.
     unsafe {
       *self.events.add(event_cursor) = #event_type;
       core::ptr::write_unaligned(

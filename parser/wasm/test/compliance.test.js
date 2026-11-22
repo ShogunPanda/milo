@@ -53,6 +53,96 @@ it('compliance_trailer_name_rejects_comma', t => {
   assertError(milo, parser)
 })
 
+// RFC 9110 section 6.5.1 forbids trailer fields that affect framing,
+// routing, authentication, connection handling, or payload processing.
+it('compliance_forbidden_trailer_fields_rejected', t => {
+  for (const name of [
+    'Accept-Ranges',
+    'Age',
+    'Allow',
+    'Authorization',
+    'Cache-Control',
+    'Connection',
+    'Content-Disposition',
+    'Content-Encoding',
+    'Content-Length',
+    'Content-Range',
+    'Content-Type',
+    'Cookie',
+    'Date',
+    'ETag',
+    'Expect',
+    'Expires',
+    'Forwarded',
+    'Host',
+    'If-Match',
+    'If-Modified-Since',
+    'If-None-Match',
+    'If-Range',
+    'If-Unmodified-Since',
+    'Keep-Alive',
+    'Last-Modified',
+    'Location',
+    'Max-Forwards',
+    'Pragma',
+    'Proxy-Authenticate',
+    'Proxy-Authorization',
+    'Proxy-Connection',
+    'Range',
+    'Referer',
+    'Retry-After',
+    'Server',
+    'Set-Cookie',
+    'TE',
+    'Trailer',
+    'Transfer-Encoding',
+    'Upgrade',
+    'Vary',
+    'Via',
+    'Warning',
+    'WWW-Authenticate',
+    'X-Forwarded-For',
+    'X-Forwarded-Host',
+    'X-Forwarded-Proto'
+  ]) {
+    const { milo, parser, parse } = responseParser(t)
+    parse(`HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: ${name}\r\n\r\n0\r\n${name}: value\r\n\r\n`)
+    assertError(milo, parser)
+    assert.equal(milo.getErrorCode(parser), milo.ERROR_UNEXPECTED_TRAILERS)
+  }
+})
+
+it('compliance_forbidden_trailer_is_case_insensitive_and_not_delivered', t => {
+  let delivered = false
+  const trackedSetup = env =>
+    setup({
+      ...env,
+      on_trailer_name () {
+        delivered = true
+      },
+      on_trailer_value () {
+        delivered = true
+      }
+    })
+  const { milo, parser, parse } = createParser(t, trackedSetup)
+  milo.setShouldAutodetect(parser, false)
+  milo.setIsRequest(parser, true)
+
+  parse(
+    'POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nTrailer: cOnTeNt-LeNgTh\r\n\r\n0\r\ncOnTeNt-LeNgTh: 1\r\n\r\n'
+  )
+
+  assertError(milo, parser)
+  assert.equal(milo.getErrorCode(parser), milo.ERROR_UNEXPECTED_TRAILERS)
+  assert.equal(delivered, false)
+})
+
+it('compliance_safe_trailer_field_accepted', t => {
+  const { milo, parser, parse } = responseParser(t)
+  parse('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nTrailer: Digest\r\n\r\n0\r\nDigest: sha-256=:abc:\r\n\r\n')
+  assertOk(milo, parser)
+})
+
 // Unknown valid method tokens are accepted as extension methods.
 it('compliance_unknown_method_token_is_accepted', t => {
   const { milo, parser, parse } = requestParser(t)
@@ -131,7 +221,35 @@ it('compliance_head_body_rejected', t => {
   assertError(milo, parser)
 })
 
-// Methods other than GET and HEAD can carry valid body framing.
+// Milo rejects chunked framing on GET and HEAD even when the encoded body is empty.
+for (const method of ['GET', 'HEAD']) {
+  for (const [name, body] of [
+    ['empty', '0\r\n\r\n'],
+    ['non_empty', '1\r\nx\r\n0\r\n\r\n']
+  ]) {
+    it(`compliance_${method.toLowerCase()}_${name}_chunked_body_rejected`, t => {
+      const { milo, parser, parse } = requestParser(t)
+      parse(`${method} / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n${body}`)
+      assertError(milo, parser)
+    })
+  }
+}
+
+// CONNECT switches immediately to tunnel mode, so any request-body framing
+// would make intermediaries disagree about where the tunnel data begins.
+it('compliance_connect_content_length_rejected', t => {
+  const { milo, parser, parse } = requestParser(t)
+  parse('CONNECT example.com:443 HTTP/1.1\r\nContent-Length: 0\r\n\r\n')
+  assertError(milo, parser)
+})
+
+it('compliance_connect_transfer_encoding_rejected', t => {
+  const { milo, parser, parse } = requestParser(t)
+  parse('CONNECT example.com:443 HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n')
+  assertError(milo, parser)
+})
+
+// Methods other than GET, HEAD, and CONNECT can carry valid body framing.
 it('compliance_post_body_accepted', t => {
   const { milo, parser, parse } = requestParser(t)
   parse('POST / HTTP/1.1\r\nContent-Length: 1\r\n\r\nx')
@@ -382,6 +500,66 @@ it('compliance_chunked_must_be_final', t => {
   parse('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked, gzip\r\n\r\n')
   assertError(milo, parser)
 })
+
+// Transfer-coding names use HTTP token syntax.
+it('compliance_transfer_encoding_rejects_invalid_coding_name', t => {
+  const { milo, parser, parse } = responseParser(t)
+  parse('HTTP/1.1 200 OK\r\nTransfer-Encoding: bad@coding, chunked\r\n\r\n0\r\n\r\n')
+  assertError(milo, parser)
+  assert.equal(milo.hasTransferEncoding(parser), false)
+  assert.equal(milo.hasChunkedTransferEncoding(parser), false)
+})
+
+// Transfer-Encoding list members cannot be empty.
+for (const [name, value] of [
+  ['leading', ', chunked'],
+  ['repeated', 'gzip,, chunked'],
+  ['trailing', 'gzip, chunked,']
+]) {
+  it(`compliance_transfer_encoding_rejects_${name}_empty_list_member`, t => {
+    const { milo, parser, parse } = responseParser(t)
+    parse(`HTTP/1.1 200 OK\r\nTransfer-Encoding: ${value}\r\n\r\n0\r\n\r\n`)
+    assertError(milo, parser)
+  })
+}
+
+// Transfer parameters require token names and token or quoted-string values.
+for (const [name, value] of [
+  ['missing_value', 'gzip; level, chunked'],
+  ['missing_name', 'gzip; =9, chunked'],
+  ['empty_value', 'gzip; level=, chunked'],
+  ['invalid_token_value', 'gzip; level=bad@value, chunked'],
+  ['unterminated_quote', 'gzip; level="unterminated, chunked'],
+  ['invalid_quoted_character', 'gzip; level="bad\u0001", chunked'],
+  ['parameter_on_chunked', 'chunked; level=9']
+]) {
+  it(`compliance_transfer_encoding_rejects_${name}`, t => {
+    const { milo, parser, parse } = responseParser(t)
+    parse(`HTTP/1.1 200 OK\r\nTransfer-Encoding: ${value}\r\n\r\n0\r\n\r\n`)
+    assertError(milo, parser)
+  })
+}
+
+// Valid non-chunked parameters are preserved, including quoted commas, before final chunked.
+it('compliance_transfer_encoding_accepts_parameters_before_chunked', t => {
+  const { milo, parser, parse } = responseParser(t)
+  parse('HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip; level = 9; note="a,b\\"c\\\\d", ChUnKeD\r\n\r\n0\r\n\r\n')
+  assertOk(milo, parser)
+  assert.equal(milo.hasTransferEncoding(parser), true)
+  assert.equal(milo.hasChunkedTransferEncoding(parser), true)
+})
+
+// Chunked can occur only once, even across multiple field lines.
+for (const [name, headers] of [
+  ['same_field', 'Transfer-Encoding: gzip, chunked, chunked\r\n'],
+  ['multiple_fields', 'Transfer-Encoding: gzip, chunked\r\nTransfer-Encoding: chunked\r\n']
+]) {
+  it(`compliance_transfer_encoding_rejects_duplicate_chunked_${name}`, t => {
+    const { milo, parser, parse } = responseParser(t)
+    parse(`HTTP/1.1 200 OK\r\n${headers}\r\n0\r\n\r\n`)
+    assertError(milo, parser)
+  })
+}
 
 // Content-Length cannot be combined with Transfer-Encoding.
 it('compliance_content_length_transfer_encoding_conflict', t => {

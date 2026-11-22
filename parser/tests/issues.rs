@@ -63,16 +63,16 @@ fn issue_16__repeated_input_has_bounded_memory() {
       for _ in 0..1024 {
         let mut parser = Parser::new();
         parser.manage_unconsumed = managed;
-        parser.parse(input.as_ptr(), input.len());
+        parser.parse(input.as_ref());
 
         // Empty retries must not leak copies of a pending line or repeat errors.
-        let retained_len = parser.unconsumed_len;
+        let retained_len = parser.unconsumed().len();
         let parsed = parser.parsed;
         let state = parser.state;
         let live = LIVE_BYTES.get();
         for _ in 0..16 {
-          assert_eq!(parser.parse(b"".as_ptr(), 0), 0);
-          assert_eq!(parser.unconsumed_len, retained_len);
+          assert_eq!(parser.parse(b""), 0);
+          assert_eq!(parser.unconsumed().len(), retained_len);
           assert_eq!(parser.parsed, parsed);
           assert_eq!(parser.state, state);
           assert_eq!(LIVE_BYTES.get(), live);
@@ -81,8 +81,8 @@ fn issue_16__repeated_input_has_bounded_memory() {
         parser.finish();
         parser.reset(false);
         assert_eq!(parser.error_code, ERROR_NONE);
-        assert!(parser.unconsumed.is_null());
-        parser.parse(input.as_ptr(), input.len());
+        assert!(parser.unconsumed().is_empty());
+        parser.parse(input.as_ref());
         drop(parser);
         assert_eq!(LIVE_BYTES.get(), baseline, "input={input:?}, managed={managed}");
       }
@@ -98,23 +98,23 @@ fn issue_16__error_retries_do_not_accumulate_input() {
     let mut parser = Parser::new();
     parser.manage_unconsumed = managed;
     let invalid = b"GET / HTTP/1.1\r\nX-Test: \0";
-    parser.parse(invalid.as_ptr(), invalid.len());
+    parser.parse(invalid.as_ref());
     assert_eq!(parser.state, STATE_ERROR);
     let code = parser.error_code;
     let description = parser.error_description_str().to_string();
-    let retained = parser.unconsumed;
-    let retained_len = parser.unconsumed_len;
+    let retained = parser.unconsumed().as_ptr();
+    let retained_len = parser.unconsumed().len();
     let parsed = parser.parsed;
 
     TRACK_MEMORY.set(true);
     let baseline = LIVE_BYTES.get();
     for _ in 0..1024 {
-      assert_eq!(parser.parse(invalid.as_ptr(), invalid.len()), 0);
+      assert_eq!(parser.parse(invalid.as_ref()), 0);
       assert_eq!(parser.state, STATE_ERROR);
       assert_eq!(parser.error_code, code);
       assert_eq!(parser.error_description_str(), description);
-      assert_eq!(parser.unconsumed_len, retained_len);
-      assert_eq!(parser.unconsumed, retained);
+      assert_eq!(parser.unconsumed().len(), retained_len);
+      assert_eq!(parser.unconsumed().as_ptr(), retained);
       assert_eq!(parser.parsed, parsed);
       assert_eq!(parser.position, 0);
       assert_eq!(LIVE_BYTES.get(), baseline);
@@ -123,7 +123,7 @@ fn issue_16__error_retries_do_not_accumulate_input() {
 
     parser.reset(false);
     let valid = b"GET / HTTP/1.1\r\n\r\n";
-    assert_eq!(parser.parse(valid.as_ptr(), valid.len()), valid.len());
+    assert_eq!(parser.parse(valid.as_ref()), valid.len());
     assert_eq!(parser.error_code, ERROR_NONE);
   }
 }
@@ -134,29 +134,28 @@ fn issue_16__release_retained_input() {
   let mut parser = Parser::new();
   parser.manage_unconsumed = true;
   let prefix = b"GET / HTTP/1.1\r\nX-Test: ";
-  assert_eq!(parser.parse(prefix.as_ptr(), prefix.len()), 16);
-  assert_eq!(parser.unconsumed_len, 8);
+  assert_eq!(parser.parse(prefix.as_ref()), 16);
+  assert_eq!(parser.unconsumed().len(), 8);
 
-  // Replacing an incomplete header must free the previous allocation, even
-  // when no new input arrives.
+  // Empty input must keep the existing allocation and pending bytes.
   for input in [b"a".as_slice(), b"", b"b"] {
-    let previous_len = parser.unconsumed_len;
-    FREED_SIZE.store(0, Ordering::SeqCst);
-    WATCHED_POINTER.store(parser.unconsumed as usize, Ordering::SeqCst);
-    assert_eq!(parser.parse(input.as_ptr(), input.len()), 0);
-    assert_eq!(WATCHED_POINTER.load(Ordering::SeqCst), 0);
-    assert_eq!(FREED_SIZE.load(Ordering::SeqCst), previous_len);
-    assert_eq!(parser.unconsumed_len, previous_len + input.len());
+    let previous_len = parser.unconsumed().len();
+    let pointer = parser.unconsumed().as_ptr();
+    assert_eq!(parser.parse(input), 0);
+    assert_eq!(parser.unconsumed().len(), previous_len + input.len());
+    if input.is_empty() {
+      assert_eq!(parser.unconsumed().as_ptr(), pointer);
+    }
   }
 
-  let previous_len = parser.unconsumed_len;
-  WATCHED_POINTER.store(parser.unconsumed as usize, Ordering::SeqCst);
+  let previous_len = parser.unconsumed().len();
+  WATCHED_POINTER.store(parser.unconsumed().as_ptr() as usize, Ordering::SeqCst);
   let suffix = b"\r\n\r\n";
-  assert_eq!(parser.parse(suffix.as_ptr(), suffix.len()), previous_len + suffix.len());
+  assert_eq!(parser.parse(suffix.as_ref()), previous_len + suffix.len());
   assert_eq!(WATCHED_POINTER.load(Ordering::SeqCst), 0);
-  assert_eq!(FREED_SIZE.load(Ordering::SeqCst), previous_len);
-  assert!(parser.unconsumed.is_null());
-  assert_eq!(parser.unconsumed_len, 0);
+  assert!(FREED_SIZE.load(Ordering::SeqCst) >= previous_len);
+  assert!(parser.unconsumed().is_empty());
+  assert_eq!(parser.unconsumed().len(), 0);
   assert_eq!(parser.error_code, ERROR_NONE);
 
   // Reset and destruction must also release pending input, including after
@@ -164,26 +163,91 @@ fn issue_16__release_retained_input() {
   for input in [prefix.as_slice(), b"GET / HTTP/1.1\r\nX-Test: \0"] {
     for reset in [false, true] {
       parser.reset(false);
-      parser.parse(input.as_ptr(), input.len());
-      assert!(parser.unconsumed_len > 0);
+      parser.parse(input.as_ref());
+      assert!(!parser.unconsumed().is_empty());
       if input.ends_with(b"\0") {
         assert_eq!(parser.state, STATE_ERROR);
       }
-      let previous_len = parser.unconsumed_len;
-      WATCHED_POINTER.store(parser.unconsumed as usize, Ordering::SeqCst);
+      let previous_len = parser.unconsumed().len();
+      WATCHED_POINTER.store(parser.unconsumed().as_ptr() as usize, Ordering::SeqCst);
       // Disabling retention must not lose ownership of an existing buffer.
       parser.manage_unconsumed = false;
       if reset {
         parser.reset(false);
-        assert!(parser.unconsumed.is_null());
-        assert_eq!(parser.unconsumed_len, 0);
+        assert!(parser.unconsumed().is_empty());
+        assert_eq!(parser.unconsumed().len(), 0);
       } else {
         drop(parser);
         parser = Parser::new();
       }
       assert_eq!(WATCHED_POINTER.load(Ordering::SeqCst), 0);
-      assert_eq!(FREED_SIZE.load(Ordering::SeqCst), previous_len);
+      assert!(FREED_SIZE.load(Ordering::SeqCst) >= previous_len);
       parser.manage_unconsumed = true;
     }
   }
+}
+
+#[test]
+fn managed_input_waits_for_split_header_ending() {
+  let mut parser = Parser::new();
+  parser.manage_unconsumed = true;
+
+  assert_eq!(parser.parse(b"GET / HTTP/1.1\r\nX-Test: first"), 16);
+  assert_eq!(parser.parse(b" second"), 0);
+  assert_eq!(parser.parse(b"\r"), 0);
+  assert_eq!(parser.parse(b""), 0);
+  assert_eq!(parser.parse(b"\n\r\n"), b"X-Test: first second\r\n\r\n".len());
+  assert_eq!(parser.error_code, ERROR_NONE);
+  assert!(parser.unconsumed().is_empty());
+}
+
+#[test]
+fn managed_input_reuses_only_the_first_line_ending() {
+  let mut parser = Parser::new();
+  parser.manage_unconsumed = true;
+  let prefix = b"GET /account HTTP/1.";
+  let suffix = b"1\r\nX-Test: value\r\n\r\n";
+
+  assert_eq!(parser.parse(prefix), 0);
+  assert_eq!(parser.parse(suffix), prefix.len() + suffix.len());
+  assert_eq!(parser.error_code, ERROR_NONE);
+  assert!(parser.unconsumed().is_empty());
+}
+
+#[test]
+fn managed_input_validates_lf_after_a_retained_cr() {
+  let mut parser = Parser::new();
+  parser.manage_unconsumed = true;
+
+  assert_eq!(parser.parse(b"GET / HTTP/1.1\r\nX-Test: value\r"), 16);
+  assert_eq!(parser.parse(b"x"), 0);
+  assert_eq!(parser.error_code, milo_parser::ERROR_UNEXPECTED_CHARACTER);
+  assert_eq!(parser.error_description_str(), "Expected CRLF");
+}
+
+#[test]
+fn managed_input_checks_length_while_waiting() {
+  let mut parser = Parser::new();
+  parser.manage_unconsumed = true;
+  parser.max_header_length = 12;
+
+  assert_eq!(parser.parse(b"GET / HTTP/1.1\r\nX-Test: one"), 16);
+  assert_eq!(parser.parse(b" "), 0);
+  assert_eq!(parser.error_code, milo_parser::ERROR_UNEXPECTED_CHARACTER);
+  assert_eq!(parser.error_description_str(), "Header line too long");
+}
+
+#[test]
+fn managed_input_does_not_skip_lines_when_events_fill() {
+  let request = b"GET / HTTP/1.1\r\nX-Test: value\r\n\r\n";
+  let mut parser = Parser::new();
+  parser.manage_unconsumed = true;
+  parser.active_events = milo_parser::EVENT_ACTIVE_ON_HEADER_NAME;
+  let input = request.repeat(parser.events().len() / 9 + 1);
+
+  let first = parser.parse(&input);
+  assert!(first > 0 && first < input.len());
+  assert_eq!(parser.parse(b""), input.len() - first);
+  assert_eq!(parser.error_code, ERROR_NONE);
+  assert!(parser.unconsumed().is_empty());
 }

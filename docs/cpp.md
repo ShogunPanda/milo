@@ -19,7 +19,7 @@ When downloading Milo, you can choose between `debug` or `release` version:
 All callbacks in Milo have the following signature (`Callback`):
 
 ```cpp
-void(*)(milo_parser::Parser*, uintptr_t, uintptr_t)
+extern "C" void on_data(milo_parser::Parser* parser, uintptr_t from, uintptr_t size);
 ```
 
 where the parameters have the following meaning:
@@ -29,6 +29,14 @@ where the parameters have the following meaning:
 3. The data length. Can be `0`.
 
 If length is `0`, it means the callback has no payload associated.
+
+Declare callback functions with `extern "C"` and do not let exceptions unwind across Milo's C ABI boundary.
+
+During a callback, `milo_parse` on the same parser returns `0`. `milo_pause`
+and `milo_resume` change only the pause flag; event delivery continues.
+`milo_reset`, `milo_finish`, `milo_destroy` and other mutators have no effect.
+They are not deferred: call them again after `milo_parse` returns. A callback
+can use another parser. Do not modify parser fields or buffers directly.
 
 Callbacks are dispatched only when the corresponding `CALLBACK_ACTIVE_*` flag is set in the parser `active_callbacks` field.
 
@@ -323,6 +331,8 @@ Destroys a parser.
 Parses `data` up to `limit` characters.
 
 It returns the number of consumed characters.
+
+Event coordinates use 32-bit offsets and lengths. On 64-bit native targets, `milo_parse()` rejects a current input or managed aggregate larger than `UINT32_MAX` with `ERROR_INPUT_TOO_LARGE` before reading `data`.
 
 After a parser error, subsequent calls return `0`, emit no events or callbacks, and do not copy or retain new input. The original error and any previously retained input remain available until reset or destruction. Call `milo_reset()` before reusing the parser.
 

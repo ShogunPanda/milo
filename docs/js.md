@@ -4,7 +4,7 @@
 
 ### Callbacks handling
 
-All callbacks in Milo have the following signature (TypeScript syntax):
+Range callbacks in Milo have the following signature (TypeScript syntax):
 
 ```typescript
 (parser: number, offset: number, length: number) => void
@@ -18,9 +18,35 @@ where the parameters have the following meaning:
 
 If length is `0`, it means the callback has no payload associated.
 
+`on_headers` instead receives parsed message metadata:
+
+```typescript
+(
+  parser: number,
+  offset: number,
+  methodOrStatus: number,
+  shouldKeepAlive: boolean,
+  shouldUpgrade: boolean,
+  hasTrailers: boolean,
+  bodyKind: number,
+  contentLength: bigint
+) => void
+```
+
+`contentLength` is a BigInt so every accepted `Content-Length` value remains exact.
+
 Callbacks are dispatched only when enabled with `setActiveCallbacks`.
 
 Callbacks are disabled by default.
+
+During a callback, `parse()` on the same parser returns `0`. `pause()` and
+`resume()` change only the pause flag; event delivery continues. `reset()`,
+`finish()`, `destroy()` and other mutators have no effect. They are not
+deferred: call them again after `parse()` returns. A callback can
+use another parser. Do not write directly to parser-owned memory.
+
+Callbacks must handle their own exceptions. An exception that escapes a
+callback may leave the parser unusable.
 
 ### Constants
 
@@ -290,7 +316,12 @@ Creates a new parser.
 
 #### `destroy(parser)`
 
-Destroys a parser.
+Destroys a parser and returns `undefined` in both `setup()` and `simple()`.
+During callback replay, destruction is ignored.
+
+The underlying WASM export returns whether destruction occurred. The `simple()`
+wrapper uses this result to preserve collected spans and overflow state when
+destruction is ignored.
 
 #### `parse(parser, data, limit)`
 
@@ -543,16 +574,17 @@ The flag only affects tracing in debug-enabled builds.
 
 ## Simple API
 
-A preconfigured module instance exported as `simple`.
+A preconfigured module instance exported as `simple({ maxSpans = 65536 } = {})`.
 
-It is equivalent to calling `setup(...)` with all callbacks wired to collect parser spans automatically.
+It is equivalent to calling `setup(...)` with all callbacks wired to collect parser spans automatically. `maxSpans` is a non-negative safe integer and limits retained spans per parser.
 
 Differences from a plain `setup()` instance:
 
 - `create()` enables all callbacks automatically (`CALLBACK_ACTIVE_ALL`).
-- `destroy(parser)` also clears collected spans for that parser.
+- `destroy(parser)` clears collected spans and overflow state only when the parser is destroyed.
 - A `spans` object is exposed on the module, keyed by parser id.
-- Every callback appends `[callbackType, offset, length]` to `spans[parser]`.
+- Callbacks append `[callbackType, offset, length]` until `maxSpans` is reached. Further spans are dropped and `spanOverflow[parser]` becomes `true`.
+- `drain(parser)` atomically returns `{ spans, truncated }` and resets that parser's collection. Drain long-lived parsers regularly; `truncated` reports whether spans were dropped since the previous drain.
 
 This API is useful when you want a minimal integration that records parser events without manually providing callback functions.
 
@@ -570,7 +602,10 @@ const buffer = Buffer.from(milo.memory.buffer, ptr, message.length)
 buffer.set(message, 0)
 milo.parse(parser, ptr, message.length)
 
-for (const [type, at, len] of milo.spans[parser]) {
+const batch = milo.drain(parser)
+if (batch.truncated) throw new Error('span limit reached')
+
+for (const [type, at, len] of batch.spans) {
   console.log(`[${at.toString().padStart(3, ' ')}, ${len.toString().padStart(3, ' ')}] -> ${milo.Callbacks[type]}`)
 }
 

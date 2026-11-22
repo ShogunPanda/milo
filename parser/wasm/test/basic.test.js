@@ -12,6 +12,15 @@ it('basic_error_description_is_clamped_and_terminated', t => {
   assert.equal(memory[parser + milo.PARSER_FIELD_ERROR_DESCRIPTION + 254], 0)
   assert.equal(milo.getErrorDescription(parser), 'a'.repeat(254))
 
+  milo.fail(parser, milo.ERROR_UNEXPECTED_CHARACTER, `${'a'.repeat(253)}é`)
+  assert.equal(milo.getErrorDescription(parser), 'a'.repeat(253))
+
+  milo.fail(parser, milo.ERROR_UNEXPECTED_CHARACTER, 'é😀')
+  assert.equal(milo.getErrorDescription(parser), 'é😀')
+
+  milo.fail(parser, milo.ERROR_UNEXPECTED_CHARACTER, '')
+  assert.equal(milo.getErrorDescription(parser), '')
+
   milo.reset(parser, false)
   memory = new Uint8Array(milo.memory.buffer)
   assert.equal(memory[parser + milo.PARSER_FIELD_ERROR_DESCRIPTION_LEN], 0)
@@ -104,6 +113,30 @@ it('basic_incomplete_string_automanaged_2', t => {
   parse(message.slice(2))
   assert.notEqual(milo.getState(parser), milo.STATE_ERROR)
   assert.equal(milo.getParsed(parser), BigInt(message.length))
+})
+
+for (const split of [1, 2, 3, 4]) {
+  it(`basic_autodetect_fragmented_response_${split}`, t => {
+    const { milo, parser, parse } = createParser(t, setup)
+    milo.setShouldManageUnconsumed(parser, true)
+    const message = 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n'
+
+    assert.equal(parse(message.slice(0, split)), 0)
+    assert.equal(parse(message.slice(split)), message.length)
+    assert.equal(milo.isRequest(parser), false)
+    assert.notEqual(milo.getState(parser), milo.STATE_ERROR)
+  })
+}
+
+it('basic_autodetect_fragmented_leading_crlf', t => {
+  const { milo, parser, parse } = createParser(t, setup)
+  milo.setShouldManageUnconsumed(parser, true)
+  const message = '\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n'
+
+  assert.equal(parse(message.slice(0, 1)), 0)
+  assert.equal(parse(message.slice(1)), message.length)
+  assert.equal(milo.isRequest(parser), false)
+  assert.notEqual(milo.getState(parser), milo.STATE_ERROR)
 })
 
 it('basic_sample_multiple_requests', t => {
@@ -254,6 +287,34 @@ it('basic_complete_after_suspend_after_headers', t => {
   assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
 })
 
+it('basic_managed_input_does_not_retain_tunnel_data', t => {
+  const { milo, parser, parse } = createParser(t, setup)
+  milo.setShouldManageUnconsumed(parser, true)
+  const headers = 'CONNECT example.com:443 HTTP/1.1\r\n\r\n'
+
+  assert.equal(parse(`${headers}opaque tunnel data`), headers.length)
+  assert.equal(milo.getState(parser), milo.STATE_TUNNEL)
+  let view = new DataView(milo.memory.buffer)
+  assert.equal(view.getUint32(parser + milo.PARSER_FIELD_UNCONSUMED_LEN, true), 0)
+
+  assert.equal(parse('more tunnel data'), 0)
+  view = new DataView(milo.memory.buffer)
+  assert.equal(view.getUint32(parser + milo.PARSER_FIELD_UNCONSUMED_LEN, true), 0)
+
+  const suspended = createParser(t, setup)
+  suspended.milo.setShouldManageUnconsumed(suspended.parser, true)
+  suspended.milo.setShouldSuspendAfterHeaders(suspended.parser, true)
+  const upgradeHeaders = 'GET / HTTP/1.1\r\nConnection: upgrade\r\nUpgrade: websocket\r\n\r\n'
+  assert.equal(suspended.parse(`${upgradeHeaders}opaque tunnel data`), upgradeHeaders.length)
+  view = new DataView(suspended.milo.memory.buffer)
+  assert.ok(view.getUint32(suspended.parser + suspended.milo.PARSER_FIELD_UNCONSUMED_LEN, true) > 0)
+
+  suspended.milo.complete(suspended.parser)
+  assert.equal(suspended.milo.getState(suspended.parser), suspended.milo.STATE_TUNNEL)
+  view = new DataView(suspended.milo.memory.buffer)
+  assert.equal(view.getUint32(suspended.parser + suspended.milo.PARSER_FIELD_UNCONSUMED_LEN, true), 0)
+})
+
 it('basic_complete_rejects_invalid_state', t => {
   const { milo, parser } = createParser(t, setup)
   milo.complete(parser)
@@ -263,32 +324,30 @@ it('basic_complete_rejects_invalid_state', t => {
 })
 
 it('basic_control_methods_dispatch_callbacks', t => {
-  let errors = 0
-  let completes = 0
-  const configuredSetup = () => setup({
-    on_error () { errors++ },
-    on_message_complete () { completes++ }
-  })
-  const { milo, parser, parse } = createParser(t, configuredSetup)
+  const events = []
+  const { milo, parser, parse } = createParser(t, () => setup({
+    on_error (parser) { events.push(['error', milo.getState(parser)]) },
+    on_message_complete (parser) { events.push(['complete', milo.getState(parser)]) },
+    on_finish (parser) { events.push(['finish', milo.getState(parser)]) }
+  }))
 
   milo.fail(parser, milo.ERROR_UNEXPECTED_CHARACTER, 'explicit failure')
-  assert.equal(errors, 1)
+  assert.deepEqual(events.splice(0), [['error', milo.STATE_ERROR]])
 
   milo.reset(parser, false)
   milo.setShouldSuspendAfterHeaders(parser, true)
   const request = 'POST / HTTP/1.1\r\nContent-Length: 1\r\n\r\nx'
   assert.equal(parse(request), request.length - 1)
   milo.complete(parser)
-  assert.equal(completes, 1)
+  assert.deepEqual(events.splice(0), [['complete', milo.STATE_START]])
 
   milo.reset(parser, false)
   milo.setShouldSuspendAfterHeaders(parser, false)
-  milo.setShouldAutodetect(parser, false)
-  milo.setIsRequest(parser, false)
   const response = 'HTTP/1.1 200 OK\r\n\r\nbody'
   assert.equal(parse(response), response.length)
   milo.finish(parser)
-  assert.equal(completes, 2)
+  milo.finish(parser)
+  assert.deepEqual(events, [['complete', milo.STATE_FINISH], ['finish', milo.STATE_FINISH]])
 })
 
 it('basic_event_buffer_full_stops_parsing', t => {
@@ -306,6 +365,32 @@ it('basic_event_buffer_full_stops_parsing', t => {
   assert.ok(parse(message) < message.length)
   assert.equal(milo.isPaused(parser), false)
   assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
+})
+
+it('basic_event_buffer_suspension_preserves_header_atomicity', t => {
+  for (const framing of ['Content-Length: 1\r\n\r\nx', 'Transfer-Encoding: chunked\r\n\r\n0\r\n\r\n']) {
+    const { milo, parser, parse } = createParser(t, setup)
+    milo.setShouldAutodetect(parser, false)
+    milo.setIsRequest(parser, true)
+    milo.setActiveCallbacks(parser, 0n)
+    milo.setActiveEvents(parser, milo.EVENT_ACTIVE_ON_HEADER_NAME | milo.EVENT_ACTIVE_ON_HEADER_VALUE)
+
+    // Two range events use 18 bytes per header. This fills the 64 KiB event
+    // buffer so the next name fits but its value does not.
+    const message = `POST / HTTP/1.1\r\n${'X:a\r\n'.repeat(3640)}${framing}`
+    const consumed = parse(message)
+
+    assert.ok(consumed < message.length)
+    assert.equal(milo.hasContentLength(parser), false)
+    assert.equal(milo.hasTransferEncoding(parser), false)
+    assert.equal(milo.hasChunkedTransferEncoding(parser), false)
+    assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
+
+    const remaining = message.slice(consumed)
+    assert.equal(parse(remaining), remaining.length)
+    assert.equal(milo.getState(parser), milo.STATE_START)
+    assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE)
+  }
 })
 
 it('basic_event_buffer_full_resumes_completion', () => {
@@ -399,15 +484,15 @@ it('basic_trailers', t => {
     http(String.raw`
         POST /chunked_w_unicorns_after_length HTTP/1.1\r\n
         Transfer-Encoding: chunked\r\n
-        Trailer: host,cache-control\r\n
+        Trailer: x-host,x-cache-control\r\n
         \r\n
         5;ilovew3;somuchlove="arethesepara\"metersfor";another="1111\"2222\"3333"\r\n
         hello\r\n
         7;blahblah;blah;somuchlove="arethesepara"\r\n
         \s world\r\n
         0\r\n
-        Host: example.com\r\n
-        Cache-Control: private\r\n\r\n
+        X-Host: example.com\r\n
+        X-Cache-Control: private\r\n\r\n
       `)
   )
   assert.notEqual(milo.getState(parser), milo.STATE_ERROR)
@@ -522,6 +607,55 @@ it('basic_finish_logic', t => {
   assert.equal(milo.getState(parser), milo.STATE_ERROR)
 })
 
+it('basic_finish_rejects_truncated_start_lines', t => {
+  const { milo, parser, parse } = createParser(t, setup)
+  for (const [input, autodetect] of [['G', true], ['GET / HTTP/1.', true], ['HTTP/1.1 20', true], ['HTTP', false]]) {
+    milo.setShouldAutodetect(parser, autodetect)
+    milo.setIsRequest(parser, false)
+    assert.equal(parse(input), 0)
+    milo.finish(parser)
+    assert.equal(milo.getState(parser), milo.STATE_ERROR)
+    assert.equal(milo.getErrorCode(parser), milo.ERROR_UNEXPECTED_EOF)
+    milo.reset(parser, false)
+  }
+})
+
+it('basic_finish_remembers_pending_autodetect_prefix', t => {
+  const { milo, parser, parse } = createParser(t, setup)
+  const request = 'GET / HTTP/1.1\r\n\r\n'
+  for (const managed of [false, true]) {
+    milo.setShouldManageUnconsumed(parser, managed)
+    for (const prefix of ['HT', '\r']) {
+      assert.equal(parse(request + prefix), request.length)
+      assert.equal(milo.getState(parser), milo.STATE_START)
+      assert.equal(parse(''), 0)
+      milo.finish(parser)
+      assert.equal(milo.getState(parser), milo.STATE_ERROR)
+      assert.equal(milo.getErrorCode(parser), milo.ERROR_UNEXPECTED_EOF)
+
+      milo.reset(parser, true)
+      milo.finish(parser)
+      assert.equal(milo.getState(parser), milo.STATE_FINISH)
+      milo.reset(parser, false)
+    }
+  }
+})
+
+it('basic_finish_accepts_resolved_autodetect_prefix', t => {
+  const { milo, parser, parse } = createParser(t, setup)
+  for (const [prefix, suffix] of [['\r', '\n'], ['HTTP', '/1.1 204 No Content\r\n\r\n']]) {
+    for (const managed of [false, true]) {
+      milo.setShouldManageUnconsumed(parser, managed)
+      assert.equal(parse(prefix), 0)
+      assert.equal(parse(managed ? suffix : prefix + suffix), prefix.length + suffix.length)
+      assert.equal(milo.getState(parser), milo.STATE_START)
+      milo.finish(parser)
+      assert.equal(milo.getState(parser), milo.STATE_FINISH)
+      milo.reset(parser, false)
+    }
+  }
+})
+
 it('basic_empty_fields', t => {
   const { milo, parser, parse } = createParser(t, setup)
   parse(
@@ -529,10 +663,10 @@ it('basic_empty_fields', t => {
         POST / HTTP/1.1\r\n
         Transfer-Encoding: chunked\r\n
         Content-Type: \r\n
-        Trailer: host\r\n
+        Trailer: x-host\r\n
         \r\n
         0\r\n
-        Host:\r\n\r\n
+        X-Host:\r\n\r\n
       `)
   )
   assert.notEqual(milo.getState(parser), milo.STATE_ERROR)

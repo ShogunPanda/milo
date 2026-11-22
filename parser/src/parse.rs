@@ -2,14 +2,13 @@
 
 extern crate alloc;
 
-use alloc::vec::Vec;
-use alloc::{boxed::Box, format};
+use alloc::format;
 use core::cell::{Cell, RefCell};
 use core::ffi::{c_char, c_uchar, c_void};
 use core::fmt::Debug;
 use core::ptr;
+use core::slice::from_raw_parts;
 use core::str;
-use core::{slice, slice::from_raw_parts};
 use std::string;
 #[cfg(all(not(target_family = "wasm"), any(debug_assertions, feature = "debug")))]
 use std::time::Instant;
@@ -20,11 +19,37 @@ use crate::Methods::CONNECT;
 use crate::matchers::*;
 use crate::*;
 
+enum RetainedLine {
+  Unchecked,
+  Incomplete,
+  Cr(usize),
+}
+
 impl Parser {
-  /// Parses a slice of characters.
+  /// Parses a byte slice.
   ///
-  /// It returns the number of consumed characters.
-  pub fn parse(&mut self, input: *const c_uchar, limit: usize) -> usize {
+  /// It returns the number of consumed bytes.
+  ///
+  /// Raw pointers cannot be passed through this safe API:
+  ///
+  /// ```compile_fail
+  /// use milo_parser::Parser;
+  ///
+  /// let mut parser = Parser::new();
+  /// let input = b"GET / HTTP/1.1\r\n\r\n";
+  /// parser.parse(input.as_ptr(), input.len());
+  /// ```
+  pub fn parse(&mut self, input: &[u8]) -> usize {
+    if self.parsing {
+      return 0;
+    }
+    self.parse_body(input)
+  }
+
+  // Keep the entry checks out of the compiled parsing loop. Callers must
+  // check the replay guard before entering this method.
+  #[inline(never)]
+  pub(crate) fn parse_body(&mut self, input: &[u8]) -> usize {
     let mut event_cursor = 0usize;
     let mut failed = false;
     let active_events = self.active_events | self.active_callbacks;
@@ -47,32 +72,41 @@ impl Parser {
       return 0;
     }
 
-    let input = unsafe { from_raw_parts(input, limit) };
+    // Event offsets and lengths are encoded as u32.
+    if input.len() > u32::MAX as usize {
+      return self.reject_oversized_input("Input exceeds the 32-bit event coordinate limit");
+    }
 
-    // Set the data to analyze, prepending unconsumed data from previous iteration
-    // if needed
-    let mut limit = limit;
-    let aggregate: Vec<c_uchar>;
-    let unconsumed_len = self.unconsumed_len;
+    let mut cached_cr = None;
+    let retained_len = self.unconsumed_len;
+    let mut data = if self.manage_unconsumed && retained_len > 0 {
+      let Some(aggregate_limit) = checked_event_input_len(input.len(), retained_len) else {
+        return self.reject_oversized_input("Managed input exceeds the 32-bit event coordinate limit");
+      };
 
-    let mut data = if self.manage_unconsumed && unconsumed_len > 0 {
-      unsafe {
-        limit += unconsumed_len;
-        let unconsumed = from_raw_parts(self.unconsumed, unconsumed_len);
-
-        // Rebuild a contiguous view so state handlers can scan across parse-call
-        // boundaries.
-        aggregate = [unconsumed, input].concat();
-        &aggregate[..]
+      self.append_retained_input(input);
+      // SAFETY: The parser owns the contiguous aggregate of the checked length.
+      let aggregate = unsafe { from_raw_parts(self.unconsumed, aggregate_limit) };
+      match self.scan_retained_line(aggregate, retained_len) {
+        RetainedLine::Unchecked => {}
+        RetainedLine::Incomplete => {
+          self.position = 0;
+          if active_events != 0 {
+            // SAFETY: No events were produced and the parser owns the event buffer.
+            unsafe { *self.events = EVENT_END };
+          }
+          return 0;
+        }
+        RetainedLine::Cr(cr) => cached_cr = Some(cr),
       }
+      aggregate
     } else {
       input
     };
 
-    // Limit the data that is currently analyzed
-    data = &data[..limit];
-
-    let mut available = data.len();
+    let limit = data.len();
+    let mut available = limit;
+    let mut incomplete_line = false;
 
     #[cfg(all(not(target_family = "wasm"), any(debug_assertions, feature = "debug")))]
     let mut last = Instant::now();
@@ -86,8 +120,8 @@ impl Parser {
     #[cfg(any(debug_assertions, feature = "debug"))]
     let previous_position = self.position;
 
-    // States will advance position manually, the parser has to explicitly
-    // track it
+    // Event offsets are relative to the validated input. Position starts at
+    // zero, and state handlers derive event coordinates from the remaining data.
     self.position = 0;
     let mut advanced: usize;
     let mut parsing = true;
@@ -177,6 +211,10 @@ impl Parser {
                 event_with_range!(on_message_start, 0, 0);
               }
               move_to!(status_line);
+            } else if data == b"\r" || (data.len() < 5 && b"HTTP".starts_with(data)) {
+              // Keep autodetection undecided until a fragmented response prefix or
+              // leading CRLF can be distinguished from a request.
+              suspend!();
             } else if data.len() >= 5 && data[4] == b'/' && data.starts_with(b"HTTP") {
               self.is_request = false;
               if has_response_start_events {
@@ -200,12 +238,13 @@ impl Parser {
           }
 
           STATE_REQUEST_LINE => {
-            match find_cr(data, available) {
+            match cached_cr.take().or_else(|| find_cr(data, available)) {
               // // RFC 9112 section 3
               Some(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
                   MatchResult::Suspend => {
+                    incomplete_line = true;
                     suspend!();
                   }
                   MatchResult::Stop => {
@@ -224,7 +263,7 @@ impl Parser {
                 }
 
                 // The line is potentially valid, clear the parser
-                self.clear();
+                self.clear_message();
 
                 // RFC 9112 section 3.1
                 let method_start = 0;
@@ -340,6 +379,7 @@ impl Parser {
                 if available >= self.max_start_line_length {
                   fail!(UNEXPECTED_CHARACTER, "Request line too long");
                 } else {
+                  incomplete_line = true;
                   suspend!();
                 }
               }
@@ -348,11 +388,12 @@ impl Parser {
 
           // RFC 9112 section 4
           STATE_STATUS_LINE => {
-            match find_cr(data, available) {
+            match cached_cr.take().or_else(|| find_cr(data, available)) {
               Some(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
                   MatchResult::Suspend => {
+                    incomplete_line = true;
                     suspend!();
                   }
                   MatchResult::Stop => {
@@ -371,7 +412,7 @@ impl Parser {
                 }
 
                 // The line is potentially valid, clear the parser
-                self.clear();
+                self.clear_message();
 
                 let protocol_start = 0;
                 let protocol_end = 4;
@@ -439,6 +480,7 @@ impl Parser {
                 if available >= self.max_start_line_length {
                   fail!(UNEXPECTED_CHARACTER, "Status line too long");
                 } else {
+                  incomplete_line = true;
                   suspend!();
                 }
               }
@@ -457,11 +499,15 @@ impl Parser {
           }
 
           STATE_HEADER => {
-            match find_header_line_end(data.as_ptr(), available) {
+            match cached_cr.take().map_or_else(
+              || find_header_line_end(data.as_ptr(), available),
+              HeaderLineScanResult::Cr,
+            ) {
               HeaderLineScanResult::Cr(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
                   MatchResult::Suspend => {
+                    incomplete_line = true;
                     suspend!();
                   }
                   MatchResult::Stop => {
@@ -483,6 +529,16 @@ impl Parser {
                   } else {
                     next!();
                   }
+                }
+
+                // Reserve the whole header's event batch before validating or
+                // committing any semantic effects. Otherwise a full event buffer
+                // can suspend between the name and value events after state such
+                // as Content-Length has already been updated.
+                if event_cursor > EVENTS_BUFFER_SIZE - EVENT_ERROR_RESERVE - 2 * EVENT_RANGE_SIZE
+                  && !header_events_fit(event_cursor, has_header_name_event, has_header_value_event)
+                {
+                  suspend!();
                 }
 
                 // RFC 9112 section.4
@@ -584,75 +640,31 @@ impl Parser {
                         fail!(UNEXPECTED_CHARACTER, "Expected Transfer-Encoding header value");
                       }
 
-                      self.has_transfer_encoding = true;
-
-                      if &data[header_value_start..header_value_end] == b"chunked" {
-                        // If this is true, it means the Transfer-Encoding header was specified more
-                        // than once. This is the second repetition and therefore, the previous one is
-                        // no longer the last one, making it invalid.
-                        if self.has_chunked_transfer_encoding {
-                          fail!(
-                            INVALID_TRANSFER_ENCODING,
-                            "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can \
-                             be provided only once"
-                          );
-                        }
-
-                        self.has_chunked_transfer_encoding = true;
+                      let header_has_chunked = if &data[header_value_start..header_value_end] == b"chunked" {
+                        true
                       } else {
-                        let mut token_start = header_value_start;
-                        loop {
-                          while token_start < header_value_end && is_ws(data[token_start]) {
-                            token_start += 1;
-                          }
-
-                          if token_start == header_value_end {
-                            break;
-                          }
-
-                          let token_end_raw = match find_char(data, token_start, header_value_end, b',') {
-                            Some(comma) => comma,
-                            None => header_value_end,
-                          };
-                          let mut token_end = token_end_raw;
-
-                          if !strip_ows_fast(data, &mut token_start, &mut token_end, false) {
-                            fail!(UNEXPECTED_CHARACTER, "Expected Transfer-Encoding header value");
-                          }
-
-                          self.has_transfer_encoding = true;
-
-                          if let case_insensitive_string!("chunked") = data[token_start..token_end] {
-                            // If this is true, it means the Transfer-Encoding header was specified more
-                            // than once. This is the second repetition and therefore, the previous one is
-                            // no longer the last one, making it invalid.
-                            if self.has_chunked_transfer_encoding {
-                              fail!(
-                                INVALID_TRANSFER_ENCODING,
-                                "The value \"chunked\" in the Transfer-Encoding header must be the last provided and \
-                                 can be provided only once"
-                              );
-                            }
-
-                            self.has_chunked_transfer_encoding = true;
-                          } else {
-                            if self.has_chunked_transfer_encoding {
-                              // Any other value when chunked was already specified is invalid as the previous
-                              // chunked would not be the last one anymore
-                              fail!(
-                                INVALID_TRANSFER_ENCODING,
-                                "The value \"chunked\" in the Transfer-Encoding header must be the last provided"
-                              );
-                            }
-                          }
-
-                          if token_end_raw == header_value_end {
-                            break;
-                          } else {
-                            token_start = token_end_raw + 1;
+                        match validate_transfer_encoding(data, header_value_start, header_value_end) {
+                          Some(has_chunked) => has_chunked,
+                          None => {
+                            fail!(INVALID_TRANSFER_ENCODING, "Invalid Transfer-Encoding header value");
                           }
                         }
+                      };
+
+                      // A later field value would make a previously observed chunked coding
+                      // non-final.
+                      if self.has_chunked_transfer_encoding {
+                        fail!(
+                          INVALID_TRANSFER_ENCODING,
+                          "The value \"chunked\" in the Transfer-Encoding header must be the last provided and can be \
+                           provided only once"
+                        );
                       }
+
+                      // Do not update framing state until every coding and parameter in this field
+                      // value has been validated.
+                      self.has_transfer_encoding = true;
+                      self.has_chunked_transfer_encoding = header_has_chunked;
                     }
                     // RFC 9112 section 9.6
                     (10, case_insensitive_string!("connection")) => {
@@ -812,6 +824,7 @@ impl Parser {
                 if available >= self.max_header_length {
                   fail!(UNEXPECTED_CHARACTER, "Header line too long");
                 } else {
+                  incomplete_line = true;
                   suspend!();
                 }
               }
@@ -836,7 +849,12 @@ impl Parser {
                 UNEXPECTED_TRAILERS,
                 "Trailers are not allowed when not using chunked transfer encoding"
               );
-            } else if self.is_request && (method == METHOD_GET || method == METHOD_HEAD) && self.content_length > 0 {
+            } else if self.is_request && self.is_connect && (self.has_content_length || self.has_transfer_encoding) {
+              fail!(UNEXPECTED_CONTENT, "Body framing is not allowed for CONNECT requests");
+            } else if self.is_request
+              && (method == METHOD_GET || method == METHOD_HEAD)
+              && (self.content_length > 0 || self.has_transfer_encoding)
+            {
               fail!(UNEXPECTED_CONTENT, "Unexpected content for the request (GET or HEAD)");
             }
 
@@ -856,7 +874,7 @@ impl Parser {
                 );
               } else if self.skip_body {
                 self.continue_without_data = true;
-                if !self.complete_message(
+                if !self.complete_message::<true>(
                   0,
                   active_events,
                   has_complete_events,
@@ -869,7 +887,7 @@ impl Parser {
                 // RFC 9110 section 6.3
                 if self.content_length == 0 {
                   self.continue_without_data = true;
-                  if !self.complete_message(
+                  if !self.complete_message::<true>(
                     0,
                     active_events,
                     has_complete_events,
@@ -883,7 +901,7 @@ impl Parser {
                 }
               } else if !self.has_chunked_transfer_encoding {
                 self.continue_without_data = true;
-                if !self.complete_message(
+                if !self.complete_message::<true>(
                   0,
                   active_events,
                   has_complete_events,
@@ -900,7 +918,7 @@ impl Parser {
               // RFC 9110 section 15.4.5
               if self.skip_body || (status < 200 && status != 101) || status == 204 || status == 205 || status == 304 {
                 self.continue_without_data = true;
-                if !self.complete_message(
+                if !self.complete_message::<true>(
                   0,
                   active_events,
                   has_complete_events,
@@ -912,7 +930,7 @@ impl Parser {
               } else if self.has_content_length {
                 if self.content_length == 0 {
                   self.continue_without_data = true;
-                  if !self.complete_message(
+                  if !self.complete_message::<true>(
                     0,
                     active_events,
                     has_complete_events,
@@ -968,7 +986,7 @@ impl Parser {
 
               self.continue_without_data = true;
 
-              if !self.complete_message(
+              if !self.complete_message::<true>(
                 to_consume_usize,
                 active_events,
                 has_complete_events,
@@ -1009,11 +1027,12 @@ impl Parser {
 
           // RFC 9112 section 7.1
           STATE_CHUNK_HEADER => {
-            match find_cr(data, available) {
+            match cached_cr.take().or_else(|| find_cr(data, available)) {
               Some(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
                   MatchResult::Suspend => {
+                    incomplete_line = true;
                     suspend!();
                   }
                   MatchResult::Stop => {
@@ -1084,6 +1103,7 @@ impl Parser {
                 if available >= self.max_header_length {
                   fail!(UNEXPECTED_CHARACTER, "Chunk header too long");
                 } else {
+                  incomplete_line = true;
                   suspend!();
                 }
               }
@@ -1091,11 +1111,12 @@ impl Parser {
           }
 
           STATE_CHUNK_EXTENSIONS => {
-            match find_cr(data, available) {
+            match cached_cr.take().or_else(|| find_cr(data, available)) {
               Some(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
                   MatchResult::Suspend => {
+                    incomplete_line = true;
                     suspend!();
                   }
                   MatchResult::Stop => {
@@ -1239,6 +1260,7 @@ impl Parser {
                 if available >= self.max_header_length {
                   fail!(UNEXPECTED_CHARACTER, "Chunk header too long");
                 } else {
+                  incomplete_line = true;
                   suspend!();
                 }
               }
@@ -1291,11 +1313,15 @@ impl Parser {
 
           // RFC 9112 section 7.1.2
           STATE_TRAILER => {
-            match find_header_line_end(data.as_ptr(), available) {
+            match cached_cr.take().map_or_else(
+              || find_header_line_end(data.as_ptr(), available),
+              HeaderLineScanResult::Cr,
+            ) {
               HeaderLineScanResult::Cr(cr) => {
                 match ensure_valid_line(data, cr, available) {
                   MatchResult::Continue => {}
                   MatchResult::Suspend => {
+                    incomplete_line = true;
                     suspend!();
                   }
                   MatchResult::Stop => {
@@ -1311,7 +1337,7 @@ impl Parser {
                   }
                   event_with_range!(on_trailers, 2, 0);
                   self.continue_without_data = true;
-                  if !self.complete_message(
+                  if !self.complete_message::<true>(
                     2,
                     active_events,
                     has_complete_events,
@@ -1341,6 +1367,10 @@ impl Parser {
                 // Validate
                 if !validate_token(data, trailer_name_start, trailer_name_end) {
                   fail!(UNEXPECTED_CHARACTER, "Invalid trailer field name character");
+                }
+
+                if is_forbidden_trailer_name(&data[trailer_name_start..trailer_name_end]) {
+                  fail!(UNEXPECTED_TRAILERS, "Forbidden trailer field");
                 }
 
                 if has_trailer_name_event {
@@ -1374,6 +1404,7 @@ impl Parser {
                 if available >= self.max_header_length {
                   fail!(UNEXPECTED_CHARACTER, "Trailer line too long");
                 } else {
+                  incomplete_line = true;
                   suspend!();
                 }
               }
@@ -1415,8 +1446,8 @@ impl Parser {
           && !self.try_emit_event_range(
             &mut event_cursor,
             EVENT_STATE_CHANGE,
-            self.position,
-            self.state as usize,
+            self.position as u32,
+            self.state as u32,
           )
         {
           parsing = false;
@@ -1448,17 +1479,18 @@ impl Parser {
     }
 
     let consumed = self.position;
+    if consumed < limit && self.state == STATE_START {
+      self.remember_pending_start(data);
+    }
     self.parsed += consumed as u64;
 
     if self.manage_unconsumed {
-      self.clear_unconsumed();
-
-      // Use a boxed slice so the length also determines the allocation layout
-      // when releasing retained input; Vec capacity is not stored in the ABI.
-      if consumed < limit {
-        let retained = data.to_vec().into_boxed_slice();
-        self.unconsumed_len = retained.len();
-        self.unconsumed = Box::into_raw(retained) as *const c_uchar;
+      // Tunnel bytes belong to the upgraded protocol and must remain with the
+      // caller rather than being retained by the HTTP parser.
+      if self.state != STATE_TUNNEL && consumed < limit {
+        self.keep_retained_suffix(data, incomplete_line.then_some(self.state));
+      } else {
+        self.clear_unconsumed();
       }
     }
 
@@ -1479,7 +1511,7 @@ impl Parser {
 
     // Append only errors raised by this call, after all preceding events.
     if failed && active_events & EVENT_ACTIVE_ON_ERROR != 0 {
-      self.try_emit_event_error(&mut event_cursor);
+      self.try_emit_event_error(&mut event_cursor, consumed as u32);
     }
 
     if has_active_events {
@@ -1489,11 +1521,56 @@ impl Parser {
     }
 
     if self.active_callbacks != 0 {
+      self.parsing = true;
       self.invoke_callbacks();
+      self.parsing = false;
     }
 
     // Return the number of consumed bytes
     consumed
+  }
+
+  #[cold]
+  fn scan_retained_line(&self, data: &[u8], retained_len: usize) -> RetainedLine {
+    // SAFETY: The parser owns EventStorage and its private metadata.
+    if unsafe { (*self.events.cast::<EventStorage>()).incomplete_line } != Some(self.state) {
+      return RetainedLine::Unchecked;
+    }
+
+    // The previous scan reached the end, or stopped on a final CR.
+    let start = retained_len - usize::from(data[retained_len - 1] == b'\r');
+    let tail = &data[start..];
+    let limit = if matches!(self.state, STATE_REQUEST_LINE | STATE_STATUS_LINE) {
+      self.max_start_line_length
+    } else {
+      self.max_header_length
+    };
+
+    let result = if matches!(self.state, STATE_HEADER | STATE_TRAILER) {
+      find_header_line_end(tail.as_ptr(), tail.len())
+    } else {
+      find_cr(tail, tail.len()).map_or(HeaderLineScanResult::Incomplete, HeaderLineScanResult::Cr)
+    };
+
+    // Only the CR search has finished. The parse loop still validates LF and
+    // processes the whole line, or handles an error in the usual way.
+    match result {
+      HeaderLineScanResult::Cr(cr) if cr + 1 == tail.len() => RetainedLine::Incomplete,
+      HeaderLineScanResult::Cr(cr) => RetainedLine::Cr(start + cr),
+      HeaderLineScanResult::Incomplete if data.len() < limit => RetainedLine::Incomplete,
+      _ => RetainedLine::Unchecked,
+    }
+  }
+
+  #[cold]
+  pub(crate) fn reject_oversized_input(&mut self, description: &str) -> usize {
+    if self.parsing {
+      return 0;
+    }
+
+    self.position = 0;
+    self.fail(ERROR_INPUT_TOO_LARGE, description);
+    0
   }
 
   /// Completes the current message without consuming more input.
@@ -1502,6 +1579,10 @@ impl Parser {
   /// Milo after headers were parsed, then need Milo to perform the normal
   /// completion transition and emit completion events.
   pub fn complete(&mut self) {
+    if self.parsing {
+      return;
+    }
+
     match self.state {
       STATE_BODY_DECISION
       | STATE_TUNNEL
@@ -1520,7 +1601,8 @@ impl Parser {
     let has_finish_event = active_events & EVENT_ACTIVE_ON_FINISH != 0;
     let mut event_cursor = 0usize;
 
-    if !self.complete_message(
+    // Standalone calls can observe a position set by the caller.
+    if !self.complete_message::<false>(
       0,
       active_events,
       has_complete_events,
@@ -1528,19 +1610,19 @@ impl Parser {
       &mut event_cursor,
     ) {
       self.paused = true;
+    } else if self.state == STATE_TUNNEL {
+      self.clear_unconsumed();
     }
 
     unsafe {
       *self.events.add(event_cursor) = EVENT_END;
     }
-    if self.active_callbacks != 0 {
-      self.invoke_callbacks();
-    }
+    self.replay_control_callbacks();
   }
 
   // RFC 9110 section 6.4.1 - Message completed.
   #[inline(always)]
-  fn complete_message(
+  fn complete_message<const VALIDATED: bool>(
     &mut self,
     offset: usize,
     active_events: u64,
@@ -1553,10 +1635,14 @@ impl Parser {
       return false;
     }
     if has_complete_events {
+      let at = self.position + offset;
+      if !VALIDATED && at > u32::MAX as usize {
+        return false;
+      }
       if (active_events & EVENT_ACTIVE_ON_MESSAGE_COMPLETE != 0
-        && !self.try_emit_event_range(event_cursor, EVENT_MESSAGE_COMPLETE, self.position + offset, 0))
+        && !self.try_emit_event_range(event_cursor, EVENT_MESSAGE_COMPLETE, at as u32, 0))
         || (active_events & EVENT_ACTIVE_ON_RESET != 0
-          && !self.try_emit_event_range(event_cursor, EVENT_RESET, self.position + offset, 0))
+          && !self.try_emit_event_range(event_cursor, EVENT_RESET, at as u32, 0))
       {
         return false;
       }
@@ -1568,7 +1654,10 @@ impl Parser {
     if self.has_upgrade && self.is_request {
       move_to!(tunnel);
     } else if self.has_connection_close {
-      if has_finish_event && !self.try_emit_event_range(event_cursor, EVENT_FINISH, self.position, 0) {
+      if has_finish_event
+        && ((!VALIDATED && self.position > u32::MAX as usize)
+          || !self.try_emit_event_range(event_cursor, EVENT_FINISH, self.position as u32, 0))
+      {
         return false;
       }
       move_to!(finish);
@@ -1577,5 +1666,73 @@ impl Parser {
     }
 
     true
+  }
+}
+
+#[inline]
+fn checked_event_input_len(input: usize, retained: usize) -> Option<usize> {
+  input.checked_add(retained).filter(|size| *size <= u32::MAX as usize)
+}
+
+#[cold]
+#[inline(never)]
+fn header_events_fit(event_cursor: usize, has_name: bool, has_value: bool) -> bool {
+  let size = (has_name as usize + has_value as usize) * EVENT_RANGE_SIZE;
+  size == 0 || event_cursor + size + EVENT_ERROR_RESERVE <= EVENTS_BUFFER_SIZE
+}
+
+#[cfg(all(test, target_pointer_width = "64"))]
+mod tests {
+  use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+  use super::*;
+
+  #[test]
+  fn event_coordinate_limit() {
+    let max = u32::MAX as usize;
+    assert_eq!(checked_event_input_len(max, 0), Some(max));
+    assert_eq!(checked_event_input_len(max + 1, 0), None);
+    assert_eq!(checked_event_input_len(max - 1, 1), Some(max));
+    assert_eq!(checked_event_input_len(1, max), None);
+    assert_eq!(checked_event_input_len(usize::MAX, 1), None);
+  }
+
+  #[test]
+  fn event_writers_preserve_the_coordinate_limit() {
+    let max = u32::MAX as usize;
+    let mut parser = Parser::new();
+    parser.active_events = EVENT_ACTIVE_ON_MESSAGE_COMPLETE;
+    parser.state = STATE_BODY_WITH_NO_LENGTH;
+    parser.position = max;
+    parser.finish();
+    assert_eq!(&parser.events()[1..5], &u32::MAX.to_le_bytes());
+
+    parser.state = STATE_BODY_WITH_NO_LENGTH;
+    parser.position = max + 1;
+    parser.finish();
+    assert_eq!(parser.events()[0], EVENT_END);
+  }
+
+  #[test]
+  fn oversized_input_error_is_delivered_once() {
+    static CALLS: AtomicUsize = AtomicUsize::new(0);
+    static GUARDED: AtomicBool = AtomicBool::new(false);
+    extern "C" fn count_error(parser: &mut Parser, _: usize, _: usize) {
+      CALLS.fetch_add(1, Ordering::Relaxed);
+      GUARDED.store(parser.parsing, Ordering::Relaxed);
+    }
+
+    let mut parser = Parser::new();
+    parser.active_callbacks = CALLBACK_ACTIVE_ON_ERROR;
+    parser.callbacks.on_error = count_error;
+    assert_eq!(
+      parser.reject_oversized_input("Input exceeds the event coordinate limit"),
+      0
+    );
+    assert_eq!(parser.state, STATE_ERROR);
+    assert_eq!(parser.error_code, ERROR_INPUT_TOO_LARGE);
+    assert_eq!(CALLS.load(Ordering::Relaxed), 1);
+    assert!(GUARDED.load(Ordering::Relaxed));
+    assert!(!parser.parsing);
   }
 }

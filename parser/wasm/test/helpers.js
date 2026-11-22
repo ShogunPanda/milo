@@ -1,6 +1,8 @@
 // Exercise the generated packages, including their JavaScript bindings.
 process.env.MILO_VARIANT ??= 'simd'
-export const { setup } = await import(`../../../dist/wasm/release/package/src/${process.env.MILO_VARIANT}/index.js`)
+export const { setup, simple } = await import(
+  `../../../dist/wasm/release/package/src/${process.env.MILO_VARIANT}/index.js`
+)
 
 export function createParser (t, setup) {
   const headers = []

@@ -129,6 +129,15 @@ use core::slice;
 
 use milo_parser::{Parser, CALLBACK_ACTIVE_ON_DATA};
 
+extern "C" fn on_data(parser: &mut Parser, from: usize, size: usize) {
+  let message = unsafe {
+    std::str::from_utf8_unchecked(slice::from_raw_parts(parser.context.add(from) as *const u8, size))
+  };
+
+  // Use the callback data.
+  println!("Pos={} Body: {}", from, message);
+}
+
 fn main() {
   // Create the parser.
   let mut parser = Parser::new();
@@ -149,20 +158,14 @@ fn main() {
   // method.
   //
   // If the current callback has no payload, both values are set to 0.
-  parser.callbacks.on_data = |p: &mut Parser, from: usize, size: usize| {
-    let message =
-      unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(p.context.add(from) as *const u8, size)) };
-
-    // Use the callback data.
-    println!("Pos={} Body: {}", from, message);
-  };
+  parser.callbacks.on_data = on_data;
 
   // Toggle on the callbacks you want to receive
   parser.active_callbacks |= CALLBACK_ACTIVE_ON_DATA;
 
   // Now perform the main parsing using milo.parse. The method returns the number
   // of consumed characters.
-  parser.parse(message.as_ptr(), message.len());
+  parser.parse(message.as_bytes());
 }
 
 ```
@@ -188,6 +191,14 @@ Create a sample source file:
 #include <cstdio>
 #include <cstring>
 
+extern "C" void on_data(milo_parser::Parser* p, uintptr_t from, uintptr_t size) {
+  const char* payload = reinterpret_cast<const char*>(p->context) + from;
+
+  printf("Pos=%" PRIuPTR " Body: ", from);
+  fwrite(payload, 1, size, stdout);
+  putchar('\n');
+}
+
 int main() {
   // Create the parser.
   milo_parser::Parser* parser = milo_parser::milo_create();
@@ -210,11 +221,7 @@ int main() {
 
     If the current callback has no payload, both values are set to 0.
   */
-  parser->callbacks.on_data = [](milo_parser::Parser* p, uintptr_t from, uintptr_t size) {
-    const char* payload = reinterpret_cast<const char*>(p->context) + from;
-
-    printf("Pos=%" PRIuPTR " Body: %.*s\n", from, static_cast<int>(size), payload);
-  };
+  parser->callbacks.on_data = on_data;
 
   // Toggle on the callbacks you want to receive
   parser->active_callbacks |= milo_parser::CALLBACK_ACTIVE_ON_DATA;
@@ -327,6 +334,18 @@ To see the initial disclosure of milo, check Paolo's talk at [NodeConf EU 2023][
 ## Contributing to milo
 
 See [AGENTS.md](./AGENTS.md) for development setup, local and Docker builds, tests, and contribution guidelines.
+
+### Publishing a release
+
+Dispatch **Publish release** on `main` with `patch`, `minor`, `major`, or an explicit version. For a prerelease, use an explicit prerelease version and select **Release as pre-release**.
+
+The workflow installs `cambi` from crates.io, pushes the version bump and changelog, builds all artifacts from that commit, and publishes the release.
+
+#### Recovering from a failed release
+
+- **Before the bump was pushed:** Check `main` to confirm the bump is not there. Fix the failure, then dispatch **Publish release** again with the same parameters.
+- **After the bump, before anything was published:** If **Prepare release** succeeded, use **Re-run failed jobs** on the original run to reuse its version and commit. Do not dispatch a new run or re-run all jobs. If **Prepare release** failed after pushing the bump, recover from the commit already on `main` instead of bumping again.
+- **After a package or tag was published:** Do not re-run the publishing job as-is. Record the version and bump commit from the original run, then check crates.io, npm, the Git tag, and GitHub Releases to see what succeeded. Complete only the missing steps using that commit and the original artifacts, preserving the normal publishing credentials and provenance. If only the GitHub release is missing, verify that the existing tag points to the bump commit before creating the release from that tag. If the tag points elsewhere, stop; do not move or force-push it.
 
 ## Copyright
 

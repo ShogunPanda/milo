@@ -531,6 +531,16 @@ impl Parser {
                   }
                 }
 
+                // Reserve the whole header's event batch before validating or
+                // committing any semantic effects. Otherwise a full event buffer
+                // can suspend between the name and value events after state such
+                // as Content-Length has already been updated.
+                if event_cursor > EVENTS_BUFFER_SIZE - EVENT_ERROR_RESERVE - 2 * EVENT_RANGE_SIZE
+                  && !header_events_fit(event_cursor, has_header_name_event, has_header_value_event)
+                {
+                  suspend!();
+                }
+
                 // RFC 9112 section.4
                 // RFC 9110 section 5.5 and 5.6
                 let header_name_start = 0;
@@ -1666,6 +1676,13 @@ impl Parser {
 #[inline]
 fn checked_event_input_len(input: usize, retained: usize) -> Option<usize> {
   input.checked_add(retained).filter(|size| *size <= u32::MAX as usize)
+}
+
+#[cold]
+#[inline(never)]
+fn header_events_fit(event_cursor: usize, has_name: bool, has_value: bool) -> bool {
+  let size = (has_name as usize + has_value as usize) * EVENT_RANGE_SIZE;
+  size == 0 || event_cursor + size + EVENT_ERROR_RESERVE <= EVENTS_BUFFER_SIZE
 }
 
 #[cfg(all(test, target_pointer_width = "64"))]

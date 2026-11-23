@@ -541,6 +541,11 @@ impl Parser {
                   suspend!();
                 }
 
+                let field_len = cr + 2;
+                if self.fields_count >= self.max_fields_count || field_len > self.max_fields_bytes - self.fields_bytes {
+                  fail!(UNEXPECTED_CHARACTER, "Field limit exceeded");
+                }
+
                 // RFC 9112 section.4
                 // RFC 9110 section 5.5 and 5.6
                 let header_name_start = 0;
@@ -808,7 +813,9 @@ impl Parser {
                   );
                 }
 
-                advance!(cr + 2);
+                self.fields_bytes += field_len;
+                self.fields_count += 1;
+                advance!(field_len);
               }
               HeaderLineScanResult::Invalid(invalid) => {
                 match find_char(data, 0, invalid, b':') {
@@ -821,7 +828,7 @@ impl Parser {
                 }
               }
               HeaderLineScanResult::Incomplete => {
-                if available >= self.max_header_length {
+                if available >= self.max_field_length {
                   fail!(UNEXPECTED_CHARACTER, "Header line too long");
                 } else {
                   incomplete_line = true;
@@ -1092,6 +1099,8 @@ impl Parser {
                     event_with_range!(on_chunk, 3, 0);
                     event_with_range!(on_body, 3, 0);
                     advance!(cr + 2);
+                    self.fields_bytes = 0;
+                    self.fields_count = 0;
                     move_to!(trailer);
                   } else {
                     advance!(cr + 2);
@@ -1100,7 +1109,7 @@ impl Parser {
                 }
               }
               None => {
-                if available >= self.max_header_length {
+                if available >= self.max_field_length {
                   fail!(UNEXPECTED_CHARACTER, "Chunk header too long");
                 } else {
                   incomplete_line = true;
@@ -1145,6 +1154,8 @@ impl Parser {
                     if self.chunk_size == 0 {
                       event_with_range!(on_body, 0, 0);
                       advance!(cr + 2);
+                      self.fields_bytes = 0;
+                      self.fields_count = 0;
                       move_to!(trailer);
                     } else {
                       advance!(cr + 2);
@@ -1247,6 +1258,8 @@ impl Parser {
                     if self.chunk_size == 0 {
                       event_with_range!(on_body, 0, 0);
                       advance!(cr + 2);
+                      self.fields_bytes = 0;
+                      self.fields_count = 0;
                       move_to!(trailer);
                     } else {
                       advance!(cr + 2);
@@ -1257,7 +1270,7 @@ impl Parser {
               }
               None => {
                 // Given in chunk_header we already validated this, this should not happen.
-                if available >= self.max_header_length {
+                if available >= self.max_field_length {
                   fail!(UNEXPECTED_CHARACTER, "Chunk header too long");
                 } else {
                   incomplete_line = true;
@@ -1350,6 +1363,11 @@ impl Parser {
                   next!();
                 }
 
+                let field_len = cr + 2;
+                if self.fields_count >= self.max_fields_count || field_len > self.max_fields_bytes - self.fields_bytes {
+                  fail!(UNEXPECTED_CHARACTER, "Field limit exceeded");
+                }
+
                 let trailer_name_start = 0;
                 let trailer_name_end = match find_char(data, trailer_name_start, cr, b':') {
                   Some(index) if index > trailer_name_start => index,
@@ -1388,7 +1406,9 @@ impl Parser {
                     trailer_value_end - trailer_value_start
                   );
                 }
-                advance!(cr + 2);
+                self.fields_bytes += field_len;
+                self.fields_count += 1;
+                advance!(field_len);
               }
               HeaderLineScanResult::Invalid(invalid) => {
                 match find_char(data, 0, invalid, b':') {
@@ -1401,7 +1421,7 @@ impl Parser {
                 }
               }
               HeaderLineScanResult::Incomplete => {
-                if available >= self.max_header_length {
+                if available >= self.max_field_length {
                   fail!(UNEXPECTED_CHARACTER, "Trailer line too long");
                 } else {
                   incomplete_line = true;
@@ -1488,7 +1508,12 @@ impl Parser {
       // Tunnel bytes belong to the upgraded protocol and must remain with the
       // caller rather than being retained by the HTTP parser.
       if self.state != STATE_TUNNEL && consumed < limit {
-        self.keep_retained_suffix(data, incomplete_line.then_some(self.state));
+        let incomplete_line_state = if incomplete_line {
+          self.state
+        } else {
+          NO_INCOMPLETE_LINE
+        };
+        self.keep_retained_suffix(data, incomplete_line_state);
       } else {
         self.clear_unconsumed();
       }
@@ -1532,8 +1557,7 @@ impl Parser {
 
   #[cold]
   fn scan_retained_line(&self, data: &[u8], retained_len: usize) -> RetainedLine {
-    // SAFETY: The parser owns EventStorage and its private metadata.
-    if unsafe { (*self.events.cast::<EventStorage>()).incomplete_line } != Some(self.state) {
+    if self.incomplete_line_state != self.state {
       return RetainedLine::Unchecked;
     }
 
@@ -1543,7 +1567,7 @@ impl Parser {
     let limit = if matches!(self.state, STATE_REQUEST_LINE | STATE_STATUS_LINE) {
       self.max_start_line_length
     } else {
-      self.max_header_length
+      self.max_field_length
     };
 
     let result = if matches!(self.state, STATE_HEADER | STATE_TRAILER) {

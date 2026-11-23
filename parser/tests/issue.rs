@@ -26,6 +26,7 @@ fn issue_26__preserve_events_before_error() {
             vec![response + suffix]
           };
           let mut parser = Parser::new();
+          parser.max_fields_count = usize::MAX;
           parser.autodetect = false;
           parser.active_events =
             EVENT_ACTIVE_ON_HEADERS | EVENT_ACTIVE_ON_MESSAGE_COMPLETE | EVENT_ACTIVE_ON_HEADER_VALUE;

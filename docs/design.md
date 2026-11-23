@@ -98,7 +98,7 @@ Event offsets and lengths use an unsigned 32-bit wire format. Native parsing rej
 
 `suspend_after_headers` stops parsing after the final header terminator has been consumed and headers metadata has been emitted. The parser is not paused; the next parse invocation continues with body decision and body parsing.
 
-`autodetect` and `is_request` control parser direction. Milo also supports managed unconsumed data, start-line and header length limits, event activation flags, and callback activation flags.
+`autodetect` and `is_request` control parser direction. Milo also supports managed unconsumed data, start-line and field length limits, event activation flags, and callback activation flags.
 
 ## Non-Goals
 

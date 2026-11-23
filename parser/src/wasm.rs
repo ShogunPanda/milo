@@ -278,12 +278,28 @@ pub unsafe fn get_max_start_line_length(parser: *const c_void) -> usize {
   unsafe { (*(parser as *const Parser)).max_start_line_length }
 }
 
-// Get the parser max_header_length property.
+// Get the parser max_field_length property.
 /// # Safety
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub unsafe fn get_max_header_length(parser: *const c_void) -> usize {
-  unsafe { (*(parser as *const Parser)).max_header_length }
+pub unsafe fn get_max_field_length(parser: *const c_void) -> usize {
+  unsafe { (*(parser as *const Parser)).max_field_length }
+}
+
+/// # Safety
+/// The parser must be live and aligned.
+#[unsafe(no_mangle)]
+pub unsafe fn get_max_fields_bytes(parser: *const c_void) -> usize {
+  // SAFETY: Required by this function's contract.
+  unsafe { (*parser.cast::<Parser>()).max_fields_bytes }
+}
+
+/// # Safety
+/// The parser must be live and aligned.
+#[unsafe(no_mangle)]
+pub unsafe fn get_max_fields_count(parser: *const c_void) -> usize {
+  // SAFETY: Required by this function's contract.
+  unsafe { (*parser.cast::<Parser>()).max_fields_count }
 }
 
 // Get the parser max_body_payload property.
@@ -515,12 +531,38 @@ pub unsafe fn set_max_start_line_length(parser: *mut c_void, value: usize) {
 /// # Safety
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
 #[unsafe(no_mangle)]
-pub unsafe fn set_max_header_length(parser: *mut c_void, value: usize) {
+pub unsafe fn set_max_field_length(parser: *mut c_void, value: usize) {
   let parser = parser.cast::<Parser>();
   // SAFETY: The caller supplies a live parser on the current thread.
   unsafe {
     if !(*parser).parsing {
-      (*parser).max_header_length = value;
+      (*parser).max_field_length = value;
+    }
+  }
+}
+
+/// # Safety
+/// The parser must be live, aligned, and exclusively accessible.
+#[unsafe(no_mangle)]
+pub unsafe fn set_max_fields_bytes(parser: *mut c_void, value: usize) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: Required by this function's contract.
+  unsafe {
+    if !(*parser).parsing {
+      (*parser).max_fields_bytes = value;
+    }
+  }
+}
+
+/// # Safety
+/// The parser must be live, aligned, and exclusively accessible.
+#[unsafe(no_mangle)]
+pub unsafe fn set_max_fields_count(parser: *mut c_void, value: usize) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: Required by this function's contract.
+  unsafe {
+    if !(*parser).parsing {
+      (*parser).max_fields_count = value;
     }
   }
 }

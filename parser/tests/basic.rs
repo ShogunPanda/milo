@@ -309,6 +309,47 @@ fn basic_connection_close() {
 }
 
 #[test]
+fn basic_message_field_limits() {
+  let headers = b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n";
+  let trailer = b"A: 12345678901234567890123\r\n";
+  let mut parser = Parser::new();
+  assert_eq!(parser.max_fields_bytes, 64 * 1024);
+  assert_eq!(parser.max_fields_count, 100);
+
+  parser.max_fields_bytes = 32;
+  parser.max_fields_count = 1;
+  let message = [headers.as_slice(), b"0\r\n", trailer, b"\r\n"].concat();
+  let pipeline = message.repeat(2);
+  assert_eq!(parser.parse(&pipeline), pipeline.len());
+  assert_eq!(parser.error_code, ERROR_NONE);
+
+  for (last_chunk, max_bytes, max_count) in [
+    (b"0\r\n".as_slice(), 32, usize::MAX),
+    (b"0;end\r\n".as_slice(), usize::MAX, 1),
+    (b"0;end=yes\r\n".as_slice(), 32, usize::MAX),
+  ] {
+    parser.reset(false);
+    parser.max_fields_bytes = max_bytes;
+    parser.max_fields_count = max_count;
+    parser.manage_unconsumed = true;
+    let prefix = [headers.as_slice(), last_chunk, trailer].concat();
+    let fragment = [prefix.as_slice(), b"B: c\r"].concat();
+    assert_eq!(parser.parse(&fragment), prefix.len());
+
+    assert_eq!(parser.parse(b"\n\r\n"), 0);
+    assert_eq!(parser.error_description_str(), "Field limit exceeded");
+  }
+
+  for (max_bytes, max_count) in [(27, usize::MAX), (usize::MAX, 0)] {
+    parser.reset(false);
+    parser.max_fields_bytes = max_bytes;
+    parser.max_fields_count = max_count;
+    assert_eq!(parser.parse(headers), b"POST / HTTP/1.1\r\n".len());
+    assert_eq!(parser.error_description_str(), "Field limit exceeded");
+  }
+}
+
+#[test]
 fn basic_max_body_payload_content_length() {
   let mut parser = create_parser();
   parser.autodetect = false;
@@ -501,6 +542,8 @@ fn basic_complete_rejects_invalid_state() {
 #[test]
 fn basic_event_buffer_full_stops_parsing() {
   let mut parser = milo_parser::Parser::new();
+  parser.max_fields_bytes = usize::MAX;
+  parser.max_fields_count = usize::MAX;
   parser.autodetect = false;
   parser.is_request = false;
   parser.active_events = EVENT_ACTIVE_ON_HEADER_NAME | EVENT_ACTIVE_ON_HEADER_VALUE;
@@ -524,6 +567,7 @@ fn basic_event_buffer_suspension_preserves_header_atomicity() {
     "Transfer-Encoding: chunked\r\n\r\n0\r\n\r\n",
   ] {
     let mut parser = milo_parser::Parser::new();
+    parser.max_fields_count = usize::MAX;
     parser.autodetect = false;
     parser.is_request = true;
     parser.active_events = EVENT_ACTIVE_ON_HEADER_NAME | EVENT_ACTIVE_ON_HEADER_VALUE;

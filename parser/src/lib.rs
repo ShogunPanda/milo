@@ -14,15 +14,7 @@ use core::str;
 
 use milo_macros::generate;
 
-// Keep the public event bytes at offset zero and private metadata outside the
-// exported Parser layout.
-#[repr(C)]
-struct EventStorage {
-  bytes: [u8; EVENTS_BUFFER_SIZE],
-  pending_start_at: Option<u64>,
-  retained_capacity: usize,
-  incomplete_line: Option<u8>,
-}
+const NO_INCOMPLETE_LINE: u8 = u8::MAX;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -31,7 +23,9 @@ pub struct Parser {
   #[cfg(not(target_family = "wasm"))]
   pub context: *mut c_void,
   pub max_start_line_length: usize,
-  pub max_header_length: usize,
+  pub max_field_length: usize,
+  pub max_fields_bytes: usize,
+  pub max_fields_count: usize,
   pub max_body_payload: u64,
   pub autodetect: bool,
   pub is_request: bool,
@@ -48,8 +42,6 @@ pub struct Parser {
   pub state: u8,
   pub paused: bool,
   pub error_code: u8,
-  // Fits in the padding before the message fields.
-  parsing: bool,
 
   // Current message flags
   pub content_length: u64,
@@ -82,6 +74,15 @@ pub struct Parser {
   unconsumed_len: usize,
   error_description_len: u8,
 
+  // Internal parser state
+  parsing: bool,
+  has_pending_start: bool,
+  incomplete_line_state: u8,
+  fields_bytes: usize,
+  fields_count: usize,
+  retained_capacity: usize,
+  pending_start_at: u64,
+
   // Event buffer. Keep this at the end of the struct for external readers.
   events: *mut c_uchar,
 }
@@ -103,12 +104,7 @@ generate!();
 impl Parser {
   /// Creates a new parser
   pub fn new() -> Parser {
-    let events = Box::new(EventStorage {
-      bytes: [0; EVENTS_BUFFER_SIZE],
-      pending_start_at: None,
-      retained_capacity: 0,
-      incomplete_line: None,
-    });
+    let events = Box::new([0u8; EVENTS_BUFFER_SIZE]);
     let events_ptr = Box::into_raw(events).cast();
 
     Parser {
@@ -116,7 +112,9 @@ impl Parser {
       #[cfg(not(target_family = "wasm"))]
       context: ptr::null_mut(),
       max_start_line_length: 8192,
-      max_header_length: 8192,
+      max_field_length: 8192,
+      max_fields_bytes: 64 * 1024,
+      max_fields_count: 100,
       max_body_payload: 0,
       autodetect: true,
       is_request: false,
@@ -132,7 +130,6 @@ impl Parser {
       state: STATE_START,
       paused: false,
       error_code: ERROR_NONE,
-      parsing: false,
       // Current message flags
       content_length: 0,
       chunk_size: 0,
@@ -160,6 +157,14 @@ impl Parser {
       unconsumed: ptr::null(),
       unconsumed_len: 0,
       error_description_len: 0,
+      // Internal parser state
+      parsing: false,
+      has_pending_start: false,
+      incomplete_line_state: NO_INCOMPLETE_LINE,
+      fields_bytes: 0,
+      fields_count: 0,
+      retained_capacity: 0,
+      pending_start_at: 0,
       events: events_ptr,
     }
   }
@@ -175,6 +180,8 @@ impl Parser {
   ///   * suspend_after_headers
   ///   * manage_unconsumed
   ///   * continue_without_data
+  ///   * max_fields_bytes
+  ///   * max_fields_count
   ///   * debug
   ///   * context
   pub fn reset(&mut self, keep_parsed: bool) {
@@ -198,11 +205,9 @@ impl Parser {
 
     self.clear();
     self.skip_body = false;
-    // SAFETY: The parser owns EventStorage, with event bytes at offset zero.
-    unsafe {
-      (*self.events.cast::<EventStorage>()).pending_start_at = None;
-      *self.events = EVENT_END;
-    }
+    self.has_pending_start = false;
+    // SAFETY: The parser owns the event buffer and its first byte.
+    unsafe { *self.events = EVENT_END };
   }
 
   pub(crate) fn clear_unconsumed(&mut self) {
@@ -212,44 +217,35 @@ impl Parser {
   }
 
   fn take_retained_input(&mut self) -> Vec<u8> {
-    // SAFETY: The parser owns EventStorage and the Vec allocation described by
-    // its pointer, length, and capacity. Clear ownership before returning it.
-    unsafe {
-      let storage = &mut *self.events.cast::<EventStorage>();
-      storage.incomplete_line = None;
-      let capacity = core::mem::take(&mut storage.retained_capacity);
-      let data = core::mem::replace(&mut self.unconsumed, ptr::null()).cast_mut();
-      let len = core::mem::take(&mut self.unconsumed_len);
-      Vec::from_raw_parts(data, len, capacity)
-    }
+    self.incomplete_line_state = NO_INCOMPLETE_LINE;
+    let capacity = core::mem::take(&mut self.retained_capacity);
+    let data = core::mem::replace(&mut self.unconsumed, ptr::null()).cast_mut();
+    let len = core::mem::take(&mut self.unconsumed_len);
+    // SAFETY: These are the original Vec parts, now owned by the returned Vec.
+    unsafe { Vec::from_raw_parts(data, len, capacity) }
   }
 
-  fn put_retained_input(&mut self, data: Vec<u8>, incomplete_line: Option<u8>) {
+  fn put_retained_input(&mut self, data: Vec<u8>, incomplete_line_state: u8) {
     let mut data = core::mem::ManuallyDrop::new(data);
     self.unconsumed = data.as_mut_ptr();
     self.unconsumed_len = data.len();
-    // SAFETY: The parser owns EventStorage, which tracks this Vec allocation.
-    unsafe {
-      let storage = &mut *self.events.cast::<EventStorage>();
-      storage.retained_capacity = data.capacity();
-      storage.incomplete_line = incomplete_line;
-    }
+    self.retained_capacity = data.capacity();
+    self.incomplete_line_state = incomplete_line_state;
   }
 
   fn append_retained_input(&mut self, input: &[u8]) {
     if input.is_empty() {
       return;
     }
-    // SAFETY: The parser owns EventStorage and has nonempty retained input.
-    let incomplete_line = unsafe { (*self.events.cast::<EventStorage>()).incomplete_line };
+    let incomplete_line_state = self.incomplete_line_state;
     let mut retained = self.take_retained_input();
     retained.extend_from_slice(input);
-    self.put_retained_input(retained, incomplete_line);
+    self.put_retained_input(retained, incomplete_line_state);
   }
 
-  fn keep_retained_suffix(&mut self, suffix: &[u8], incomplete_line: Option<u8>) {
+  fn keep_retained_suffix(&mut self, suffix: &[u8], incomplete_line_state: u8) {
     if self.unconsumed_len == 0 {
-      self.put_retained_input(suffix.to_vec(), incomplete_line);
+      self.put_retained_input(suffix.to_vec(), incomplete_line_state);
       return;
     }
 
@@ -260,8 +256,7 @@ impl Parser {
       unsafe { ptr::copy(suffix.as_ptr(), self.unconsumed.cast_mut(), len) };
     }
     self.unconsumed_len = len;
-    // SAFETY: The parser owns EventStorage.
-    unsafe { (*self.events.cast::<EventStorage>()).incomplete_line = incomplete_line };
+    self.incomplete_line_state = incomplete_line_state;
   }
 
   /// Clears all values about the message in the parser.
@@ -288,6 +283,8 @@ impl Parser {
     self.chunk_size = 0;
     self.remaining_content_length = 0;
     self.remaining_chunk_size = 0;
+    self.fields_bytes = 0;
+    self.fields_count = 0;
   }
 
   #[inline(always)]
@@ -335,9 +332,8 @@ impl Parser {
   /// parser.events = core::ptr::null_mut();
   /// ```
   pub fn events(&self) -> &[u8; EVENTS_BUFFER_SIZE] {
-    // SAFETY: The event array is at offset zero in the parser-owned EventStorage
-    // allocation and remains valid for the parser's lifetime.
-    unsafe { &*(self.events as *const [u8; EVENTS_BUFFER_SIZE]) }
+    // SAFETY: The parser owns this array for its lifetime.
+    unsafe { &*self.events.cast::<[u8; EVENTS_BUFFER_SIZE]>() }
   }
 
   /// Returns input retained for the next managed parse call.
@@ -363,11 +359,8 @@ impl Parser {
     if self.autodetect && !self.paused && (data == b"\r" || (data.len() < 5 && b"HTTP".starts_with(data))) {
       // A complete prefix or message advances the stream past this offset.
       // An empty parse must not overwrite an outstanding prefix.
-      let offset = self.parsed.wrapping_add(self.position as u64);
-      // SAFETY: The parser owns EventStorage, with event bytes at offset zero.
-      unsafe {
-        (*self.events.cast::<EventStorage>()).pending_start_at = Some(offset);
-      }
+      self.pending_start_at = self.parsed.wrapping_add(self.position as u64);
+      self.has_pending_start = true;
     }
   }
 
@@ -380,9 +373,7 @@ impl Parser {
 
     match self.state {
       STATE_START => {
-        // SAFETY: The parser owns EventStorage, with event bytes at offset zero.
-        let pending = unsafe { (*self.events.cast::<EventStorage>()).pending_start_at };
-        if pending == Some(self.parsed) {
+        if self.has_pending_start && self.pending_start_at == self.parsed {
           self.fail(ERROR_UNEXPECTED_EOF, "Unexpected end of data");
         } else {
           self.state = STATE_FINISH;
@@ -483,7 +474,7 @@ impl Drop for Parser {
     if !self.events.is_null() {
       // SAFETY: This is the original pointer returned by Box::into_raw.
       unsafe {
-        drop(Box::from_raw(self.events.cast::<EventStorage>()));
+        drop(Box::from_raw(self.events.cast::<[u8; EVENTS_BUFFER_SIZE]>()));
       }
       self.events = ptr::null_mut();
     }

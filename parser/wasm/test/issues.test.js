@@ -87,6 +87,7 @@ it('issue-26 - preserve_events_before_error', () => {
               'X: a\r\n'.repeat(padding) +
               (chunked ? 'Transfer-Encoding: chunked\r\n\r\n2\r\nok\r\n0\r\n\r\n' : 'Content-Length: 2\r\n\r\nok')
             try {
+              milo.setMaxFieldsCount(parser, 0xffffffff)
               milo.setShouldAutodetect(parser, false)
               milo.setIsRequest(parser, false)
               const mask =

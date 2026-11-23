@@ -151,6 +151,12 @@ Read the event buffer pointer from `parser + ParserFields.EVENTS`, then drain re
 
 If an active event would exceed the internal event buffer, parsing stops before consuming the data that would have produced the event. This is not a parser error and does not pause the parser. Call `parse()` again after draining the event buffer.
 
+### Message Field Limits
+
+`setMaxFieldsBytes(parser, value)` and `setMaxFieldsCount(parser, value)` set the limits for both sections. Headers and trailers each get the full allowance: 64 KiB and 100 fields by default. Set either maximum to `0xffffffff` to effectively disable that limit. The byte total includes each field's CRLF but excludes the empty line ending the section. A limit of `0` rejects any field. Read the current limits with `getMaxFieldsBytes(parser)` and `getMaxFieldsCount(parser)`.
+
+Set both limits before parsing a message and leave them unchanged until it completes, even when the message spans several `parse()` calls.
+
 ### Body Payload Limit
 
 `setMaxBodyPayload(parser, value)` limits how many body payload bytes a single `parse()` invocation can consume. The default value is `0`, which means unlimited.
@@ -346,7 +352,9 @@ The following fields are not modified:
 - `continue_without_data`
 - `debug`
 - `max_start_line_length`
-- `max_header_length`
+- `max_field_length`
+- `max_fields_bytes`
+- `max_fields_count`
 - `context`
 - `active_callbacks`
 - `callbacks`
@@ -414,9 +422,9 @@ Returns the parser maximum allowed request/status line length.
 
 Default is `8192`.
 
-#### `getMaxHeaderLength(parser)`
+#### `getMaxFieldLength(parser)`
 
-Returns the parser maximum allowed header length.
+Returns the length limit used when scanning individual header and trailer fields.
 
 Default is `8192`.
 
@@ -528,9 +536,9 @@ Sets the parser maximum allowed request/status line length.
 
 Defaults to `8192` in a new parser.
 
-#### `setMaxHeaderLength(parser, value)`
+#### `setMaxFieldLength(parser, value)`
 
-Sets the parser maximum allowed header length.
+Sets the length limit used when scanning individual header and trailer fields.
 
 Defaults to `8192` in a new parser.
 

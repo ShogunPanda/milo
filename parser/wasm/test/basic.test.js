@@ -183,6 +183,27 @@ it('basic_connection_close', t => {
   assert.equal(milo.getState(parser), milo.STATE_FINISH)
 })
 
+it('basic_message_field_limits', t => {
+  const { milo, parser, parse } = createParser(t, setup)
+  const prefix = 'POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n'
+  const trailer = 'A: 12345678901234567890123\r\n'
+  assert.equal(milo.getMaxFieldLength(parser), 8192)
+  milo.setMaxFieldLength(parser, 64)
+  assert.equal(milo.getMaxFieldLength(parser), 64)
+  assert.equal(milo.getMaxFieldsBytes(parser), 64 * 1024)
+  assert.equal(milo.getMaxFieldsCount(parser), 100)
+
+  milo.setMaxFieldsBytes(parser, 32)
+  milo.setMaxFieldsCount(parser, 1)
+  const pipeline = `${prefix}${trailer}\r\n`.repeat(2)
+  assert.equal(parse(pipeline), pipeline.length)
+
+  milo.reset(parser, false)
+  assert.equal(parse(`${prefix}${trailer}`), prefix.length + trailer.length)
+  assert.equal(parse('B:\r\n\r\n'), 0)
+  assert.equal(milo.getErrorDescription(parser), 'Field limit exceeded')
+})
+
 it('basic_max_body_payload_content_length', t => {
   const { milo, parser, parse } = createParser(t, setup)
   milo.setShouldAutodetect(parser, false)
@@ -352,6 +373,8 @@ it('basic_control_methods_dispatch_callbacks', t => {
 
 it('basic_event_buffer_full_stops_parsing', t => {
   const { milo, parser, parse } = createParser(t, setup)
+  milo.setMaxFieldsBytes(parser, 0xffffffff)
+  milo.setMaxFieldsCount(parser, 0xffffffff)
   milo.setShouldAutodetect(parser, false)
   milo.setIsRequest(parser, false)
   milo.setActiveCallbacks(parser, 0n)
@@ -370,6 +393,7 @@ it('basic_event_buffer_full_stops_parsing', t => {
 it('basic_event_buffer_suspension_preserves_header_atomicity', t => {
   for (const framing of ['Content-Length: 1\r\n\r\nx', 'Transfer-Encoding: chunked\r\n\r\n0\r\n\r\n']) {
     const { milo, parser, parse } = createParser(t, setup)
+    milo.setMaxFieldsCount(parser, 0xffffffff)
     milo.setShouldAutodetect(parser, false)
     milo.setIsRequest(parser, true)
     milo.setActiveCallbacks(parser, 0n)
@@ -424,6 +448,7 @@ it('basic_event_buffer_full_resumes_completion', () => {
     )
     const ptr = milo.alloc(message.length)
     try {
+      milo.setMaxFieldsCount(parser, 0xffffffff)
       milo.setActiveCallbacks(
         parser,
         milo.CALLBACK_ACTIVE_ON_HEADER_VALUE |

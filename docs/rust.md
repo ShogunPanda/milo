@@ -119,7 +119,8 @@ A struct representing a parser. It has the following fields:
 - `skip_body` (`bool`): If the parser should skip the body.
 - `debug` (`bool`): If debug tracing is enabled for this parser. It only affects tracing in debug-enabled builds.
 - `max_start_line_length` (`usize`): Maximum allowed request/status line length. By default is `8192`.
-- `max_header_length` (`usize`): Maximum allowed header length. By default is `8192`.
+- `max_field_length` (`usize`): Length limit used when scanning individual header and trailer fields. Defaults to `8192`.
+- `max_fields_bytes` and `max_fields_count` (`usize`): The same limits apply separately to headers and trailers. The defaults are 64 KiB and 100 fields per section. Set either maximum to `usize::MAX` to effectively disable that limit. The byte total includes each field's CRLF but excludes the empty line ending the section. A limit of `0` rejects any field. Set both limits before parsing a message and leave them unchanged until it completes.
 - `max_body_payload` (`u64`): Maximum body payload bytes consumed in a single `parse()` call. `0` means unlimited and is the default.
 - `context` (`*mut c_void`): The context of this parser. Use is reserved to the developer.
 - `state` (`u8`): The current parser state.
@@ -156,7 +157,9 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 - `skip_body`
 - `debug`
 - `max_start_line_length`
-- `max_header_length`
+- `max_field_length`
+- `max_fields_bytes`
+- `max_fields_count`
 - `max_body_payload`
 - `context`
 - `active_callbacks`
@@ -287,7 +290,9 @@ The following fields are not modified:
 - `continue_without_data`
 - `debug`
 - `max_start_line_length`
-- `max_header_length`
+- `max_field_length`
+- `max_fields_bytes`
+- `max_fields_count`
 - `context`
 - `active_callbacks`
 - `callbacks`

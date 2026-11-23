@@ -11,7 +11,9 @@ type WasmUsize = u32;
 #[repr(C)]
 struct ParserStub {
   max_start_line_length: WasmUsize,
-  max_header_length: WasmUsize,
+  max_field_length: WasmUsize,
+  max_fields_bytes: WasmUsize,
+  max_fields_count: WasmUsize,
   max_body_payload: u64,
   autodetect: bool,
   is_request: bool,
@@ -46,12 +48,21 @@ struct ParserStub {
   unconsumed: WasmPointer,
   unconsumed_len: WasmUsize,
   error_description_len: u8,
+  parsing: bool,
+  has_pending_start: bool,
+  incomplete_line_state: u8,
+  fields_bytes: WasmUsize,
+  fields_count: WasmUsize,
+  retained_capacity: WasmUsize,
+  pending_start_at: u64,
   events: WasmPointer,
 }
 
 pub const FIELDS: &[(&str, usize)] = &[
   ("MAX_START_LINE_LENGTH", offset_of!(ParserStub, max_start_line_length)),
-  ("MAX_HEADER_LENGTH", offset_of!(ParserStub, max_header_length)),
+  ("MAX_FIELD_LENGTH", offset_of!(ParserStub, max_field_length)),
+  ("MAX_FIELDS_BYTES", offset_of!(ParserStub, max_fields_bytes)),
+  ("MAX_FIELDS_COUNT", offset_of!(ParserStub, max_fields_count)),
   ("MAX_BODY_PAYLOAD", offset_of!(ParserStub, max_body_payload)),
   ("AUTODETECT", offset_of!(ParserStub, autodetect)),
   ("IS_REQUEST", offset_of!(ParserStub, is_request)),

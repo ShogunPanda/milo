@@ -229,7 +229,7 @@ fn managed_input_validates_lf_after_a_retained_cr() {
 fn managed_input_checks_length_while_waiting() {
   let mut parser = Parser::new();
   parser.manage_unconsumed = true;
-  parser.max_header_length = 12;
+  parser.max_field_length = 12;
 
   assert_eq!(parser.parse(b"GET / HTTP/1.1\r\nX-Test: one"), 16);
   assert_eq!(parser.parse(b" "), 0);

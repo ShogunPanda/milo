@@ -270,6 +270,14 @@ pub unsafe fn should_suspend_after_headers(parser: *const c_void) -> bool {
   unsafe { (*(parser as *const Parser)).suspend_after_headers }
 }
 
+/// # Safety
+/// The parser must be live and aligned.
+#[unsafe(no_mangle)]
+pub unsafe fn should_require_host(parser: *const c_void) -> bool {
+  // SAFETY: Required by this function's contract.
+  unsafe { (*parser.cast::<Parser>()).require_host }
+}
+
 // Get the parser max_start_line_length property.
 /// # Safety
 /// Every raw pointer must satisfy the exported WebAssembly ABI contract.
@@ -511,6 +519,19 @@ pub unsafe fn set_should_suspend_after_headers(parser: *mut c_void, value: bool)
   unsafe {
     if !(*parser).parsing {
       (*parser).suspend_after_headers = value;
+    }
+  }
+}
+
+/// # Safety
+/// Every raw pointer must satisfy the exported WebAssembly ABI contract.
+#[unsafe(no_mangle)]
+pub unsafe fn set_should_require_host(parser: *mut c_void, value: bool) {
+  let parser = parser.cast::<Parser>();
+  // SAFETY: Required by this function's contract.
+  unsafe {
+    if !(*parser).parsing {
+      (*parser).require_host = value;
     }
   }
 }

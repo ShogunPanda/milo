@@ -32,6 +32,52 @@ fn assert_error(parser: &Parser) {
   assert_eq!(parser.state, STATE_ERROR);
 }
 
+#[test]
+fn compliance_require_host_is_opt_in() {
+  for request in ["GET / HTTP/1.1\r\n\r\n", "GET / HTTP/1.1\r\nHost: \t\r\n\r\n"] {
+    let mut parser = request_parser();
+    parse(&mut parser, request);
+    assert_ok(&parser);
+  }
+
+  let mut parser = response_parser();
+  parser.require_host = true;
+  parse(&mut parser, "HTTP/1.1 204 No Content\r\n\r\n");
+  assert_ok(&parser);
+
+  let mut parser = request_parser();
+  parser.require_host = true;
+  parse(&mut parser, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
+  assert_eq!(parser.state, STATE_TUNNEL);
+  assert_ok(&parser);
+}
+
+#[test]
+fn compliance_require_host_checks_initial_fields() {
+  for (fields, error) in [
+    ("", "Expected Host header"),
+    ("Host:\r\n", "Expected Host header value"),
+    ("Host: \t\r\n", "Expected Host header value"),
+    ("Host: example.test\r\nhOsT: example.test\r\n", "Duplicate Host header"),
+  ] {
+    let mut parser = request_parser();
+    parser.require_host = true;
+    parse(&mut parser, &format!("GET / HTTP/1.1\r\n{fields}\r\n"));
+    assert_error(&parser);
+    assert_eq!(parser.error_description_str(), error);
+  }
+
+  let mut parser = request_parser();
+  parser.require_host = true;
+  let prefix = "GET http://example.test/ HTTP/1.1\r\nhOsT: not an authority\r\n";
+  assert_eq!(parse(&mut parser, prefix), prefix.len());
+  assert_eq!(parse(&mut parser, "\r\n"), 2);
+  assert_ok(&parser);
+  parse(&mut parser, "GET / HTTP/1.1\r\n\r\n");
+  assert_error(&parser);
+  assert_eq!(parser.error_description_str(), "Expected Host header");
+}
+
 // RFC token syntax allows `|` in header names.
 #[test]
 fn compliance_header_name_allows_pipe() {

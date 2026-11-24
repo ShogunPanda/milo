@@ -104,4 +104,6 @@ Event offsets and lengths use an unsigned 32-bit wire format. Native parsing rej
 
 Milo does not aim for llhttp behavioral compatibility when it conflicts with Milo policy.
 
-Milo does not implement full URI semantic validation, URI normalization, percent-triplet validation, `Host` validation, method-specific request-target validation, CONNECT authority-form validation, `Transfer-Encoding` coding semantics beyond framing ambiguity checks, agreement between `Trailer` declarations and received trailer fields, method registry enforcement beyond token validity and known-method mapping, request/response pairing, HTTP/0.9, HTTP/1.0, RTSP, or obs-fold compatibility.
+Milo does not implement full URI semantic validation, URI normalization, percent-triplet validation, interpretation of `Host` as an authority, method-specific request-target validation, CONNECT authority-form validation, `Transfer-Encoding` coding semantics beyond framing ambiguity checks, agreement between `Trailer` declarations and received trailer fields, method registry enforcement beyond token validity and known-method mapping, request/response pairing, HTTP/0.9, HTTP/1.0, RTSP, or obs-fold compatibility.
+
+When enabled, `require_host` checks that HTTP/1.1 requests carry exactly one non-empty initial `Host` field. The name is case-insensitive and the value must remain non-empty after trimming spaces and tabs. This does not validate the host or port or compare them with the request target. `Host` is forbidden in trailers regardless of this setting.

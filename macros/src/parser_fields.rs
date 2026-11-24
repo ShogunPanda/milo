@@ -28,6 +28,7 @@ struct ParserStub {
   state: u8,
   paused: bool,
   error_code: u8,
+  require_host: bool,
   content_length: u64,
   chunk_size: u64,
   remaining_content_length: u64,
@@ -54,6 +55,7 @@ struct ParserStub {
   fields_bytes: WasmUsize,
   fields_count: WasmUsize,
   retained_capacity: WasmUsize,
+  has_host: bool,
   pending_start_at: u64,
   events: WasmPointer,
 }
@@ -77,6 +79,7 @@ pub const FIELDS: &[(&str, usize)] = &[
   ("STATE", offset_of!(ParserStub, state)),
   ("PAUSED", offset_of!(ParserStub, paused)),
   ("ERROR_CODE", offset_of!(ParserStub, error_code)),
+  ("REQUIRE_HOST", offset_of!(ParserStub, require_host)),
   ("CONTENT_LENGTH", offset_of!(ParserStub, content_length)),
   ("CHUNK_SIZE", offset_of!(ParserStub, chunk_size)),
   (

@@ -174,6 +174,20 @@ pub unsafe extern "C" fn milo_set_suspend_after_headers(parser: *mut Parser, val
   }
 }
 
+/// Sets whether HTTP/1.1 requests require exactly one non-empty Host field.
+///
+/// # Safety
+/// The parser must be live, aligned, and exclusively accessible.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn milo_set_require_host(parser: *mut Parser, value: bool) {
+  // SAFETY: The caller supplies a live parser on the current thread.
+  unsafe {
+    if !(*parser).parsing {
+      (*parser).require_host = value;
+    }
+  }
+}
+
 /// Resets a parser. The second parameters specifies if to also reset the
 /// parsed counter.
 ///
@@ -183,6 +197,7 @@ pub unsafe extern "C" fn milo_set_suspend_after_headers(parser: *mut Parser, val
 ///   * autodetect
 ///   * is_request
 ///   * suspend_after_headers
+///   * require_host
 ///   * max_body_payload
 ///   * manage_unconsumed
 ///   * continue_without_data

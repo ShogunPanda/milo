@@ -114,6 +114,7 @@ A struct representing a parser. It has the following fields:
 - `paused` (`bool`): If the parser is paused.
 - `manage_unconsumed` (`bool`): If the parser should automatically copy and prepend unconsumed data.
 - `suspend_after_headers` (`bool`): If parsing should stop after headers have completed. Disabled by default.
+- `require_host` (`bool`): Require exactly one non-empty initial `Host` field in HTTP/1.1 requests. Disabled by default. Set it before parsing a request. The parser does not interpret the value as an authority or compare it with the request target.
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
 - `is_connect` (`bool`): If the current request used `CONNECT` method.
 - `skip_body` (`bool`): If the parser should skip the body.
@@ -152,6 +153,7 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 - `is_request`
 - `manage_unconsumed`
 - `suspend_after_headers`
+- `require_host`
 - `continue_without_data`
 - `is_connect`
 - `skip_body`
@@ -287,6 +289,7 @@ The following fields are not modified:
 - `is_request`
 - `manage_unconsumed`
 - `suspend_after_headers`
+- `require_host`
 - `continue_without_data`
 - `debug`
 - `max_start_line_length`

@@ -305,7 +305,7 @@ Milo does not aim for byte-for-byte llhttp compatibility when lenient behavior w
 
 ## Security Boundaries
 
-Milo validates HTTP/1.1 syntax, message framing, protocol switching, connection management, and data-after-close behavior. Milo does not validate routing, authorization, representation semantics, URI normalization, `Host` policy, method-specific request-target forms, CONNECT authority-form, or full header field semantics unless they affect safe framing.
+Milo validates HTTP/1.1 syntax, message framing, protocol switching, connection management, and data-after-close behavior. The opt-in `require_host` setting requires exactly one non-empty initial `Host` field on HTTP/1.1 requests. Milo does not validate routing, authorization, representation semantics, URI normalization, `Host` as an authority, method-specific request-target forms, CONNECT authority-form, or full header field semantics unless they affect safe framing.
 
 ## How it works?
 

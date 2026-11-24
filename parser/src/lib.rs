@@ -42,6 +42,8 @@ pub struct Parser {
   pub state: u8,
   pub paused: bool,
   pub error_code: u8,
+  /// Requires exactly one non-empty initial Host field in HTTP/1.1 requests.
+  pub require_host: bool,
 
   // Current message flags
   pub content_length: u64,
@@ -81,6 +83,7 @@ pub struct Parser {
   fields_bytes: usize,
   fields_count: usize,
   retained_capacity: usize,
+  has_host: bool,
   pending_start_at: u64,
 
   // Event buffer. Keep this at the end of the struct for external readers.
@@ -130,6 +133,7 @@ impl Parser {
       state: STATE_START,
       paused: false,
       error_code: ERROR_NONE,
+      require_host: false,
       // Current message flags
       content_length: 0,
       chunk_size: 0,
@@ -164,6 +168,7 @@ impl Parser {
       fields_bytes: 0,
       fields_count: 0,
       retained_capacity: 0,
+      has_host: false,
       pending_start_at: 0,
       events: events_ptr,
     }
@@ -178,6 +183,7 @@ impl Parser {
   ///   * autodetect
   ///   * is_request
   ///   * suspend_after_headers
+  ///   * require_host
   ///   * manage_unconsumed
   ///   * continue_without_data
   ///   * max_fields_bytes
@@ -285,6 +291,7 @@ impl Parser {
     self.remaining_chunk_size = 0;
     self.fields_bytes = 0;
     self.fields_count = 0;
+    self.has_host = false;
   }
 
   #[inline(always)]

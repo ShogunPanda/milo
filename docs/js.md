@@ -165,6 +165,10 @@ When the limit is reached, `parse()` returns normally with a consumed byte count
 
 The limit applies only to body payload bytes. Framing bytes such as chunk headers, chunk CRLFs, and trailers are not counted.
 
+### Require Host
+
+Call `setShouldRequireHost(parser, true)` before parsing a request to require exactly one non-empty initial `Host` field. The default is `false`; read the setting with `shouldRequireHost(parser)`. This applies only to HTTP/1.1 requests. The application still decides whether the value is a valid authority and whether it agrees with the request target. `Host` is forbidden in trailers regardless of this setting.
+
 ### Suspend After Headers
 
 `setShouldSuspendAfterHeaders(parser, true)` makes `parse()` return after the final header terminator has been consumed and `on_headers` has been emitted. The parser is not paused; the next `parse()` invocation continues with body decision and body parsing.

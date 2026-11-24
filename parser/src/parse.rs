@@ -517,6 +517,10 @@ impl Parser {
 
                 // No more headers or no headers at all, move to the headers state
                 if cr == 0 {
+                  if self.require_host && self.is_request && !self.has_host {
+                    fail!(UNEXPECTED_CHARACTER, "Expected Host header");
+                  }
+
                   advance!(2);
                   if has_metadata_event {
                     event_with_metadata!(on_headers, 2);
@@ -563,6 +567,25 @@ impl Parser {
                 if !matches!(first_header_byte, b'c' | b'C' | b't' | b'T' | b'u' | b'U') {
                   if !validate_token(data, header_name_start, header_name_end) {
                     fail!(UNEXPECTED_CHARACTER, "Invalid header field name character");
+                  }
+
+                  if self.require_host
+                    && self.is_request
+                    && header_name_end - header_name_start == 4
+                    && matches!(
+                      &data[header_name_start..header_name_end],
+                      case_insensitive_string!("host")
+                    )
+                  {
+                    if self.has_host {
+                      fail!(UNEXPECTED_CHARACTER, "Duplicate Host header");
+                    }
+
+                    if !strip_ows_fast(data, &mut header_value_start, &mut header_value_end, false) {
+                      fail!(UNEXPECTED_CHARACTER, "Expected Host header value");
+                    }
+
+                    self.has_host = true;
                   }
 
                   if has_header_value_event {

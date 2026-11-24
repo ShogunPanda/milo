@@ -113,6 +113,7 @@ A struct representing a parser. It has the following fields:
 - `paused` (`bool`): If the parser is paused.
 - `manage_unconsumed` (`bool`): If the parser should automatically copy and prepend unconsumed data.
 - `suspend_after_headers` (`bool`): If parsing should stop after headers have completed. Disabled by default.
+- `require_host` (`bool`): Require exactly one non-empty initial `Host` field in HTTP/1.1 requests. Disabled by default. Set it before parsing a request. The parser does not interpret the value as an authority or compare it with the request target.
 - `continue_without_data` (`bool`): If the next execution of the parse loop should execute even if there is no more data.
 - `is_connect` (`bool`): If the current request used `CONNECT` method.
 - `skip_body` (`bool`): If the parser should skip the body.
@@ -154,6 +155,7 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 - `is_request`
 - `manage_unconsumed`
 - `suspend_after_headers`
+- `require_host`
 - `continue_without_data`
 - `is_connect`
 - `skip_body`
@@ -347,6 +349,10 @@ Sets the active event bitmask on the parser.
 
 Sets the maximum body payload bytes consumed by a single `milo_parse()` invocation. Use `0` for unlimited.
 
+### `void milo_set_require_host(Parser *parser, bool value)`
+
+Sets whether HTTP/1.1 requests require exactly one non-empty initial `Host` field.
+
 ### `void milo_set_suspend_after_headers(Parser *parser, bool value)`
 
 Sets whether `milo_parse()` should return after headers have completed.
@@ -364,6 +370,7 @@ The following fields are not modified:
 - `is_request`
 - `manage_unconsumed`
 - `suspend_after_headers`
+- `require_host`
 - `continue_without_data`
 - `debug`
 - `max_start_line_length`

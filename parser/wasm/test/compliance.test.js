@@ -25,6 +25,52 @@ function assertError (milo, parser) {
   assert.equal(milo.getState(parser), milo.STATE_ERROR)
 }
 
+it('compliance_require_host_is_opt_in', t => {
+  for (const request of ['GET / HTTP/1.1\r\n\r\n', 'GET / HTTP/1.1\r\nHost: \t\r\n\r\n']) {
+    const { milo, parser, parse } = requestParser(t)
+    assert.equal(milo.shouldRequireHost(parser), false)
+    parse(request)
+    assertOk(milo, parser)
+  }
+
+  const response = responseParser(t)
+  response.milo.setShouldRequireHost(response.parser, true)
+  response.parse('HTTP/1.1 204 No Content\r\n\r\n')
+  assertOk(response.milo, response.parser)
+
+  const preface = requestParser(t)
+  preface.milo.setShouldRequireHost(preface.parser, true)
+  preface.parse('PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n')
+  assert.equal(preface.milo.getState(preface.parser), preface.milo.STATE_TUNNEL)
+  assertOk(preface.milo, preface.parser)
+})
+
+it('compliance_require_host_checks_initial_fields', t => {
+  for (const [fields, error] of [
+    ['', 'Expected Host header'],
+    ['Host:\r\n', 'Expected Host header value'],
+    ['Host: \t\r\n', 'Expected Host header value'],
+    ['Host: example.test\r\nhOsT: example.test\r\n', 'Duplicate Host header']
+  ]) {
+    const { milo, parser, parse } = requestParser(t)
+    milo.setShouldRequireHost(parser, true)
+    parse(`GET / HTTP/1.1\r\n${fields}\r\n`)
+    assertError(milo, parser)
+    assert.equal(milo.getErrorDescription(parser), error)
+  }
+
+  const { milo, parser, parse } = requestParser(t)
+  milo.setShouldRequireHost(parser, true)
+  assert.equal(milo.shouldRequireHost(parser), true)
+  const prefix = 'GET http://example.test/ HTTP/1.1\r\nhOsT: not an authority\r\n'
+  assert.equal(parse(prefix), prefix.length)
+  assert.equal(parse('\r\n'), 2)
+  assertOk(milo, parser)
+  parse('GET / HTTP/1.1\r\n\r\n')
+  assertError(milo, parser)
+  assert.equal(milo.getErrorDescription(parser), 'Expected Host header')
+})
+
 // RFC token syntax allows `|` in header names.
 it('compliance_header_name_allows_pipe', t => {
   const { milo, parser, parse } = responseParser(t)

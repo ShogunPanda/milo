@@ -141,6 +141,12 @@ Read fields with the matching WebAssembly representation:
 
 Prefer the regular getters when available. `ParserFields` is intended for advanced WebAssembly integrations that need direct memory access.
 
+### Managed Input
+
+When automatic buffering is enabled with `setShouldManageUnconsumed(parser, true)`, Milo prepends any retained bytes to the input. `parse()` and `getPosition(parser)` count consumed bytes from this combined buffer, so the return value can exceed `limit`. `getParsed(parser)` counts stream bytes once across calls.
+
+Event and callback offsets are relative to the combined buffer. If retained bytes were prepended, use `getCurrentInput(parser)` and `getCurrentInputLength(parser)` during callbacks or after `parse()` returns. The view is valid until the next parse, reset, standalone complete, finish, fail, or destruction. If no bytes were prepended, use the input buffer passed to `parse()`.
+
 ### Events
 
 Events are parser-owned records written to the parser event buffer during parsing. They are disabled by default. Enable them with `setActiveEvents(parser, mask)` using one or more `EVENT_ACTIVE_*` constants.
@@ -161,7 +167,7 @@ Set both limits before parsing a message and leave them unchanged until it compl
 
 `setMaxBodyPayload(parser, value)` limits how many body payload bytes a single `parse()` invocation can consume. The default value is `0`, which means unlimited.
 
-When the limit is reached, `parse()` returns normally with a consumed byte count smaller than `limit` and leaves the remaining input unconsumed. This is not a parser error and does not pause the parser. The next `parse()` invocation continues from the same parser state.
+When the limit is reached, `parse()` returns normally and leaves the remaining bytes in the current input unconsumed. This is not a parser error and does not pause the parser. The next `parse()` invocation continues from the same parser state.
 
 The limit applies only to body payload bytes. Framing bytes such as chunk headers, chunk CRLFs, and trailers are not counted.
 
@@ -183,7 +189,7 @@ u32 at
 u32 len
 ```
 
-`type` is one of the `EVENT_*` constants. `at` and `len` are relative to the last input passed to `parse()`. `len` can be `0`.
+`type` is one of the `EVENT_*` constants. `at` is the offset from the start of the input and `len` is the range length, which can be `0`. See [Managed Input](#managed-input) for how the input is defined when buffering is enabled.
 
 `EVENT_STATE_CHANGE` is debug-only and uses the same payload. For this event, `len` contains the new parser state id as a `u32`. Callback replay passes that value as the callback `size` argument.
 
@@ -335,9 +341,7 @@ destruction is ignored.
 
 #### `parse(parser, data, limit)`
 
-Parses `data` up to `limit` characters.
-
-It returns the number of consumed characters.
+Parses `limit` bytes at `data` and returns the number of bytes consumed. See [Managed Input](#managed-input) when automatic buffering is enabled.
 
 After a parser error, subsequent calls return `0`, emit no events or callbacks, and do not copy or retain new input. The original error and any previously retained input remain available until reset or destruction. Call `reset()` before reusing the parser.
 
@@ -460,7 +464,11 @@ Returns the parser state.
 
 #### `getPosition(parser)`
 
-Returns the parser position.
+Returns the parser cursor in the current input.
+
+#### `getCurrentInput(parser)` and `getCurrentInputLength(parser)`
+
+Return the WebAssembly memory address and byte length of the [managed aggregate](#managed-input). Both return `0` when there is no aggregate to read.
 
 #### `getParsed(parser)`
 

@@ -86,6 +86,11 @@ pub struct Parser {
   has_host: bool,
   pending_start_at: u64,
 
+  // The managed aggregate backing the latest parse.
+  current_input: *const c_uchar,
+  current_input_len: usize,
+  retained_offset: usize,
+
   // Event buffer. Keep this at the end of the struct for external readers.
   events: *mut c_uchar,
 }
@@ -170,6 +175,9 @@ impl Parser {
       retained_capacity: 0,
       has_host: false,
       pending_start_at: 0,
+      current_input: ptr::null(),
+      current_input_len: 0,
+      retained_offset: 0,
       events: events_ptr,
     }
   }
@@ -207,6 +215,7 @@ impl Parser {
     self.error_description[0] = 0;
     self.error_description_len = 0;
 
+    self.clear_current_input();
     self.clear_unconsumed();
 
     self.clear();
@@ -217,7 +226,7 @@ impl Parser {
   }
 
   pub(crate) fn clear_unconsumed(&mut self) {
-    if self.unconsumed_len != 0 {
+    if self.retained_capacity != 0 {
       drop(self.take_retained_input());
     }
   }
@@ -227,8 +236,9 @@ impl Parser {
     let capacity = core::mem::take(&mut self.retained_capacity);
     let data = core::mem::replace(&mut self.unconsumed, ptr::null()).cast_mut();
     let len = core::mem::take(&mut self.unconsumed_len);
+    let offset = core::mem::take(&mut self.retained_offset);
     // SAFETY: These are the original Vec parts, now owned by the returned Vec.
-    unsafe { Vec::from_raw_parts(data, len, capacity) }
+    unsafe { Vec::from_raw_parts(data.sub(offset), len + offset, capacity) }
   }
 
   fn put_retained_input(&mut self, data: Vec<u8>, incomplete_line_state: u8) {
@@ -240,28 +250,52 @@ impl Parser {
   }
 
   fn append_retained_input(&mut self, input: &[u8]) {
-    if input.is_empty() {
+    if input.is_empty() && self.retained_offset == 0 {
       return;
     }
     let incomplete_line_state = self.incomplete_line_state;
+    let offset = self.retained_offset;
     let mut retained = self.take_retained_input();
+    if offset != 0 {
+      retained.copy_within(offset.., 0);
+      retained.truncate(retained.len() - offset);
+    }
     retained.extend_from_slice(input);
     self.put_retained_input(retained, incomplete_line_state);
   }
 
-  fn keep_retained_suffix(&mut self, suffix: &[u8], incomplete_line_state: u8) {
+  fn keep_retained_suffix(&mut self, input: &[u8], consumed: usize, incomplete_line_state: u8) {
     if self.unconsumed_len == 0 {
-      self.put_retained_input(suffix.to_vec(), incomplete_line_state);
+      self.put_retained_input(input[consumed..].to_vec(), incomplete_line_state);
       return;
     }
 
-    let len = suffix.len();
-    if suffix.as_ptr() != self.unconsumed {
-      // SAFETY: suffix is a subslice of the retained allocation, its last use
-      // is as a pointer here, and the destination can hold the entire suffix.
-      unsafe { ptr::copy(suffix.as_ptr(), self.unconsumed.cast_mut(), len) };
+    let len = self.unconsumed_len - consumed;
+    if consumed != 0 {
+      // SAFETY: Both ranges are within the retained allocation and may overlap.
+      unsafe { ptr::copy(self.unconsumed.add(consumed), self.unconsumed.cast_mut(), len) };
     }
     self.unconsumed_len = len;
+    self.incomplete_line_state = incomplete_line_state;
+  }
+
+  #[cold]
+  #[inline(never)]
+  fn clear_current_input(&mut self) {
+    if self.retained_offset != 0 && self.unconsumed_len == 0 {
+      self.clear_unconsumed();
+    }
+    self.current_input = ptr::null();
+    self.current_input_len = 0;
+  }
+
+  fn retain_event_aggregate(&mut self, retain: bool, consumed: usize, incomplete_line_state: u8) {
+    // Keep the aggregate intact and expose only the pending suffix as unconsumed.
+    let offset = if retain { consumed } else { self.unconsumed_len };
+    // SAFETY: Offset is within, or just past, the existing allocation.
+    self.unconsumed = unsafe { self.unconsumed.add(offset) };
+    self.unconsumed_len -= offset;
+    self.retained_offset = offset;
     self.incomplete_line_state = incomplete_line_state;
   }
 
@@ -354,6 +388,19 @@ impl Parser {
     }
   }
 
+  /// Returns the aggregate backing the latest parse, or an empty slice if no
+  /// retained prefix was prepended.
+  ///
+  /// # Safety
+  /// Use the slice only before the next parse, reset, complete, finish, or fail.
+  pub unsafe fn current_input(&self) -> &[u8] {
+    if self.current_input.is_null() {
+      return &[];
+    }
+    // SAFETY: The parser owns this allocation until it invalidates the view.
+    unsafe { slice::from_raw_parts(self.current_input, self.current_input_len) }
+  }
+
   /// Pauses the parser. It will have to be resumed via `resume`.
   pub fn pause(&mut self) { self.paused = true; }
 
@@ -378,6 +425,7 @@ impl Parser {
       return;
     }
 
+    self.clear_current_input();
     match self.state {
       STATE_START => {
         if self.has_pending_start && self.pending_start_at == self.parsed {
@@ -421,6 +469,7 @@ impl Parser {
       return;
     }
 
+    self.clear_current_input();
     self.set_error(code, description);
     let mut event_cursor = 0usize;
     if (self.active_events | self.active_callbacks) & EVENT_ACTIVE_ON_ERROR != 0
@@ -477,6 +526,7 @@ impl Parser {
 
 impl Drop for Parser {
   fn drop(&mut self) {
+    self.clear_current_input();
     self.clear_unconsumed();
     if !self.events.is_null() {
       // SAFETY: This is the original pointer returned by Box::into_raw.

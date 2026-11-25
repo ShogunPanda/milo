@@ -124,7 +124,7 @@ A struct representing a parser. It has the following fields:
 - `max_body_payload` (`uint64_t`): Maximum body payload bytes consumed in a single `milo_parse()` call. `0` means unlimited and is the default.
 - `context` (`void*`): The context of this parser. Use is reserved to the developer.
 - `state` (`uint8_t`): The current parser state.
-- `position` (`uintptr_t`): The current parser position in the slice in the current execution of `milo_parse`.
+- `position` (`uintptr_t`): The parser cursor in the current input.
 - `parsed` (`uint64_t`): The total bytes consumed from this parser.
 - `error_code` (`uint8_t`): The parser error. By default is `ERROR_NONE`.
 - `method` (`uint8_t`): The current request method.
@@ -145,8 +145,10 @@ A struct representing a parser. It has the following fields:
 - `callbacks` (`ParserCallbacks`): The callbacks for the current parser.
 - `error_description` (`unsigned char[255]`): The parser error description buffer. It is always NIL-terminated.
 - `error_description_len` (`uint8_t`): The parser error description length, excluding the NIL terminator. Error descriptions are clamped to 254 bytes.
-- `unconsumed` (`const unsigned char*`): The unconsumed data from the previous execution of `parse` when `manage_unconsumed` is `true`.
+- `unconsumed` (`const unsigned char*`): The suffix retained after `milo_parse()` returns when `manage_unconsumed` is `true`.
 - `unconsumed_len` (`uintptr_t`): The unconsumed data length from the previous execution of `parse` when `manage_unconsumed` is `true`.
+- `current_input` (`const unsigned char*`): The [managed aggregate](#managed-input), or `NULL` if no retained bytes were prepended.
+- `current_input_len` (`uintptr_t`): The length of `current_input`.
 - `events` (`unsigned char[65536]`): Parser-owned event buffer.
 
 All the fields **MUST** be considered readonly, with the following exceptions:
@@ -170,6 +172,12 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 - `active_events`
 - `callbacks`
 
+## Managed Input
+
+When `manage_unconsumed` is enabled, Milo prepends any retained bytes to `data`. `milo_parse()` and `position` count consumed bytes from this combined buffer, so the return value can exceed `limit`. `parsed` counts stream bytes once across calls.
+
+Event and callback offsets are relative to the combined buffer. If retained bytes were prepended, `current_input` and `current_input_len` expose the aggregate during callbacks and after `milo_parse()` returns. The view is valid until the next parse, reset, standalone complete, finish, fail, or destruction. If no bytes were prepended, use `data` from the call.
+
 ## Events
 
 Events are parser-owned records written to `Parser::events` during parsing. They are disabled by default. Enable them by setting `Parser::active_events` or by calling `milo_parser::milo_set_active_events()` with one or more `EVENT_ACTIVE_*` values.
@@ -184,7 +192,7 @@ If an active event would exceed the internal event buffer, parsing stops before 
 
 `max_body_payload` limits how many body payload bytes a single `milo_parse()` invocation can consume. The default value is `0`, which means unlimited.
 
-When the limit is reached, `milo_parse()` returns normally with a consumed byte count smaller than `limit` and leaves the remaining input unconsumed. This is not a parser error and does not pause the parser. The next `milo_parse()` invocation continues from the same parser state.
+When the limit is reached, `milo_parse()` returns normally and leaves the remaining bytes in the current input unconsumed. This is not a parser error and does not pause the parser. The next `milo_parse()` invocation continues from the same parser state.
 
 The limit applies only to body payload bytes. Framing bytes such as chunk headers, chunk CRLFs, and trailers are not counted.
 
@@ -202,7 +210,7 @@ uint32_t at
 uint32_t len
 ```
 
-`type` is one of the `EVENT_*` constants. `at` and `len` are relative to the last input passed to `milo_parse()`. `len` can be `0`.
+`type` is one of the `EVENT_*` constants. `at` is the offset from the start of the input and `len` is the range length, which can be `0`. See [Managed Input](#managed-input) for how the input is defined when buffering is enabled.
 
 `EVENT_STATE_CHANGE` is debug-only and uses the same payload. For this event, `len` contains the new parser state id as a `uint32_t`. Callback replay passes that value as the callback `size` argument.
 
@@ -333,9 +341,7 @@ Destroys a parser.
 
 ### `uintptr_t milo_parse(Parser *parser, const unsigned char *data, uintptr_t limit)`
 
-Parses `data` up to `limit` characters.
-
-It returns the number of consumed characters.
+Parses `limit` bytes from `data` and returns the number of bytes consumed. See [Managed Input](#managed-input) when `manage_unconsumed` is enabled.
 
 Event coordinates use 32-bit offsets and lengths. On 64-bit native targets, `milo_parse()` rejects a current input or managed aggregate larger than `UINT32_MAX` with `ERROR_INPUT_TOO_LARGE` before reading `data`.
 

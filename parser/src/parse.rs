@@ -53,6 +53,9 @@ impl Parser {
     let mut event_cursor = 0usize;
     let mut failed = false;
     let active_events = self.active_events | self.active_callbacks;
+    if !self.current_input.is_null() {
+      self.clear_current_input();
+    }
 
     // Error states cannot resume without reset. Do not aggregate or retain new
     // input on retries, which would otherwise grow the pending buffer forever.
@@ -87,6 +90,8 @@ impl Parser {
       self.append_retained_input(input);
       // SAFETY: The parser owns the contiguous aggregate of the checked length.
       let aggregate = unsafe { from_raw_parts(self.unconsumed, aggregate_limit) };
+      self.current_input = self.unconsumed;
+      self.current_input_len = aggregate_limit;
       match self.scan_retained_line(aggregate, retained_len) {
         RetainedLine::Unchecked => {}
         RetainedLine::Incomplete => {
@@ -1527,21 +1532,6 @@ impl Parser {
     }
     self.parsed += consumed as u64;
 
-    if self.manage_unconsumed {
-      // Tunnel bytes belong to the upgraded protocol and must remain with the
-      // caller rather than being retained by the HTTP parser.
-      if self.state != STATE_TUNNEL && consumed < limit {
-        let incomplete_line_state = if incomplete_line {
-          self.state
-        } else {
-          NO_INCOMPLETE_LINE
-        };
-        self.keep_retained_suffix(data, incomplete_line_state);
-      } else {
-        self.clear_unconsumed();
-      }
-    }
-
     #[cfg(all(not(target_family = "wasm"), any(debug_assertions, feature = "debug")))]
     if self.debug {
       let duration = Instant::now().duration_since(start).as_nanos();
@@ -1568,13 +1558,34 @@ impl Parser {
       }
     }
 
+    // Decide retention before callbacks, but leave their input intact during replay.
+    let manage_unconsumed = self.manage_unconsumed;
+    let state = self.state;
     if self.active_callbacks != 0 {
+      let events = self.events;
       self.parsing = true;
       self.invoke_callbacks();
       self.parsing = false;
+
+      // A Rust callback can replace the parser.
+      if self.events != events {
+        return consumed;
+      }
     }
 
-    // Return the number of consumed bytes
+    if manage_unconsumed {
+      // Tunnel bytes belong to the upgraded protocol and must remain with the caller.
+      let retain = state != STATE_TUNNEL && consumed < limit;
+      let incomplete_line_state = if incomplete_line { state } else { NO_INCOMPLETE_LINE };
+      if retained_len != 0 {
+        self.retain_event_aggregate(retain, consumed, incomplete_line_state);
+      } else if retain {
+        self.keep_retained_suffix(input, consumed, incomplete_line_state);
+      } else {
+        self.clear_unconsumed();
+      }
+    }
+
     consumed
   }
 
@@ -1630,6 +1641,7 @@ impl Parser {
       return;
     }
 
+    self.clear_current_input();
     match self.state {
       STATE_BODY_DECISION
       | STATE_TUNNEL

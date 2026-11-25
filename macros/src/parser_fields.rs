@@ -57,6 +57,9 @@ struct ParserStub {
   retained_capacity: WasmUsize,
   has_host: bool,
   pending_start_at: u64,
+  current_input: WasmPointer,
+  current_input_len: WasmUsize,
+  retained_offset: WasmUsize,
   events: WasmPointer,
 }
 
@@ -106,6 +109,8 @@ pub const FIELDS: &[(&str, usize)] = &[
   ("UNCONSUMED", offset_of!(ParserStub, unconsumed)),
   ("UNCONSUMED_LEN", offset_of!(ParserStub, unconsumed_len)),
   ("ERROR_DESCRIPTION_LEN", offset_of!(ParserStub, error_description_len)),
+  ("CURRENT_INPUT", offset_of!(ParserStub, current_input)),
+  ("CURRENT_INPUT_LEN", offset_of!(ParserStub, current_input_len)),
   ("EVENTS", offset_of!(ParserStub, events)),
 ];
 

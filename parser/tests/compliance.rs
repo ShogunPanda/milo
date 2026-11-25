@@ -420,17 +420,13 @@ fn compliance_205_transfer_encoding_rejected() {
   assert_error(&parser);
 }
 
-// No-body responses except 304 reject Content-Length in strict Milo mode.
 #[test]
-fn compliance_no_body_status_content_length_rejected() {
-  for status in ["100 Continue", "204 No Content", "205 Reset Content"] {
-    let mut parser = response_parser();
-    let message = wire(&format!("HTTP/1.1 {}\r\nContent-Length: 0\r\n\r\n", status));
+fn compliance_1xx_content_length_rejected() {
+  let mut parser = response_parser();
 
-    parse(&mut parser, &message);
+  parse(&mut parser, "HTTP/1.1 100 Continue\r\nContent-Length: 0\r\n\r\n");
 
-    assert_error(&parser);
-  }
+  assert_error(&parser);
 }
 
 // 304 allows Content-Length as metadata but still has no body.
@@ -446,20 +442,14 @@ fn compliance_304_content_length_accepted_without_body() {
   assert_eq!(parser.state, STATE_START);
 }
 
-// No-body responses reject Transfer-Encoding in strict Milo mode.
 #[test]
-fn compliance_no_body_status_transfer_encoding_rejected() {
-  for status in ["100 Continue", "204 No Content", "304 Not Modified"] {
-    let mut parser = response_parser();
-    let message = wire(&format!(
-      "HTTP/1.1 {}\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n",
-      status
-    ));
+fn compliance_1xx_transfer_encoding_rejected() {
+  let mut parser = response_parser();
+  let message = "HTTP/1.1 100 Continue\r\nTransfer-Encoding: chunked\r\n\r\n";
 
-    parse(&mut parser, &message);
+  parse(&mut parser, message);
 
-    assert_error(&parser);
-  }
+  assert_error(&parser);
 }
 
 // Trailer is invalid without chunked transfer coding.

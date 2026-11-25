@@ -52,7 +52,7 @@ Responses to `HEAD` are application context. The application must use `skip_body
 
 Responses with status `1xx`, `204`, `205`, and `304` complete after headers and never parse a body.
 
-Milo rejects `Content-Length` on `1xx`, `204`, and `205`. Milo allows `Content-Length` on `304` as representation metadata, but it never uses it for message body framing. Milo rejects `Transfer-Encoding` on `1xx`, `204`, `205`, and `304`.
+Milo rejects `Content-Length` and `Transfer-Encoding` on `1xx` and `205`. On `204` and `304`, Milo accepts and reports either header and ends the message at the header terminator (RFC 9112 §6.3). Servers must still omit these headers on `204` (RFC 9110 §8.6 and RFC 9112 §6.1). Milo still validates the header values and rejects messages containing both headers. Clients decide whether to reuse the connection.
 
 ## Chunked Encoding
 

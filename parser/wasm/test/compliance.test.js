@@ -323,13 +323,10 @@ it('compliance_205_transfer_encoding_rejected', t => {
   assertError(milo, parser)
 })
 
-// No-body responses except 304 reject Content-Length in strict Milo mode.
-it('compliance_no_body_status_content_length_rejected', t => {
-  for (const status of ['100 Continue', '204 No Content', '205 Reset Content']) {
-    const { milo, parser, parse } = responseParser(t)
-    parse(`HTTP/1.1 ${status}\r\nContent-Length: 0\r\n\r\n`)
-    assertError(milo, parser)
-  }
+it('compliance_1xx_content_length_rejected', t => {
+  const { milo, parser, parse } = responseParser(t)
+  parse('HTTP/1.1 100 Continue\r\nContent-Length: 0\r\n\r\n')
+  assertError(milo, parser)
 })
 
 // 304 allows Content-Length as metadata but still has no body.
@@ -340,13 +337,10 @@ it('compliance_304_content_length_accepted_without_body', t => {
   assert.equal(milo.getState(parser), milo.STATE_START)
 })
 
-// No-body responses reject Transfer-Encoding in strict Milo mode.
-it('compliance_no_body_status_transfer_encoding_rejected', t => {
-  for (const status of ['100 Continue', '204 No Content', '304 Not Modified']) {
-    const { milo, parser, parse } = responseParser(t)
-    parse(`HTTP/1.1 ${status}\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n`)
-    assertError(milo, parser)
-  }
+it('compliance_1xx_transfer_encoding_rejected', t => {
+  const { milo, parser, parse } = responseParser(t)
+  parse('HTTP/1.1 100 Continue\r\nTransfer-Encoding: chunked\r\n\r\n')
+  assertError(milo, parser)
 })
 
 // Trailer is invalid without chunked transfer coding.

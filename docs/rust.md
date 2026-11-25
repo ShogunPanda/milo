@@ -125,7 +125,7 @@ A struct representing a parser. It has the following fields:
 - `max_body_payload` (`u64`): Maximum body payload bytes consumed in a single `parse()` call. `0` means unlimited and is the default.
 - `context` (`*mut c_void`): The context of this parser. Use is reserved to the developer.
 - `state` (`u8`): The current parser state.
-- `position` (`usize`): The current parser position in the slice in the current execution of `milo_parse`.
+- `position` (`usize`): The parser cursor in the current input.
 - `parsed` (`u64`): The total bytes consumed from this parser.
 - `error_code` (`u8`): The parser error. By default is `ERROR_NONE`.
 - `method` (`u8`): The current request method.
@@ -145,7 +145,7 @@ A struct representing a parser. It has the following fields:
 - `active_events` (`u64`): Active event bitmask. Set to one or more `EVENT_ACTIVE_*` flags.
 - `callbacks` (`ParserCallbacks`): The callbacks for the current parser.
 
-Parser-owned buffers are private. Use `Parser::error_description_str()` to inspect the current error description, `Parser::unconsumed()` to inspect retained input, and `Parser::events()` to inspect the current event batch.
+Parser-owned buffers are private. Use `Parser::error_description_str()` to inspect the current error description, `Parser::unconsumed()` to inspect retained input after `parse()` returns, and `Parser::events()` to inspect the current event batch.
 
 All the fields **MUST** be considered readonly, with the following exceptions:
 
@@ -168,6 +168,12 @@ All the fields **MUST** be considered readonly, with the following exceptions:
 - `active_events`
 - `callbacks`
 
+## Managed Input
+
+When `manage_unconsumed` is enabled, Milo prepends any retained bytes to `data`. `parse()` and `position` count consumed bytes from this combined buffer, so the return value can exceed `data.len()`. `parsed` counts stream bytes once across calls.
+
+Event and callback offsets are relative to the combined buffer. If retained bytes were prepended, use the unsafe `Parser::current_input()` accessor during callbacks or after `parse()` returns. The view is valid until the next parse, reset, standalone complete, finish, fail, or destruction. If no bytes were prepended, use `data` from the call.
+
 ## Events
 
 Events are parser-owned records returned by `Parser::events()` after parsing. They are disabled by default. Enable them by setting `Parser::active_events` to one or more `EVENT_ACTIVE_*` flags.
@@ -182,7 +188,7 @@ If an active event would exceed the internal event buffer, parsing stops before 
 
 `max_body_payload` limits how many body payload bytes a single `parse()` invocation can consume. The default value is `0`, which means unlimited.
 
-When the limit is reached, `parse()` returns normally with `consumed < limit` and leaves the remaining input unconsumed. This is not a parser error and does not pause the parser. The next `parse()` invocation continues from the same parser state.
+When the limit is reached, `parse()` returns normally and leaves the remaining bytes in the current input unconsumed. This is not a parser error and does not pause the parser. The next `parse()` invocation continues from the same parser state.
 
 The limit applies only to body payload bytes. Framing bytes such as chunk headers, chunk CRLFs, and trailers are not counted.
 
@@ -200,7 +206,7 @@ u32 at
 u32 len
 ```
 
-`type` is one of the `EVENT_*` constants. `at` and `len` are relative to the last input passed to `parse()`. `len` can be `0`.
+`type` is one of the `EVENT_*` constants. `at` is the offset from the start of the input and `len` is the range length, which can be `0`. See [Managed Input](#managed-input) for how the input is defined when buffering is enabled.
 
 `EVENT_STATE_CHANGE` is debug-only and uses the same payload. For this event, `len` contains the new parser state id as a `u32`. Callback replay passes that value as the callback `size` argument.
 
@@ -270,7 +276,7 @@ Creates a new parser.
 
 #### `Parser::parse(&mut self, data: &[u8]) -> usize`
 
-Parses `data` and returns the number of consumed bytes.
+Parses `data` and returns the number of bytes consumed. See [Managed Input](#managed-input) when `manage_unconsumed` is enabled.
 
 Event coordinates use 32-bit offsets and lengths. On 64-bit native targets, `parse()` rejects a current input or managed aggregate larger than `u32::MAX` with `ERROR_INPUT_TOO_LARGE` before reading the input.
 
@@ -387,7 +393,7 @@ Destroys a parser.
 
 ### `milo_parse(parser: *mut Parser, data: *const c_uchar, limit: usize) -> usize`
 
-Parses `limit` bytes from `data` and returns the number of bytes consumed.
+Parses `limit` bytes from `data`. The return value follows `Parser::parse()`.
 The caller must have exclusive access to a live, properly aligned parser. A
 nonempty input must be a readable range of initialized bytes in one allocation
 and must remain valid and unchanged during the call. It must not overlap the

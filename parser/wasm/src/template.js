@@ -155,6 +155,10 @@ function setupInstance (env, onDestroy) {
     create: create.bind(wasm),
     destroy: destroy.bind(wasm, onDestroy),
     parse: parse.bind(wasm),
+    getCurrentInput: parser =>
+      new DataView(wasm.memory.buffer).getUint32(parser + milo.ParserFields.CURRENT_INPUT, true),
+    getCurrentInputLength: parser =>
+      new DataView(wasm.memory.buffer).getUint32(parser + milo.ParserFields.CURRENT_INPUT_LEN, true),
     fail: fail.bind(wasm),
     hasDebug: hasDebug.bind(wasm),
     clear: wasm.clear,

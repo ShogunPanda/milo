@@ -152,6 +152,7 @@ fn issue_16__release_retained_input() {
   WATCHED_POINTER.store(parser.unconsumed().as_ptr() as usize, Ordering::SeqCst);
   let suffix = b"\r\n\r\n";
   assert_eq!(parser.parse(suffix.as_ref()), previous_len + suffix.len());
+  assert_eq!(parser.parse(b""), 0);
   assert_eq!(WATCHED_POINTER.load(Ordering::SeqCst), 0);
   assert!(FREED_SIZE.load(Ordering::SeqCst) >= previous_len);
   assert!(parser.unconsumed().is_empty());
@@ -212,6 +213,65 @@ fn managed_input_reuses_only_the_first_line_ending() {
   assert_eq!(parser.parse(suffix), prefix.len() + suffix.len());
   assert_eq!(parser.error_code, ERROR_NONE);
   assert!(parser.unconsumed().is_empty());
+}
+
+#[test]
+fn parse_callbacks_can_read_the_current_input() {
+  type Observations = Vec<(Vec<u8>, Vec<u8>)>;
+
+  extern "C" fn on_header_value(parser: &mut Parser, at: usize, len: usize) {
+    // SAFETY: This callback reads the current input before returning.
+    let input = unsafe { parser.current_input() };
+    if input.is_empty() {
+      return;
+    }
+    let observation = (input.to_vec(), input[at..at + len].to_vec());
+    // SAFETY: The test keeps the observations alive and lends them to this parser.
+    let observations = unsafe { &mut *parser.context.cast::<Observations>() };
+    observations.push(observation);
+    parser.manage_unconsumed = false;
+  }
+
+  let mut observations = Observations::new();
+  let mut parser = Parser::new();
+  parser.context = core::ptr::from_mut(&mut observations).cast();
+  parser.active_callbacks = milo_parser::CALLBACK_ACTIVE_ON_HEADER_VALUE;
+  parser.callbacks.on_header_value = on_header_value;
+
+  let request = b"GET / HTTP/1.1\r\nX-Test: value\r\n\r\n";
+  assert_eq!(parser.parse(request), request.len());
+  assert!(observations.is_empty());
+
+  parser.reset(false);
+  parser.manage_unconsumed = true;
+  assert_eq!(parser.parse(b"GET / HTTP/1.1\r\nX-Test: va"), 16);
+  assert_eq!(parser.parse(b"lue\r\nX-Next: sta"), 15);
+  assert_eq!(parser.position, 15);
+  assert_eq!(parser.parsed, 31);
+  assert_eq!(parser.unconsumed(), b"X-Next: sta");
+  // SAFETY: The parser owns the last aggregate until the next parse.
+  assert_eq!(unsafe { parser.current_input() }, b"X-Test: value\r\nX-Next: sta");
+  assert!(!parser.manage_unconsumed);
+  assert_eq!(
+    observations.pop(),
+    Some((b"X-Test: value\r\nX-Next: sta".to_vec(), b"value".to_vec()))
+  );
+
+  parser.manage_unconsumed = true;
+  assert_eq!(parser.parse(b"\r\n\r\n"), 15);
+  assert_eq!(parser.parsed, 46);
+  assert!(parser.unconsumed().is_empty());
+  assert_eq!(observations.pop(), Some((b"X-Next: sta\r\n\r\n".to_vec(), b"sta".to_vec())));
+  // SAFETY: Even without a retained suffix, the aggregate still backs the batch.
+  assert_eq!(unsafe { parser.current_input() }, b"X-Next: sta\r\n\r\n");
+  assert!(!parser.manage_unconsumed);
+  assert_eq!(parser.parse(request), request.len());
+  assert!(observations.is_empty());
+  // SAFETY: The unmanaged call invalidated the prior batch.
+  assert!(unsafe { parser.current_input() }.is_empty());
+  parser.reset(false);
+  // SAFETY: Reset invalidates the view.
+  assert!(unsafe { parser.current_input() }.is_empty());
 }
 
 #[test]

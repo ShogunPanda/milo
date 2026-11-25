@@ -102,6 +102,54 @@ it('basic_incomplete_string_automanaged_1', t => {
   }
 })
 
+it('basic_parse_callbacks_can_read_the_current_input', t => {
+  const observations = []
+  const milo = setup({
+    on_header_value (parser, at, len) {
+      const ptr = milo.getCurrentInput(parser)
+      const size = milo.getCurrentInputLength(parser)
+      if (size === 0) {
+        return
+      }
+      const input = Buffer.from(milo.memory.buffer, ptr, size)
+      observations.push([input.toString(), input.subarray(at, at + len).toString()])
+    }
+  })
+  const parser = milo.create()
+  t.after(() => milo.destroy(parser))
+  milo.setActiveCallbacks(parser, milo.CALLBACK_ACTIVE_ON_HEADER_VALUE)
+
+  function parse (input, expectedInput = '') {
+    const bytes = Buffer.from(input)
+    const ptr = milo.alloc(bytes.length)
+    new Uint8Array(milo.memory.buffer, ptr, bytes.length).set(bytes)
+    const consumed = milo.parse(parser, ptr, bytes.length)
+    const backing = milo.getCurrentInput(parser)
+    const size = milo.getCurrentInputLength(parser)
+    assert.equal(Buffer.from(milo.memory.buffer, backing, size).toString(), expectedInput)
+    milo.dealloc(ptr, bytes.length)
+    return consumed
+  }
+
+  const request = 'GET / HTTP/1.1\r\nX-Test: value\r\n\r\n'
+  assert.equal(parse(request), request.length)
+  assert.equal(observations.length, 0)
+
+  milo.reset(parser, false)
+  milo.setShouldManageUnconsumed(parser, true)
+  assert.equal(parse('GET / HTTP/1.1\r\nX-Test: va'), 16)
+  assert.equal(parse('lue\r\nX-Next: sta', 'X-Test: value\r\nX-Next: sta'), 15)
+  assert.equal(milo.getPosition(parser), 15)
+  assert.equal(milo.getParsed(parser), 31n)
+  assert.deepEqual(observations.pop(), ['X-Test: value\r\nX-Next: sta', 'value'])
+  assert.equal(parse('\r\n\r\n', 'X-Next: sta\r\n\r\n'), 15)
+  assert.equal(milo.getParsed(parser), 46n)
+  assert.deepEqual(observations.pop(), ['X-Next: sta\r\n\r\n', 'sta'])
+  milo.reset(parser, false)
+  assert.equal(milo.getCurrentInput(parser), 0)
+  assert.equal(milo.getCurrentInputLength(parser), 0)
+})
+
 it('basic_incomplete_string_automanaged_2', t => {
   const { milo, parser, parse } = createParser(t, setup)
   milo.setShouldManageUnconsumed(parser, true)

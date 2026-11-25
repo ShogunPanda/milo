@@ -606,7 +606,7 @@ impl Parser {
                           UNEXPECTED_CONTENT_LENGTH,
                           "Unexpected Content-Length header when Transfer-Encoding header is present"
                         );
-                      } else if status == 205 || status == 204 || status / 100 == 1 {
+                      } else if status == 205 || status / 100 == 1 {
                         fail!(
                           UNEXPECTED_CONTENT_LENGTH,
                           "Unexpected Content-Length header for a response without body"
@@ -662,7 +662,7 @@ impl Parser {
                           UNEXPECTED_TRANSFER_ENCODING,
                           "Unexpected Transfer-Encoding header when Content-Length header is present"
                         );
-                      } else if status == 304 || status == 205 || status == 204 || status / 100 == 1 {
+                      } else if status == 205 || status / 100 == 1 {
                         fail!(
                           UNEXPECTED_TRANSFER_ENCODING,
                           "Unexpected Transfer-Encoding header for a response without body"
@@ -950,7 +950,7 @@ impl Parser {
               }
             } else {
               // Response
-              // RFC 9110 section 15.4.5
+              // RFC 9112 section 6.3: framing headers do not give 204 or 304 a body.
               if self.skip_body || (status < 200 && status != 101) || status == 204 || status == 205 || status == 304 {
                 self.continue_without_data = true;
                 if !self.complete_message::<true>(

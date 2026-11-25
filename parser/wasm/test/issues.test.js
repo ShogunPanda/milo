@@ -2,6 +2,34 @@ import assert from 'node:assert/strict'
 import { it } from 'node:test'
 import { createParser, setup } from './helpers.js'
 
+it('issue-63 - no_body_status_with_framing_headers', t => {
+  for (const [status, field, bodyKind, contentLength] of [
+    ['204 No Content', 'Content-Length: 0', 0, 0n],
+    ['204 No Content', 'Content-Length: 10', 0, 10n],
+    ['204 No Content', 'Transfer-Encoding: chunked', 1, 0n],
+    ['304 Not Modified', 'Transfer-Encoding: chunked', 1, 0n]
+  ]) {
+    const events = []
+    const { milo, parser, parse } = createParser(t, () => setup({
+      on_headers (parser, at, status, keepAlive, shouldUpgrade, hasTrailers, bodyKind, contentLength) {
+        events.push(['headers', at, status, bodyKind, contentLength])
+      },
+      on_data () { events.push(['data']) },
+      on_body () { events.push(['body']) },
+      on_message_complete (parser, at) { events.push(['complete', at]) }
+    }))
+    const response = `HTTP/1.1 ${status}\r\n${field}\r\n\r\n`
+
+    assert.equal(parse(response), response.length)
+    assert.equal(milo.getErrorCode(parser), milo.ERROR_NONE, milo.getErrorDescription(parser))
+    assert.equal(milo.getState(parser), milo.STATE_START)
+    assert.deepEqual(events, [
+      ['headers', response.length, Number(status.slice(0, 3)), bodyKind, contentLength],
+      ['complete', response.length]
+    ])
+  }
+})
+
 it('issue-16 - error_retries_do_not_accumulate_input', () => {
   for (const managed of [false, true]) {
     for (const callbacks of [false, true]) {
